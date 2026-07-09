@@ -1,0 +1,14 @@
+.env
+.git
+__pycache__/
+*.pyc
+*.pyo
+qdrant_data/
+qdrant_snapshots/
+backups/
+data/
+*.log
+tests/
+scripts/
+TODO.md
+readme.md

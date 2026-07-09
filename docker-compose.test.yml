@@ -1,0 +1,56 @@
+# Test-Umgebung: zweite Qdrant-Instanz mit LEERER Datenbank + Bot-Container ohne
+# Telegram (idlet nur). Komplett getrennt vom Prod-Stack (eigenes Projekt + Netz).
+#
+# Starten:   docker compose -f docker-compose.test.yml up -d
+# Nutzen:    docker exec bdsm-bot-test python -c "from bot.services import qdrant; ..."
+#            oder interaktiv: docker exec -it bdsm-bot-test python
+# Qdrant:    vom Host aus unter http://127.0.0.1:6335 erreichbar
+# Aufräumen: docker compose -f docker-compose.test.yml down
+#            (Qdrant-Test hat KEIN Volume -> down = Datenbank weg, nächstes up = wieder leer)
+
+name: bdsm-bot-test
+
+services:
+  qdrant-test:
+    image: qdrant/qdrant:v1.18.2
+    container_name: qdrant-test
+    ports:
+      - "127.0.0.1:6335:6333"
+    # bewusst KEIN Volume: leere DB bei jedem Neuerstellen, nichts landet auf dem Host
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  bdsm-bot-test:
+    # Prod-Image wiederverwenden (kein eigener Build); ./bot-Mount überlagert den Code
+    # ohnehin mit dem Host-Stand – genau wie im Prod-Compose.
+    image: bdsm-bot-bdsm-bot
+    container_name: bdsm-bot-test
+    # KEIN `python -m bot.main` -> kein Telegram-Polling, kein Scheduler, kein Log-Server.
+    # Container idlet nur und wird per `docker exec ... python` angesprochen.
+    command: sleep infinity
+    env_file:
+      - .env
+    environment:
+      - QDRANT_URL=http://qdrant-test:6333
+      # State/Logs nicht in die gemounteten Prod-Verzeichnisse schreiben
+      - STATE_FILE=/tmp/state.json
+      - LOG_FILE=/tmp/bot.log
+      - BACKUP_DIR=/tmp/backups
+    volumes:
+      - ./bot:/app/bot
+      - ./tests:/app/tests   # Test-Harness + Markdown-Protokolle (landen auf dem Host)
+    networks:
+      - test-network
+    depends_on:
+      qdrant-test:
+        condition: service_healthy
+
+networks:
+  test-network:
+    driver: bridge

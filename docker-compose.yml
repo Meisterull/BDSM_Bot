@@ -1,0 +1,129 @@
+# Erststart (frisches Setup):
+#   1. mkdir -p ./qdrant_data ./qdrant_snapshots ./backups ./data
+#   2. cp .env.example .env  und ausfüllen (Token, Chat-IDs, XAI_API_KEY)
+#   3. Embeddings bereitstellen – ENTWEDER eigenes Ollama (OLLAMA_URL in .env)
+#      ODER das mitgelieferte Profil:
+#        docker compose --profile ollama up -d ollama
+#        docker compose exec ollama ollama pull hf.co/MAY-A/jina-embeddings-v2-base-de-Q5_K_M-GGUF:Q5_K_M
+#      (Modell = OLLAMA_MODEL in .env; für nicht-deutsche Deployments ein
+#       multilinguales Modell + passendes EMBEDDING_DIM, s. bot/config.py)
+#   4. docker compose up -d   (mit Profilen: --profile ollama --profile voice up -d)
+#
+# Voice (optional): docker compose --profile voice up -d  startet Piper (TTS)
+# + Whisper (STT); dazu in .env TTS_WYOMING_URL/STT_WYOMING_URL setzen
+# (s. .env.example). Ohne Profil/URLs bleibt Voice einfach aus.
+
+services:
+  qdrant:
+    # Gepinnt auf die aktuell laufende Version (v1.18.2). NICHT downgraden – das
+    # Storage-Format der bestehenden qdrant_data wäre sonst evtl. nicht lesbar.
+    image: qdrant/qdrant:v1.18.2
+    container_name: qdrant
+    restart: always
+    ports:
+      # Nur lokal – Qdrant läuft ohne API-Key; Bot erreicht es intern via bot-network.
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+      - ./qdrant_snapshots:/qdrant/snapshots   # native Snapshots persistent + host-zugänglich
+    networks:
+      - bot-network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  bdsm-bot:
+    build: .
+    container_name: bdsm-bot
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+    ports:
+      # Log-Server (Default aus, LOG_PORT=0): NUR lokal binden – intime Inhalte,
+      # HTTP ohne TLS. Fernzugriff via SSH-Tunnel; zusätzliche Bindings gehören
+      # in eine docker-compose.override.yml (git-ignoriert), nicht hierher.
+      - "127.0.0.1:8099:8099"
+    volumes:
+      # Code läuft aus dem Image (nach Änderungen: docker compose build bzw.
+      # make deploy). Ein Dev-Mount für Live-Edits (./bot:/app/bot) gehört in
+      # eine lokale docker-compose.override.yml (git-ignoriert), nicht hierher.
+      - ./backups:/app/backups
+      - ./data:/app/data
+    networks:
+      - bot-network
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- Optionale Profile (für Setups ohne eigene Host-Dienste) ---------------
+
+  # Embeddings-LLM: PFLICHT für den Bot – entweder dieses Profil starten ODER
+  # OLLAMA_URL in .env auf ein bestehendes Ollama zeigen lassen. Nach dem
+  # ersten Start das Embedding-Modell pullen (siehe Erststart oben).
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bot-ollama
+    profiles: ["ollama"]
+    restart: always
+    volumes:
+      - ./ollama_data:/root/.ollama
+    networks:
+      - bot-network
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # Voice: Piper-TTS + Whisper-STT, komplett lokal. In .env dann:
+  #   TTS_WYOMING_URL=tcp://piper:10200
+  #   STT_WYOMING_URL=tcp://whisper:10300
+  # Piper-Stimmen sind einsprachig – für weitere Sprachen zusätzliche Stimmen
+  # via TTS_STIMMEN mappen (s. .env.example) und ggf. --language bei Whisper
+  # entfernen (dann Auto-Detect; der Bot schickt ohnehin den Sprach-Hint des Paares).
+  piper:
+    image: rhasspy/wyoming-piper
+    container_name: bot-piper
+    profiles: ["voice"]
+    restart: always
+    command: --voice de_DE-thorsten-high
+    volumes:
+      - ./piper_data:/data
+    networks:
+      - bot-network
+
+  whisper:
+    image: rhasspy/wyoming-whisper
+    container_name: bot-whisper
+    profiles: ["voice"]
+    restart: always
+    command: --model small-int8
+    volumes:
+      - ./whisper_data:/data
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
+    driver: bridge
+
+# Starten:        docker compose up -d
+# Stoppen:        docker compose down
+# Logs:           docker compose logs -f
+# Backup:         automatisch (backup_job 03:00) -> ./qdrant_snapshots (vollständig) + ./backups (JSON)
+#                 manuell: docker exec bdsm-bot python -m bot.services.backup
+# Restore:        python3 scripts/restore_qdrant.py list
+#                 python3 scripts/restore_qdrant.py recover-all <YYYY-MM-DD-HH-MM-SS>
+# Off-Site-DR:    ./qdrant_snapshots zusätzlich auf einen anderen Rechner sichern (liegt sonst auf gleicher Platte)
+# Daten löschen:  rm -rf ./qdrant_data (ACHTUNG: unwiderruflich)

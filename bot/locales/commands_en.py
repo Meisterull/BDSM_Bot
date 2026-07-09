@@ -1,0 +1,159 @@
+"""
+English command aliases and descriptions (publication step 2).
+ALIASES maps the German command name to an English alias (both get registered;
+the Telegram menu and /hilfe show the locale's variant). Keys must exactly
+match the `command` fields in bot/commands_katalog.py.
+"""
+
+ALIASES = {
+    # Domina – Aufgaben & Vorlagen
+    "aufgaben": "tasks",
+    "aufgaben_alle": "tasks_all",
+    "loeschen": "delete",
+    "vorlagen": "templates",
+    "inspiration": "inspiration",
+    "tinytask": "tinytask",
+    "wuerfel": "dice",
+    # Domina – Storylines
+    "arc": "arc",
+    "arc_starten": "arc_start",
+    "arc_beenden": "arc_end",
+    "event_loeschen": "event_delete",
+    "adventskalender": "adventcalendar",
+    "roulette": "roulette",
+    "dauer": "endure",
+    # Domina – Rollenspiel & Wochenplanung
+    "rollenspiel": "roleplay",
+    "rollenspiel_beenden": "roleplay_end",
+    "wochenplanung": "weekplan",
+    "training": "training",
+    # Domina – Statistik & Reflexion
+    "profil": "profile",
+    "ziele": "goals",
+    "rueckblick": "review",
+    "strafen": "punishments",
+    "geheimnis": "secret",
+    # Domina – Coach & Wissen
+    "lerntagebuch": "learning_log",
+    "dossier": "dossier",
+    "botname": "botname",
+    "sklavenname": "slavename",
+    "setup": "setup",
+    "regel": "rule",
+    "merken": "note",
+    "regeln": "rules",
+    "vergessen": "forget",
+    "profil_check": "profile_check",
+    "lerne": "learn",
+    "skills": "skills",
+    "lerne_neu": "learn_new",
+    "skill_bearbeiten": "skill_edit",
+    # Domina – System
+    "einstellungen": "settings",
+    "luecken": "gap_filler",
+    "ueberspringen": "skip",
+    "abbrechen": "cancel",
+    "hilfe": "help",
+    # Sklave (nur die noch nicht oben gelisteten)
+    "stats": "stats",
+    "stimmung": "mood",
+    "wunsch": "wish",
+    "meinewuensche": "mywishes",
+    "wunschkategorien": "wish_categories",
+    "privileg": "privilege",
+    "wette": "bet",
+    "quiz": "quiz",
+    "blitz": "flash",
+    "meineaufgaben": "mytasks",
+}
+
+# command -> (kurz_en, lang_en_or_None)  — Übersetzungen der Beschreibungen.
+BESCHREIBUNGEN = {
+    # Domina – Aufgaben & Vorlagen
+    "aufgaben": ("Show completed and open tasks", None),
+    "aufgaben_alle": ("All tasks (all categories)", None),
+    "loeschen": ("Pause or delete an open task", None),
+    "vorlagen": ("Manage task templates", None),
+    "inspiration": ("3 task ideas matching the level", None),
+    "tinytask": ("Request a tiny task suggestion", None),
+    "wuerfel": ("🎲 Roll a surprise task", None),
+    # Domina – Storylines
+    "arc": ("📖 Show active storyline", "Show active storyline"),
+    "arc_starten": ("New storyline: /arc_starten <topic>", None),
+    "arc_beenden": ("End active storyline", None),
+    "event": ("🎂 Plan an event storyline (finale on the date)",
+              "Plan an event: /event <DD.MM.> [days] <topic> – storyline ends on the event day"),
+    "event_loeschen": ("Discard a planned event", None),
+    "adventskalender": ("🎄 Advent calendar: 24 doors in December",
+                        "Plan an advent calendar – one door every morning Dec 1-24"),
+    "roulette": ("🎰 Punishment roulette: the machine decides",
+                 "Punishment roulette: slot machine picks mercy or severity"),
+    "dauer": ("🕰 Endurance order: /dauer <hours> <text>",
+              "Order lasting hours with unannounced check-ins"),
+    # Domina – Rollenspiel & Wochenplanung
+    "rollenspiel": ("Start a roleplay scenario", None),
+    "rollenspiel_beenden": ("End roleplay", None),
+    "wochenplanung": ("Create a weekly plan", None),
+    "training": ("Start psycho training", None),
+    # Domina – Statistik & Reflexion (profil auch für Sklave)
+    "profil": ("Show and edit profile", None),
+    "ziele": ("Show goals and progress", None),
+    "rueckblick": ("Review of recent weeks", None),
+    "strafen": ("Show punishment log", None),
+    "geheimnis": ("Store a secret", "Store a secret for a later moment"),
+    # Domina – Coach & Wissen
+    "lerntagebuch": ("📓 Condense recent coach conversations", None),
+    "dossier": ("🗒 Profile of the slave (what the bot knows about him)", None),
+    "botname": ("🏷 Set the bot Mistress's name", None),
+    "sklavenname": ("🏷 Set how the slave is addressed", None),
+    "setup": ("🧩 Set setup/context (roles, anatomy, equipment)", None),
+    "regel": ("⚡ Set a binding rule for the coach", None),
+    "merken": ("📝 Remember a note/preference", None),
+    "regeln": ("📋 Show learned rules & suggestions", None),
+    "vergessen": ("🗑 Deactivate a rule (number from /regeln)", None),
+    "profil_check": ("🧬 Check profile updates manually", None),
+    "lerne": ("📚 Knowledge brief on a category", None),
+    "skills": ("📚 Existing knowledge entries", None),
+    "lerne_neu": ("📚 Regenerate a knowledge brief", None),
+    "skill_bearbeiten": ("✏️ Overwrite a knowledge entry", None),
+    # Domina – System (abbrechen/hilfe auch für Sklave)
+    "einstellungen": ("⚙️ Set language & personality",
+                      "Set language, personality style, names and setup"),
+    "luecken": ("🕊 Gap filler on/off",
+                "Automatically get a task suggestion after a longer task lull (you approve it)"),
+    "ueberspringen": ("Skip the optional comment", None),
+    "abbrechen": ("Cancel current action", None),
+    "hilfe": ("Show all commands", "This overview"),
+    # Sklave
+    "stats": ("Points, streak and badges",
+              "Points, streak, badges, privileges"),
+    "stimmung": ("Share your mood", None),
+    "wunsch": ("Submit a wish or suggestion", None),
+    "meinewuensche": ("View/clean up collected wishes", None),
+    "wunschkategorien": ("Pick favorite categories",
+                         "Pick favorite categories (max 3)"),
+    "privileg": ("🎁 Redeem privileges",
+                 "Redeem privileges (costs points)"),
+    "wette": ("🎰 Points bet: double or nothing",
+              "Bet points on your next task (double or nothing)"),
+    "quiz": ("🧠 Quiz: how well do you know your Mistress?",
+             "Quiz question about your Mistress – right answers earn points"),
+    "blitz": ("⚡ Flash tasks on/off",
+              "Unannounced mini tasks with a countdown for the slave (sent directly)"),
+    "meineaufgaben": ("📋 View & complete open tasks",
+                      "View & complete open tasks"),
+}
+
+# Deutscher Gruppentitel -> englischer Gruppentitel (alle Titel aus DOMINA_GRUPPEN + SKLAVE_GRUPPEN)
+GRUPPEN = {
+    "📋 Aufgaben & Vorlagen": "📋 Tasks & Templates",
+    "📖 Storylines": "📖 Storylines",
+    "🎭 Rollenspiel & Wochenplanung": "🎭 Roleplay & Weekly Planning",
+    "📊 Statistik & Reflexion": "📊 Statistics & Reflection",
+    "🧠 Coach & Wissen": "🧠 Coach & Knowledge",
+    "⚙️ System": "⚙️ System",
+    "📊 Status & Statistik": "📊 Status & Statistics",
+    "💬 Mitteilen": "💬 Share",
+    "🎁 Belohnungen": "🎁 Rewards",
+    "📋 Aufgaben": "📋 Tasks",
+}

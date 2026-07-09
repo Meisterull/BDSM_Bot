@@ -1,0 +1,27 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# Daten & Logs (nie ins Repo – intime Inhalte!)
+qdrant_data/
+qdrant_snapshots/
+backups/
+data/
+ollama_data/
+piper_data/
+whisper_data/
+*.log
+
+# Test-Gesprächsprotokolle (intime Inhalte – nie ins Repo)
+tests/protokolle/
+
+# Lokale Compose-Overrides (LAN-Bindings etc. – maschinenspezifisch)
+docker-compose.override.yml
+
+# Private Grep-Muster fürs Export-Gate (Namen/Anreden – nie ins Repo)
+scripts/.export_blockliste
