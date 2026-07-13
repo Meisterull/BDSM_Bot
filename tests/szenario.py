@@ -433,7 +433,7 @@ async def main() -> None:
     h = Harness(neu=True)
     await h.start()
     h.note(f"Test-Lauf gestartet {datetime.now().isoformat(timespec='seconds')} – "
-           f"Qdrant: {config.QDRANT_URL}, Modell: {config.GROK_MODEL}")
+           f"Qdrant: {config.QDRANT_URL}, Modell: {config.LLM_MODEL} ({config.LLM_PROVIDER})")
     for d in (1, 2):
         await lauf(h, d)
     h.note(f"Test-Lauf beendet {datetime.now().isoformat(timespec='seconds')} – "

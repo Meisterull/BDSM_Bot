@@ -28,6 +28,36 @@ GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 # support parameter"). Penalties daher nur senden, wenn das Modell sie kann –
 # per Env GROK_SUPPORTS_PENALTIES=1 reaktivierbar für Modelle, die sie können.
 GROK_SUPPORTS_PENALTIES = os.getenv("GROK_SUPPORTS_PENALTIES", "0").lower() in ("1", "true", "yes")
+
+# Primärer LLM-Provider für alle Chat-Completions (Persona, Aufgaben, Klassifikation):
+#   grok (Default) → api.x.ai, braucht XAI_API_KEY
+#   openrouter     → openrouter.ai, braucht OPENROUTER_API_KEY
+#   ollama         → lokales Ollama unter OLLAMA_URL (kein Key nötig)
+# LLM_MODEL/LLM_MODEL_REASONING überschreiben das Modell providerneutral; ohne sie
+# gelten weiter GROK_MODEL/GROK_MODEL_REASONING, damit Bestands-Deployments
+# unverändert laufen. Bei ollama/openrouter ist LLM_MODEL praktisch Pflicht.
+# `or`-Defaults statt getenv-Default: leere Werte (`LLM_PROVIDER=` in der .env)
+# sollen wie "nicht gesetzt" wirken.
+LLM_PROVIDER = (os.getenv("LLM_PROVIDER") or "grok").strip().lower()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+if LLM_PROVIDER == "ollama":
+    LLM_API_URL = f"{OLLAMA_URL.rstrip('/')}/v1/chat/completions"
+    LLM_API_KEY = ""
+elif LLM_PROVIDER == "openrouter":
+    LLM_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    LLM_API_KEY = OPENROUTER_API_KEY
+else:
+    LLM_API_URL = GROK_API_URL
+    LLM_API_KEY = XAI_API_KEY or ""
+LLM_MODEL = os.getenv("LLM_MODEL") or GROK_MODEL
+# Reasoning-Modell: explizites LLM_MODEL_REASONING gewinnt; GROK_MODEL_REASONING
+# zählt nur beim Provider grok (bei ollama/openrouter wäre ein in der Bestands-.env
+# vergessenes Grok-Modell sonst ein Laufzeit-404); sonst LLM_MODEL.
+LLM_MODEL_REASONING = (os.getenv("LLM_MODEL_REASONING")
+                       or (os.getenv("GROK_MODEL_REASONING") if LLM_PROVIDER == "grok" else None)
+                       or LLM_MODEL)
+# Request-Timeout: lokale CPU-Inferenz braucht deutlich länger als die Cloud.
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT") or ("180" if LLM_PROVIDER == "ollama" else "60"))
 # Embedding-Modell (lokal via Ollama). jina-embeddings-v2-base-de ist deutsch-trainiert
 # und schlug nomic im Retrieval-Vergleich (Top-3 100% vs 70%, MRR +13%). 768-dim wie zuvor.
 # Rollback: OLLAMA_MODEL=nomic-embed-text:latest als Env setzen (+ Re-Embedding zurück).
@@ -242,8 +272,15 @@ def validate() -> None:
     fehler = []
     if not TELEGRAM_BOT_TOKEN:
         fehler.append("TELEGRAM_BOT_TOKEN fehlt")
-    if not XAI_API_KEY:
+    if LLM_PROVIDER not in ("grok", "openrouter", "ollama"):
+        fehler.append(f"LLM_PROVIDER unbekannt: {LLM_PROVIDER!r} (grok|openrouter|ollama)")
+    elif LLM_PROVIDER == "grok" and not XAI_API_KEY:
         fehler.append("XAI_API_KEY fehlt")
+    elif LLM_PROVIDER == "openrouter" and not OPENROUTER_API_KEY:
+        fehler.append("OPENROUTER_API_KEY fehlt (LLM_PROVIDER=openrouter)")
+    # Bei ollama/openrouter wäre der GROK_MODEL-Default ein garantierter Laufzeit-404.
+    if LLM_PROVIDER in ("ollama", "openrouter") and not os.getenv("LLM_MODEL"):
+        fehler.append(f"LLM_MODEL fehlt (Pflicht bei LLM_PROVIDER={LLM_PROVIDER})")
     for name, wert in (("DOMINA_CHAT_ID", DOMINA_CHAT_ID),
                        ("SKLAVE_CHAT_ID", SKLAVE_CHAT_ID)):
         if not wert:

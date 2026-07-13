@@ -1,6 +1,7 @@
 """
-Grok API via OpenAI-kompatiblem Endpoint.
-Mit exponential backoff Retry bei Fehlern.
+Primärer LLM via OpenAI-kompatiblem Endpoint (Grok, OpenRouter oder Ollama –
+siehe config.LLM_PROVIDER). Mit exponential backoff Retry bei Fehlern.
+Der Modulname bleibt historisch `grok` – alle Callsites importieren ihn so.
 """
 import re
 import asyncio
@@ -10,11 +11,10 @@ from bot import config
 
 logger = logging.getLogger(__name__)
 
-_client = httpx.AsyncClient(timeout=60.0)
-_HEADERS = {
-    "Authorization": f"Bearer {config.XAI_API_KEY}",
-    "Content-Type": "application/json",
-}
+_client = httpx.AsyncClient(timeout=config.LLM_TIMEOUT)
+_HEADERS = {"Content-Type": "application/json"}
+if config.LLM_API_KEY:  # Ollama braucht keinen Key
+    _HEADERS["Authorization"] = f"Bearer {config.LLM_API_KEY}"
 
 # Retry Konfiguration
 _MAX_RETRIES = 3
@@ -34,7 +34,7 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
     frequency_penalty/presence_penalty (OpenAI-kompatibel) bremsen wortgleiche
     Wiederholungen; default None = unverändert (nur Pfade, die es brauchen, setzen sie).
     """
-    model = config.GROK_MODEL_REASONING if reasoning else config.GROK_MODEL
+    model = config.LLM_MODEL_REASONING if reasoning else config.LLM_MODEL
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": system_prompt}] + messages,
@@ -50,12 +50,12 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
         if presence_penalty is not None:
             payload["presence_penalty"] = presence_penalty
 
-    logger.debug("Grok Modell: %s", model)
+    logger.debug("LLM %s, Modell: %s", config.LLM_PROVIDER, model)
 
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES):
         try:
-            return await _post_chat(config.GROK_API_URL, _HEADERS, payload)
+            return await _post_chat(config.LLM_API_URL, _HEADERS, payload)
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
             last_exc = e
@@ -63,13 +63,14 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
                 if attempt < _MAX_RETRIES - 1:  # nach dem letzten Versuch nicht mehr schlafen
                     delay = min(_BASE_DELAY * (2 ** attempt), _MAX_DELAY)
                     logger.warning(
-                        "Grok HTTP %s – Versuch %d/%d, warte %.1fs",
-                        status, attempt + 1, _MAX_RETRIES, delay
+                        "LLM (%s) HTTP %s – Versuch %d/%d, warte %.1fs",
+                        config.LLM_PROVIDER, status, attempt + 1, _MAX_RETRIES, delay
                     )
                     await asyncio.sleep(delay)
             else:
                 # Nicht-retrybarer Fehler (z.B. 4xx) – Retry-Schleife abbrechen, Fallback versuchen
-                logger.error("Grok HTTP Fehler %s (kein Retry): %s", status, e)
+                logger.error("LLM (%s) HTTP Fehler %s (kein Retry): %s",
+                             config.LLM_PROVIDER, status, e)
                 break
         except (httpx.TransportError, KeyError, IndexError, ValueError) as e:
             # TransportError deckt Connect/Read/Write/Timeout UND RemoteProtocolError ab;
@@ -79,12 +80,13 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
             if attempt < _MAX_RETRIES - 1:  # nach dem letzten Versuch nicht mehr schlafen
                 delay = min(_BASE_DELAY * (2 ** attempt), _MAX_DELAY)
                 logger.warning(
-                    "Grok Verbindungs-/Antwortfehler – Versuch %d/%d, warte %.1fs: %s",
-                    attempt + 1, _MAX_RETRIES, delay, e
+                    "LLM (%s) Verbindungs-/Antwortfehler – Versuch %d/%d, warte %.1fs: %s",
+                    config.LLM_PROVIDER, attempt + 1, _MAX_RETRIES, delay, e
                 )
                 await asyncio.sleep(delay)
 
-    logger.error("Grok nach %d Versuchen nicht erreichbar.", _MAX_RETRIES)
+    logger.error("LLM (%s) nach %d Versuchen nicht erreichbar.",
+                 config.LLM_PROVIDER, _MAX_RETRIES)
 
     # Optionaler Fallback auf einen OpenAI-kompatiblen Endpoint (z.B. lokales Ollama)
     fallback = await _try_fallback(payload, model)
@@ -113,7 +115,8 @@ async def _try_fallback(payload: dict, model: str) -> str | None:
         headers["Authorization"] = f"Bearer {config.FALLBACK_LLM_KEY}"
     fb_payload = {**payload, "model": config.FALLBACK_LLM_MODEL or model}
     try:
-        logger.warning("Grok nicht erreichbar – nutze Fallback-LLM %s", config.FALLBACK_LLM_URL)
+        logger.warning("LLM (%s) nicht erreichbar – nutze Fallback-LLM %s",
+                       config.LLM_PROVIDER, config.FALLBACK_LLM_URL)
         return await _post_chat(config.FALLBACK_LLM_URL, headers, fb_payload)
     except Exception as e:
         logger.error("Fallback-LLM ebenfalls fehlgeschlagen: %s", e)
