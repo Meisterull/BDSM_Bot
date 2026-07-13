@@ -1,10 +1,32 @@
 # BDSM Coach Bot
 
-> AI-powered Telegram bot that acts as a personal coach and task manager for a BDSM couple in a consensual D/s dynamic.
+> AI-powered Telegram bot for couples in a consensual D/s dynamic — a coach for the dominant partner, a persona chat for the submissive, and a deterministic safety layer in between.
+
+![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
+![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB)
+![Deploy: docker compose](https://img.shields.io/badge/deploy-docker%20compose-2496ED)
+![Self-hosted](https://img.shields.io/badge/data-self--hosted-success)
 
 The bot accompanies the **dominant partner** as a coach (voiced like a close friend who shares the hobby) and talks to the **submissive partner** in the persona of their dominant — across two separate Telegram chats. It recognises tasks written in free text, gets them confirmed, delivers them, follows up daily, tracks feelings and progress, and learns preferences over time.
 
-**Everything is opt-in and consent-first:** hard limits are enforced on every generated text, a safeword pauses the whole system instantly, and nothing is ever sent to the submissive without the dominant's confirmation.
+**Why this instead of a ChatGPT tab?** Because a relationship tool needs memory, initiative and guardrails:
+
+- **Your data stays yours** — profiles, conversations, feelings and progress live in your own local Qdrant instance. The only external call is the LLM API for text generation.
+- **It takes initiative** — daily follow-ups, mood check-ins, weekly planning and multi-day task series run on a scheduler instead of you remembering to prompt.
+- **Safety is code, not vibes** — hard limits of **both** partners are enforced by a deterministic matcher on every generated text, and a safeword pauses the whole system instantly, checked on every message before anything else.
+- **Two chats, two voices** — coach voice for the dominant, the dominant's persona for the submissive. Nothing is ever sent to the submissive without the dominant's confirmation.
+
+## What it looks like
+
+*(staged example)*
+
+> **Dominant:** tomorrow morning he polishes my boots, before 9
+>
+> **Coach:** Noted 📋 — *"Polish the boots"*, delivery tomorrow 7:00, deadline 9:00. Reads like a 2/5 for him. Send it like that? ✅ ✏️ ❌
+
+> **Bot → submissive** *(persona voice)***:** Good morning. Before you even think about coffee: my boots. Spotless by nine — I *will* check.
+
+Afterwards the sub reports back and shares how it felt, points and streaks update, and the dominant gets a report with a 1–5 ★ rating prompt — which feeds the learning system for the next task.
 
 ---
 
@@ -18,15 +40,29 @@ The bot accompanies the **dominant partner** as a coach (voiced like a close fri
 
 ## Features
 
+### Tasks & play
+
 - **Free-text task flow** — the dominant writes naturally; the bot detects tasks, asks for confirmation, delivers them, follows up, collects the sub's feeling, awards points/streaks/badges, reports back and lets the dominant rate (1–5 ★) and comment. Task chains (unlock on completion) and multi-day series (2/3/7/14 days) included.
+
+### Learning & coaching
+
 - **Learning system** — category reactions, personality tags, preference detection from chat, dislike thresholds, difficulty auto-adjustment, trust score, level system, exploration of adjacent categories with a 60/30/10 mix of favourites / mid / fresh topics.
 - **Coach side** — task inspiration, weekly planning, psycho training, bi-weekly learning-curve analysis, curated knowledge notes (`/lerne`) that feed generators, a proactive "gap filler" (opt-in, double confirmation) when no task was given for a while.
+
+### Safety
+
 - **Safety** — safeword checked case-insensitively on **every** message before any other logic; hard limits of **both** partners validated deterministically against every generated task (with retry); protected profile fields; child-free time windows.
+
+### Customisation
+
 - **Personas** — the dominant voice and the coach voice are configurable style presets (Markdown files, bring your own), with optional bot name, form of address, and a real-world setup context so generated scenes stay anatomically and logistically consistent.
 - **Role constellations** — F/M, M/F, F/F, M/M. Labels, pronouns and the anatomy-consistency rules are generated from the configured constellation.
-- **Multi-couple** — one deployment can host several couples (`PAIRING_ENABLED`: `/start` → role choice → invite code). Data, persona, schedules, language, safeword and pause state are fully isolated per couple; operator commands (`ADMIN_CHAT_ID`) list couples and delete one including **all** of its stored data; an optional daily message budget caps LLM costs per couple.
 - **Languages** — UI texts, menus and command aliases in German and English, and the LLM reply language free-form — all **per couple**, switchable at runtime.
 - **Voice** — optional fully local voice messages: Piper TTS (the dominant's messages as voice bubbles) and Whisper STT (voice input incl. safeword check), language-aware per couple; bundled as a compose profile.
+
+### Running it
+
+- **Multi-couple** — one deployment can host several couples (`PAIRING_ENABLED`: `/start` → role choice → invite code). Data, persona, schedules, language, safeword and pause state are fully isolated per couple; operator commands (`ADMIN_CHAT_ID`) list couples and delete one including **all** of its stored data; an optional daily message budget caps LLM costs per couple.
 - **Ops** — Docker deployment, daily Qdrant snapshots + JSON exports, restore script, state persistence across restarts, LLM fallback endpoint.
 
 ## Tech stack
@@ -184,7 +220,8 @@ Each line is one session in the OpenAI **messages JSONL format** (`{"messages": 
 
 This is a spare-time open-source project. If it's useful to you, you can support
 development via [GitHub Sponsors](https://github.com/sponsors/Meisterull) —
-one-time or monthly, every bit helps.
+one-time or monthly, every bit helps. Sponsorship goes directly into development
+time and the API costs of testing new features against real LLMs.
 
 ## License
 
