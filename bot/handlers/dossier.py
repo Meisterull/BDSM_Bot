@@ -200,9 +200,10 @@ async def aktualisiere_offene_faeden() -> list[str]:
     if not gespraeche and not gefuehle:
         return []
 
-    system = """Aus den jüngsten Äußerungen des Sklaven: Worauf würde eine aufmerksame, ihn gut kennende Herrin von sich aus zurückkommen? Gemeint sind OFFENE FÄDEN – erwähnter Stress/Termin, eine Sorge, ein geäußerter Wunsch, ein Ereignis, etwas Unabgeschlossenes.
+    system = """Aus den jüngsten Äußerungen des Sklaven: Worauf würde eine aufmerksame, ihn gut kennende Herrin von sich aus zurückkommen? Gemeint sind OFFENE FÄDEN – erwähnter Stress/Termin, eine Sorge, ein geäußerter Wunsch, ein Ereignis, etwas Unabgeschlossenes, auch geäußerte Langeweile oder ein Wunsch nach Abwechslung/etwas Neuem.
 
-Gib MAXIMAL 4 sehr kurze Stichpunkte (je max. 12 Wörter), jeweils so, dass man konkret darauf zurückkommen kann. Nur was wirklich aus dem Material hervorgeht – nichts erfinden. Nur was ER geäußert hat zählt – Ansagen, Drohungen oder Szenen-Ideen der Herrin sind KEINE offenen Fäden. Wenn es nichts Offenes gibt, antworte NUR mit: KEINE.
+Gib MAXIMAL 4 sehr kurze Stichpunkte (je max. 12 Wörter), jeweils so, dass man konkret darauf zurückkommen kann. Nur was wirklich aus dem Material hervorgeht – nichts erfinden. Nur was ER geäußert hat zählt – Ansagen, Drohungen oder Szenen-Ideen der Herrin sind KEINE offenen Fäden.
+DESTILLIERE, zitiere nicht: formuliere in dritter Person über ihn ("will …", "wünscht sich …", "hatte Stress mit …"), übernimm NIE seinen Wortlaut 1:1. Der Verlauf einer laufenden Rollenspiel-Szene (was gerade konkret passiert ist oder verlangt wurde) ist KEIN offener Faden – nur, was darüber hinaus offen bleibt. Wenn es nichts Offenes gibt, antworte NUR mit: KEINE.
 Ein Stichpunkt pro Zeile, ohne Nummerierung, ohne Markdown."""
     prompt = f"""Jüngste Gespräche:
 {chr(10).join('- ' + g for g in gespraeche) or '(keine)'}
@@ -218,11 +219,20 @@ Letzte Gefühle:
     if raw.upper().startswith("KEINE"):
         faeden = []
     else:
+        # Zitat-Netz unter der Destillat-Regel (Live-Befund 16.07.: wörtliche
+        # Szenen-Äußerungen standen 1:1 als Fäden im Profil und wurden als solche
+        # in die Prompts injiziert): wörtliche Übernahmen aus dem Quellmaterial
+        # verwerfen – lieber ein Faden weniger als Roh-Szenen-Zitate als "offene Fäden".
+        quellen_norm = " | ".join(" ".join(q.lower().split()) for q in gespraeche + gefuehle)
         faeden = []
         for zeile in raw.splitlines():
             z = zeile.strip().lstrip("-•*0123456789. ").strip()
-            if z and z.upper() != "KEINE":
-                faeden.append(z[:120])
+            if not z or z.upper() == "KEINE":
+                continue
+            if len(z) > 12 and " ".join(z.lower().split()) in quellen_norm:
+                logger.info("Offener Faden war wörtliches Zitat – verworfen: %s", z[:60])
+                continue
+            faeden.append(z[:120])
         faeden = faeden[:4]
     try:
         await qdrant.patch_profile_fields("sklave", {"offene_faeden": faeden})
@@ -322,8 +332,10 @@ async def erfasse_wunsch_aus_chat(text: str) -> str | None:
     system = (
         "Hat der Sklave in dieser Nachricht einen WUNSCH oder etwas geäußert, das er gern "
         "ausprobieren würde? Wenn ja, gib es als EINEN kurzen Stichpunkt zurück (max. 12 Wörter, "
-        "aus seiner Perspektive, z.B. 'würde gern mal X ausprobieren'). Wenn nein oder unklar, "
-        "antworte NUR mit KEINE. Kein Markdown, keine Anführungszeichen."
+        "aus seiner Perspektive, z.B. 'würde gern mal X ausprobieren'). Hat die Praktik eine "
+        "RICHTUNG (wer gibt, wer empfängt), benenne sie ausdrücklich mit ('ihren …', 'von der "
+        "Herrin', 'eigenen …') statt sie wegzulassen – die Richtung entscheidet über Limits. "
+        "Wenn nein oder unklar, antworte NUR mit KEINE. Kein Markdown, keine Anführungszeichen."
     )
     try:
         w = grok.clean_text(await grok.simple(
@@ -340,7 +352,10 @@ async def erfasse_wunsch_aus_chat(text: str) -> str | None:
     from bot.services import limits_check
     hl = prof.get("hard_limits", []) or []
     gr = (await qdrant.get_user_profile("domina") or {}).get("grenzen", []) or []
-    if await limits_check.verletzungen(w, hl, gr):
+    # sprecher="sub": der Wunsch ist aus SEINER Perspektive formuliert – "ihr X"
+    # ist die Seite der Herrin und verletzt ein "X des Subs"-Limit NICHT
+    # (Live-Befund 15.07.: ein legitimer Wunsch wurde richtungs-blind verworfen).
+    if await limits_check.verletzungen(w, hl, gr, sprecher="sub"):
         logger.info("Entdeckter Wunsch grenzverletzend – nicht gespeichert.")
         return None
 

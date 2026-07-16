@@ -77,6 +77,9 @@ _SYNONYME: dict[str, list[str]] = {
     "drogen":        ["drog", "kokain", "weed", "cannabis", "kiff"],
     "rasieren":      ["rasier", "glatt", "schamhaar"],
     "rauchen":       ["rauch", "zigarette", "kippe", "asche"],
+    "fussanbetung":  ["fussanbetung", "fuss", "fuesse", "fuessen", "zehen", "foot", "feet"],
+    "haltungstraining": ["haltungstraining", "haltungsuebung", "haltung halten",
+                         "position halten", "strammstehen", "posture"],
 
     # --- Englische Limit-Begriffe (englischsprachige Paare) -----------------
     # SICHERHEIT: Werte mischen englische UND deutsche Stämme, damit auch
@@ -190,6 +193,8 @@ _FALSE_FRIEND_SUFFIX: dict[str, str] = {
     "wund": "er",       # "wund" ok (Wunde, wundliegen), aber NICHT "wunder/wunderbar/wundervoll"
     "schul": "ter|d",   # "Schule/Schulkind" ja, aber NICHT "Schulter(n)" (Massage!) / "Schuld"
     "hund": "ert",      # "Hund" ja, aber NICHT "hundert"
+    "fuss": "boden|ball|matte|fessel|note|abdruck",  # Fuß ja, aber NICHT Fußboden (knien!) / Fußfesseln (Bondage)
+    "foot": "ball",     # foot ja, aber NICHT football
 }
 
 # Häufige deutsche Verb-Präfixe: Limit-Stämme tauchen oft NACH einem Präfix auf
@@ -216,7 +221,71 @@ def _such_pattern(suchwort: str) -> str:
     return rf"\b{re.escape(suchwort)}{lookahead}"
 
 
-def _prufe_liste(text_norm: str, limits: list[str], quelle: str) -> list[dict]:
+# --- Richtungs-Qualifizierer -------------------------------------------------
+# Limits können eine RICHTUNG tragen ("X des Subs" = X vom SUB ist tabu,
+# dasselbe X von der Herrin kann ausdrücklich Vorliebe sein). Das
+# Synonym-Matching ist richtungs-blind und fraß deshalb legitime
+# Wünsche/Aufgaben in Gegenrichtung (Live-Befund 15.07.2026 – gleiche
+# Bug-Klasse wie der Richtungs-Bug vom 29.06.).
+#
+# Regel (fail-closed): NUR wenn das LIMIT einen expliziten Richtungs-
+# Qualifizierer trägt UND die Textstelle die Praktik EINDEUTIG der anderen
+# Person zuschreibt, zählt der Treffer nicht. Ohne Qualifizierer im Limit oder
+# bei mehrdeutiger Zuschreibung im Text bleibt es eine Verletzung.
+#
+# ⚠️ Possessiv-Marker sind PERSPEKTIVEN-ABHÄNGIG: In generiertem Herrin-Output
+# ("sprecher='herrin'") heißt "dein X" = das des Subs; in einer Sub-Nachricht
+# ("sprecher='sub'") heißt "dein X" = das der Herrin. Aufrufer, die
+# SUB-verfasste Texte prüfen (Wunsch-/Präferenz-Erfassung), MÜSSEN
+# sprecher="sub" übergeben; Default bleibt "herrin" (= generierter Output).
+
+_LIMIT_RICHTUNG_SUB = r"\b(des (subs?|sklaven)|vom (sub|sklaven)|of the (sub|slave))\b"
+_LIMIT_RICHTUNG_DOM = r"\b(der (herrin|domina|domme)|von der (herrin|domina)|of the (domme|mistress))\b"
+
+# Zuschreibungs-Marker im geprüften Text, je Sprecher-Perspektive:
+# wem "gehört" die Praktik an dieser Textstelle? (Bare "sein" fehlt bewusst –
+# kollidiert mit dem Verb; entgangene Formen bleiben fail-closed Treffer.)
+_ATTR = {
+    "herrin": {  # sie spricht den Sub an (generierte Aufgaben/Antworten)
+        "domina": r"\b(mein\w*|der (herrin|domina)|von mir|aus mir)\b",
+        "sub":    r"\b(dein\w*|seine[mnrs]?|eigen\w*|des (subs?|sklaven)|vom (sub|sklaven)|von dir)\b",
+    },
+    "sub": {     # er schreibt (Chat-Nachricht, extrahierter Wunsch)
+        "domina": r"\b(dein\w*|ihre[mnrs]?|der (herrin|domina)|von (dir|ihr)|aus (dir|ihr))\b",
+        "sub":    r"\b(mein\w*|eigen\w*|von mir|des (subs?|sklaven))\b",
+    },
+}
+
+
+def _limit_richtung(limit: str) -> str | None:
+    """Erkennt einen expliziten Richtungs-Qualifizierer im Limit-Begriff.
+    Kein Qualifizierer (oder unbekannte Formulierung) → None = richtungslos,
+    Matching bleibt strikt wie bisher."""
+    ln = _normalisiere(_ohne_ausnahme(limit))
+    if re.search(_LIMIT_RICHTUNG_SUB, ln):
+        return "sub"
+    if re.search(_LIMIT_RICHTUNG_DOM, ln):
+        return "domina"
+    return None
+
+
+def _eindeutig_andere_person(text_norm: str, start: int, ende: int,
+                             richtung: str, sprecher: str) -> bool:
+    """True, wenn das Fenster um die Fundstelle die Praktik EINDEUTIG der Person
+    zuschreibt, die vom Limit NICHT gemeint ist (z.B. Limit 'X des Subs',
+    Sub schreibt 'dein X'). Fenster beidseitig, weil deutsche Possessive
+    vor ('ihr X') und nach ('X der Herrin') dem Begriff stehen können."""
+    attr = _ATTR.get(sprecher)
+    if not attr:
+        return False
+    fenster = text_norm[max(0, start - 30):start] + " " + text_norm[ende:ende + 25]
+    andere = "domina" if richtung == "sub" else "sub"
+    return (re.search(attr[andere], fenster) is not None
+            and re.search(attr[richtung], fenster) is None)
+
+
+def _prufe_liste(text_norm: str, limits: list[str], quelle: str,
+                 sprecher: str = "herrin") -> list[dict]:
     """Pruefe gegen eine Liste, gib detaillierte Treffer zurueck."""
     if not limits:
         return []
@@ -227,6 +296,7 @@ def _prufe_liste(text_norm: str, limits: list[str], quelle: str) -> list[dict]:
             continue
         if limit in schon_gemeldet:
             continue
+        richtung = _limit_richtung(limit)
         for suchwort in _suchbegriffe_fuer(limit):
             if not suchwort:
                 continue
@@ -235,7 +305,14 @@ def _prufe_liste(text_norm: str, limits: list[str], quelle: str) -> list[dict]:
             # OHNE echte Treffer zu verlieren (Flexion bleibt: blut->blutig, blutet;
             # wund->Wunde). Präfix-Formen (auspeitschen, gefesselt) deckt
             # _such_pattern über _VERB_PRAEFIXE ab.
-            if re.search(_such_pattern(suchwort), text_norm):
+            gefunden = False
+            for m in re.finditer(_such_pattern(suchwort), text_norm):
+                if richtung and _eindeutig_andere_person(
+                        text_norm, m.start(), m.end(), richtung, sprecher):
+                    continue  # Fundstelle gehört eindeutig der anderen Person
+                gefunden = True
+                break
+            if gefunden:
                 treffer.append({
                     "limit": limit,
                     "quelle": quelle,
@@ -250,8 +327,14 @@ async def verletzungen(
     text: str,
     sklave_hard_limits: list[str] | None = None,
     domina_grenzen: list[str] | None = None,
+    sprecher: str = "herrin",
 ) -> list[dict]:
     """Hauptfunktion. Prueft Text gegen beide Listen.
+
+    `sprecher`: Perspektive des geprüften Textes – "herrin" für generierten
+    Output (Default, strengste Lesart), "sub" für vom Sklaven verfasste Texte
+    (Wunsch-/Präferenz-Erfassung). Nur relevant für Limits mit Richtungs-
+    Qualifizierer ("X des Subs"), siehe _ATTR.
 
     Returns: Liste von Treffern, jeweils {"limit", "quelle", "matched_via"}.
              Leere Liste = Text ist sauber.
@@ -274,8 +357,8 @@ async def verletzungen(
 
     text_norm = _normalisiere(text)
     treffer = []
-    treffer.extend(_prufe_liste(text_norm, sklave_hard_limits, "sklave_hard_limit"))
-    treffer.extend(_prufe_liste(text_norm, domina_grenzen, "domina_grenze"))
+    treffer.extend(_prufe_liste(text_norm, sklave_hard_limits, "sklave_hard_limit", sprecher))
+    treffer.extend(_prufe_liste(text_norm, domina_grenzen, "domina_grenze", sprecher))
     return treffer
 
 

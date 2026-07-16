@@ -81,6 +81,24 @@ def _enthaelt_als_wort(kurz: str, lang: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(kurz)}(?!\w)", lang) is not None
 
 
+def _nicht_nur_fehlgriff(nogo: str, text: str) -> bool:
+    """True, wenn der No-Go-Kandidat aus einer 'nicht nur X'-Konstruktion stammt:
+    'Ich will nicht nur X' heißt MEHR als X wollen, nicht X ablehnen
+    (Live-Fehlgriff 15.07.: aus genau so einer Äußerung wurde ein
+    '🚫 No-Go: nur X'-Vorschlag). Deterministisches Netz unter der Prompt-Regel
+    in _SYSTEM."""
+    tn = _norm(text)
+    nn = _norm(nogo).removeprefix("nur ").strip()
+    kernwoerter = [w for w in nn.split() if len(w) > 3] or nn.split()
+    if not kernwoerter:
+        return False
+    for m in re.finditer(r"\bnich?t (nur|bloss|bloß)\b", tn):
+        fenster = tn[m.end(): m.end() + 60]
+        if all(w in fenster for w in kernwoerter):
+            return True
+    return False
+
+
 def _finde_bestand(wert: str, bestand: list[str]) -> str | None:
     """Bestehenden Grenzen-Eintrag finden, dem `wert` entspricht (fuzzy wie _ist_neu;
     vorhandene Ausnahme-Annotationen im Bestand werden beim Vergleich ignoriert)."""
@@ -104,7 +122,9 @@ _SYSTEM = (
     "- vorlieben: Dinge, die sie mag / gern hätte / erregend findet (knappe Stichpunkte, "
     "max. 8 Wörter, aus ihrer Perspektive).\n"
     "- nogos: Dinge, die sie ausdrücklich NICHT will / ekelhaft / angstbesetzt / als Grenze "
-    "benennt (knappe Stichpunkte).\n"
+    "benennt (knappe Stichpunkte). ACHTUNG: 'nicht nur X' / 'nicht bloß X' heißt, die Person "
+    "will MEHR als X – das ist WEDER ein No-Go zu X noch eine Grenze. Nur ausdrückliche "
+    "Ablehnung von X selbst zählt.\n"
     "- ausnahmen: NUR wenn die Person AUSDRÜCKLICH eine Ausnahme/Einschränkung zu einem "
     'No-Go formuliert ("X ist tabu, ABER Y wäre ok"): Objekte {"grenze": "X", "ausnahme": "Y"} '
     "(beides knappe Stichpunkte). X dann NICHT zusätzlich unter nogos wiederholen.\n"
@@ -174,7 +194,10 @@ async def _verarbeite(bot, rolle: str, text: str) -> bool:
         v = v.strip()
         if not _ist_neu(v, bestand_vorlieben + neue_vorlieben):
             continue
-        if await limits_check.verletzungen(v, sk_hl, do_gr):
+        # Perspektive: die Vorliebe ist aus Sicht der äußernden Person formuliert –
+        # beim Sklaven meint "ihre/deine X" die Seite der Herrin (Richtungs-Limits, s. limits_check).
+        if await limits_check.verletzungen(
+                v, sk_hl, do_gr, sprecher="sub" if rolle == "sklave" else "herrin"):
             logger.info("Vorliebe grenzverletzend, verworfen: %s", v)
             continue
         neue_vorlieben.append(v)
@@ -185,6 +208,9 @@ async def _verarbeite(bot, rolle: str, text: str) -> bool:
     neue_nogos: list[str] = []
     for n in nogos_roh:
         n = n.strip()
+        if _nicht_nur_fehlgriff(n, text):
+            logger.info("No-Go-Kandidat stammt aus 'nicht nur X' – verworfen: %s", n)
+            continue
         if _ist_neu(n, bestand_nogos + neue_nogos):
             neue_nogos.append(n)
 

@@ -896,9 +896,11 @@ async def get_recent_rejected_tiny_tasks(limit: int = 5, user_id: str = "domina"
     ]
 
 
-async def get_recent_tiny_tasks(limit: int = 7, user_id: str = "domina") -> tuple[list[str], list[str]]:
-    """Letzte TinyTask-Vorschläge – gibt (label_liste, kategorie_liste) zurück.
-    Labels statt Volltexte: die Liste geht 1:1 in die Generator-Prompts."""
+async def get_recent_tiny_tasks(limit: int = 7, user_id: str = "domina") -> tuple[list[str], list[str], list[str]]:
+    """Letzte TinyTask-Vorschläge – gibt (label_liste, kategorie_liste, volltext_liste)
+    zurück. Labels statt Volltexte: die Label-Liste geht 1:1 in die Generator-Prompts.
+    Die Volltexte sind NUR für deterministische Detektoren im Aufrufer (Opener-/
+    Struktur-Wiederholung) – sie dürfen NIE in einen Prompt (Review D7, B1)."""
     results, _ = await _aio(client.scroll,
         collection_name="knowledge_base",
         scroll_filter=qm.Filter(must=[
@@ -913,6 +915,7 @@ async def get_recent_tiny_tasks(limit: int = 7, user_id: str = "domina") -> tupl
     # zurückgegebenen Inhalten).
     payloads = [r.payload for r in results][:limit]
     inhalte = [_vorschlag_label(p) for p in payloads if p.get("inhalt")]
+    volltexte = [p["inhalt"] for p in payloads if p.get("inhalt")]
     kategorien = []
     for p in payloads:
         kats = p.get("kategorien")
@@ -920,7 +923,7 @@ async def get_recent_tiny_tasks(limit: int = 7, user_id: str = "domina") -> tupl
             kategorien.extend(kats)
         elif p.get("kategorie"):
             kategorien.append(p["kategorie"])
-    return inhalte, kategorien
+    return inhalte, kategorien, volltexte
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ APScheduler Jobs – Follow-up, Tiny Task, Stimmung, Ziel-Erinnerung, Training.
 import functools
 import logging
 import random
+import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -298,6 +299,17 @@ def _stimmung_aktuell(entry: dict | None, max_stunden: int = 24) -> str:
     return entry.get("zusammenfassung", "")
 
 
+# Mehrstufige Programm-Struktur (Phase 1/Stufe 1/Schritt 1 …) in Vorschlags-Texten.
+_STUFEN_RE = re.compile(r"(phase|stufe|schritt)\s*[123]|(drei|zwei) (phasen|stufen|schritten)", re.I)
+
+
+def _vorschlag_anfang(inhalt: str) -> str:
+    """Erster Satz eines Vorschlags (max. 90 Zeichen) – für die
+    VERBRAUCHTE-ANFÄNGE-Sperrliste im Generator-Prompt."""
+    saetze = re.split(r"(?<=[.!?:])\s+", (inhalt or "").strip())
+    return saetze[0][:90] if saetze and saetze[0] else ""
+
+
 async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_aktiv: bool = False) -> dict:
     """Sammelt den kompletten Prompt-Kontext (Task-Historie, Tiny-Tasks, Inspirationen,
     Gespräch, Stimmung, Bewertung, Vertrauen, Kategorien-Auswahl, Persönlichkeit)
@@ -308,8 +320,23 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     )
     letzte_aufgaben = [t.get("aufgabe", "")[:80] for t in alle_tasks[:5] if t.get("aufgabe")]
 
-    # Letzte TinyTask-Vorschläge + Kategorien in einem Qdrant-Request laden
-    letzte_tiny_tasks, letzte_tiny_kategorien = await qdrant.get_recent_tiny_tasks(limit=7)
+    # Letzte TinyTask-Vorschläge + Kategorien in einem Qdrant-Request laden.
+    # Volltexte nur für die deterministischen Wiederholungs-Detektoren unten –
+    # in den Prompt gehen ausschließlich Kurzlabels (Review D7, B1).
+    letzte_tiny_tasks, letzte_tiny_kategorien, letzte_tiny_volltexte = \
+        await qdrant.get_recent_tiny_tasks(limit=7)
+
+    # Opener-/Struktur-Wiederholung deterministisch sperren (Live-Befund 16.07.:
+    # derselbe "Da du heute mehr Zeit hast …"-Einstieg stand an zwei Tagen fast
+    # wortgleich, und drei Vorschläge in Folge waren als Phasen/Stufen-Programm
+    # gebaut). Kurzlabels dedupen nur den INHALT – Einstiegssatz und Aufbau
+    # sieht die "NICHT wiederholen"-Liste nicht.
+    verbrauchte_anfaenge = list(dict.fromkeys(
+        a for a in (_vorschlag_anfang(v) for v in letzte_tiny_volltexte[:4]) if a
+    ))
+    mehrstufig_bremse = sum(
+        1 for v in letzte_tiny_volltexte[:3] if _STUFEN_RE.search(v)
+    ) >= 2
 
     # Letzte Inspirationen für Cross-Kontext laden
     letzte_inspirationen = await qdrant.get_recent_inspirationen(limit=5)
@@ -359,6 +386,8 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         sklave_dislike_kategorien=kategorie_logik.dislike_kategorien(sklave_profile),
         letzte_aufgaben=letzte_aufgaben,
         letzte_tiny_tasks=letzte_tiny_tasks,
+        verbrauchte_anfaenge=verbrauchte_anfaenge,
+        mehrstufig_bremse=mehrstufig_bremse,
         letzte_inspirationen=letzte_inspirationen,
         gewaehlte_kategorien=gewaehlte_kategorien,
         cross_kategorie=cross_kategorie,

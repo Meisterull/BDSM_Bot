@@ -223,7 +223,7 @@ async def test_adaptive_kette_vorschlag():
     kette_adaptiv.qdrant.get_user_profile = _aw(lambda u: {"hard_limits": [], "grenzen": []})
     kette_adaptiv.qdrant.update_task = _aw(lambda tid, fields: gespeichert.update({tid: fields}))
     kette_adaptiv.grok.simple = AsyncMock(return_value="Eine schärfere Variante.")
-    kette_adaptiv.limits_check.verletzungen = _aw(lambda t, a, b: [])
+    kette_adaptiv.limits_check.verletzungen = _aw(lambda t, a, b, **k: [])
     bot = MagicMock()
     bot.send_message = AsyncMock()
     naechster = {"qdrant_point_id": "t2", "aufgabe": "Original", "kette_position": 2, "kette_gesamt": 3}
@@ -448,7 +448,7 @@ async def test_domina_dossier():
 async def test_wunsch_erfassung():
     """erfasse_wunsch_aus_chat: gated über Signalwort, speichert, dedupliziert, hard-limit-gefiltert."""
     from bot.services import limits_check as _lc
-    _lc.verletzungen = _aw(lambda t, a, b: [])
+    _lc.verletzungen = _aw(lambda t, a, b, **k: [])
     cap = {}
 
     async def fp(uid, fields):
@@ -525,7 +525,7 @@ async def test_praeferenz_detektor():
     pd.grok.simple = _aw(lambda *a, **k: '{"vorlieben":["langsame Steigerung","Würgen"],"nogos":["Atemkontrolle"]}')
     pd.qdrant.get_user_profile = _aw(lambda uid: {"vorlieben": [], "hard_limits": []})
     # "Würgen" ist grenzverletzend → muss als Vorliebe rausgefiltert werden
-    pd.limits_check.verletzungen = _aw(lambda v, a=None, b=None: [{"limit": "x"}] if "würgen" in v.lower() else [])
+    pd.limits_check.verletzungen = _aw(lambda v, a=None, b=None, **k: [{"limit": "x"}] if "würgen" in v.lower() else [])
 
     saved = {}
     async def fake_save(**kwargs):
@@ -703,7 +703,7 @@ async def test_praeferenz_detektor_ausnahmen():
 
     pd.grok.simple = _aw(lambda *a, **k:
         '{"vorlieben":[],"nogos":[],"ausnahmen":[{"grenze":"Öffentlichkeit","ausnahme":"Plug tragen"}]}')
-    pd.limits_check.verletzungen = _aw(lambda v, a=None, b=None: [])
+    pd.limits_check.verletzungen = _aw(lambda v, a=None, b=None, **k: [])
     saved, sent = {}, {}
 
     async def fake_save(**kwargs):

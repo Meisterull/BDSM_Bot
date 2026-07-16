@@ -324,6 +324,8 @@ def _aufgaben_kontext(
     sklave_dislike_kategorien: list = None,
     letzte_aufgaben: list = None,
     letzte_tiny_tasks: list = None,
+    verbrauchte_anfaenge: list = None,
+    mehrstufig_bremse: bool = False,
     letzte_inspirationen: list = None,
     gewaehlte_kategorien: list = None,
     cross_kategorie: str = None,
@@ -354,6 +356,24 @@ def _aufgaben_kontext(
         nicht_wiederholen_str = (
             f"\nBereits vorgeschlagene Aufgaben-Themen (NICHT wiederholen, auch keine Variationen):\n"
             f"{ideen_liste}\n"
+        )
+    # Opener-/Struktur-Sperrliste (Live-Befund 16.07.): Kurzlabels dedupen nur den
+    # Inhalt – Einstiegssatz und Aufbau wiederholten sich trotzdem ("Da du heute
+    # mehr Zeit hast, lass uns …" 2× fast wortgleich, dreimal in Folge ein
+    # Phasen/Stufen-Programm). Gleiche Detektor+Sperrlisten-Mechanik wie im
+    # Sklave-Chat: konkrete verbrauchte Anfänge schlagen die generische Regel.
+    anfaenge_str = ""
+    if verbrauchte_anfaenge:
+        anfaenge_str = (
+            "\nVERBRAUCHTE ANFÄNGE (so begannen deine letzten Vorschläge – beginne heute "
+            "STRUKTURELL anders, nicht mit demselben Einstieg oder Satzmuster):\n"
+            + "\n".join(f"  • {a}" for a in verbrauchte_anfaenge) + "\n"
+        )
+    if mehrstufig_bremse:
+        anfaenge_str += (
+            "\nSTRUKTUR-BREMSE: Deine letzten Vorschläge waren mehrstufige "
+            "Phasen/Stufen-Programme. Heute KEIN nummeriertes Stufen-Format – "
+            "formuliere den Vorschlag als EINE zusammenhängende Idee.\n"
         )
     # Positiv formuliert + auf Kurzlabels eingedampft: vollständige Aufgabentexte
     # prominent als "VERBOTEN" zu listen ankert das Modell genau auf diese Themen.
@@ -520,7 +540,7 @@ def _aufgaben_kontext(
 Profil {s['label_gen']}:
   Vorlieben (als Hebel, nicht direkt benennen):{vorlieben_block}
   Absolute Grenzen (NIEMALS): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine'}
-{dossier_str}{reaktions_muster_str}{domina_praef_str}{faeden_str}{kontext_str}{stimmung_str}{bewertung_str}{vertrauens_str}{schwierigkeit_str}{kat_level_str}{dislike_str}{spannungs_str}{nicht_wiederholen_str}{abwechslung_str}{kategorie_str}{wunsch_str}{rejected_str}"""
+{dossier_str}{reaktions_muster_str}{domina_praef_str}{faeden_str}{kontext_str}{stimmung_str}{bewertung_str}{vertrauens_str}{schwierigkeit_str}{kat_level_str}{dislike_str}{spannungs_str}{nicht_wiederholen_str}{anfaenge_str}{abwechslung_str}{kategorie_str}{wunsch_str}{rejected_str}"""
 
 
 # Explizites Verbot der eingeschliffenen Vorschlags-Schablone (Review D7, B1):

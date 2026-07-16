@@ -140,6 +140,38 @@ def _ist_frage(text: str) -> bool:
     return bool(woerter) and woerter[0] in _FRAGE_WOERTER
 
 
+_WUNSCH_MARKER = (
+    "ich will", "will ich", "ich möchte", "ich moechte", "ich wünsch", "ich wuensch",
+    "gib mir", "ich brauch", "benötige", "benoetige", "hätte gern", "haette gern",
+    "lust auf", "mehr davon", "noch mehr", "will mehr", "mach weiter",
+    "hör nicht auf", "hoer nicht auf",
+)
+
+
+def _ist_wunsch_aeusserung(text: str) -> bool:
+    """Explizite Wunsch-/Inhaltsäußerung ('Ich will …', 'gib mir …'): darf wie
+    eine direkte Frage nicht vom Regie-Impuls überfahren werden (Live-Befund
+    15.07.: eine kurze 'Ich will …'-Wunschäußerung war ≤40 Zeichen → knapp →
+    Neugier-Regie 'Frag nach seinem Tag' – Non-Sequitur mitten in der Szene)."""
+    t = (text or "").strip().lower()
+    return any(m in t for m in _WUNSCH_MARKER)
+
+
+_LANGEWEILE_MARKER = (
+    "langweilig", "langeweile", "was neues", "etwas neues", "mal was anderes",
+    "immer das gleiche", "immer dasselbe", "abwechslung", "eintönig", "eintoenig",
+)
+
+
+def _ist_langeweile_signal(text: str) -> bool:
+    """Er signalisiert Langeweile / will etwas Neues (Live-Befund 15.07.: die
+    Eröffnung 'es wird langweilig, wie wäre es mit was Neuem' bekam Standard-
+    Repertoire als Antwort). Löst eine Neuheits-Regie aus und erzwingt die
+    volle Kontext-Injektion (entdeckte Wünsche etc.)."""
+    t = (text or "").strip().lower()
+    return any(m in t for m in _LANGEWEILE_MARKER)
+
+
 def _dauermotive(vorherige: list[str], user_text: str, anrede: str = "") -> list[str]:
     """Wörter, die in ≥3 der letzten 4 Herrin-Antworten vorkommen (Dauermotiv,
     Live-Befund 04.07.: dieselben Requisiten-/Körper-Motive in praktisch
@@ -241,7 +273,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # sonst immer in dieselben zwei Dauer-Motive. Stattdessen eine rotierende
     # Teilmenge, damit sie mal dies, mal jenes aufgreift. Inhaltsreiche Nachrichten
     # (echte Wünsche/Rückmeldungen) bekommen weiter den vollen Kontext.
-    knapp = len(text) <= 40
+    langeweile = _ist_langeweile_signal(text)
+    # Bei Langeweile-Signal nie den Knapp-Sparmodus: gerade dann braucht der
+    # Prompt die volle Injektion (entdeckte Wünsche, Dossier) für etwas Neues.
+    knapp = len(text) <= 40 and not langeweile
     turn_offset = sum(1 for m in state.get_history(chat_id) if m.get("role") == "assistant")
     if knapp:
         vorlieben_inj = _rotierende_auswahl(profile.get("vorlieben", []), 4, turn_offset)
@@ -265,10 +300,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Zeig kurz die fürsorgliche Seite deiner Kontrolle: wie es ihm WIRKLICH geht, interessiert dich – dann erst wieder Herrin.",
         "Bau Vorfreude auf später auf: kündige an, dass etwas kommt, ohne zu verraten was.",
     )
-    # Keine Regie, wenn er eine direkte Frage stellt – erst DIE beantworten.
+    # Keine Regie, wenn er eine direkte Frage stellt oder einen Wunsch äußert –
+    # erst DARAUF eingehen (Live-Befund 15.07.: Wunschäußerung bekam Smalltalk-Regie).
     regie = ""
-    if knapp and not _ist_frage(text):
+    if knapp and not _ist_frage(text) and not _ist_wunsch_aeusserung(text):
         regie = f"\n\nREGIE FÜR GENAU DIESE ANTWORT: {_IMPULSE[turn_offset % len(_IMPULSE)]}"
+    if langeweile:
+        regie = (
+            "\n\nLANGEWEILE-SIGNAL: Er sagt gerade, dass ihm langweilig ist bzw. er etwas "
+            "Neues will. Nimm das ernst: bedien dich NICHT beim Standard-Repertoire und "
+            "nicht bei Motiven aus deinen letzten Antworten. Schlag EINE konkrete Sache "
+            "vor, die für euch neu ist – ein noch unerfüllter entdeckter Wunsch, eine "
+            "selten bediente Vorliebe oder eine neue Variante/Kombination – und benenne "
+            "konkret, was daran heute anders ist als sonst."
+        )
 
     system = sklave_prompt.get(
         hard_limits=profile.get("hard_limits", []),
