@@ -214,6 +214,26 @@ MESSAGES = {
         "Antworte mit `ja` oder `nein`"
     ),
     "DOMINA_AUFGABE_VERWORFEN": "✅ Aufgabe verworfen. Kein Problem!",
+    # MarkdownV2 – Platzhalter am Callsite mit escape_md übergeben
+    "DOMINA_AUFGABE_ERKANNT_TERMIN": (
+        "📋 Erkannte Aufgabe:\n_{aufgabe}_\n\n"
+        "📅 Erkannter Termin: *{termin}*\n\n"
+        "Soll ich sie an diesem Tag an ihn weiterleiten?\n"
+        "Antworte mit `ja` oder `nein`"
+    ),
+    "DOMINA_AUFGABE_WANN": (
+        "📅 Wann soll er die Aufgabe bekommen?\n\n"
+        "Antworte mit *sofort* – oder nenn mir einen Tag "
+        "(z. B. `morgen`, `Samstag`, `26.07.`)."
+    ),
+    "DOMINA_AUFGABE_WANN_UNKLAR": (
+        "Das habe ich nicht als Zeitpunkt verstanden. 🤔\n"
+        "Sag *sofort* – oder einen Tag wie `morgen`, `Samstag` oder `26.07.`"
+    ),
+    "DOMINA_AUFGABE_TERMIN_GEPLANT": (
+        "📅 Gespeichert! Die Aufgabe geht am *{termin}* morgens an ihn raus – "
+        "abends frage ich dann nach, ob er sie erledigt hat."
+    ),
     "DOMINA_KETTE_FRAGE": (
         "🔗 Soll das eine *Aufgaben-Kette* werden?\n\n"
         "Bei einer Kette werden weitere Aufgaben erst freigeschaltet, "

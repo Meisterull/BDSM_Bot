@@ -216,6 +216,26 @@ MESSAGES = {
         "Answer with `ja` or `nein`"
     ),
     "DOMINA_AUFGABE_VERWORFEN": "✅ Task discarded. No problem!",
+    # MarkdownV2 – pass placeholders through escape_md at the call site
+    "DOMINA_AUFGABE_ERKANNT_TERMIN": (
+        "📋 Detected task:\n_{aufgabe}_\n\n"
+        "📅 Detected date: *{termin}*\n\n"
+        "Should I forward it to him on that day?\n"
+        "Reply with `yes` or `no`"
+    ),
+    "DOMINA_AUFGABE_WANN": (
+        "📅 When should he get the task?\n\n"
+        "Reply with *now* – or name a day "
+        "(e.g. `tomorrow`, `Saturday`, `26.07.`)."
+    ),
+    "DOMINA_AUFGABE_WANN_UNKLAR": (
+        "I didn't catch that as a point in time. 🤔\n"
+        "Say *now* – or a day like `tomorrow`, `Saturday` or `26.07.`"
+    ),
+    "DOMINA_AUFGABE_TERMIN_GEPLANT": (
+        "📅 Saved! The task goes out to him on *{termin}* in the morning – "
+        "in the evening I'll check whether he completed it."
+    ),
     "DOMINA_KETTE_FRAGE": (
         "🔗 Should this become a *task chain*?\n\n"
         "In a chain, further tasks are only unlocked "

@@ -321,6 +321,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if mode == "aufgabe_bestaetigung":
             await domina.handle(update, context)
             return
+        if mode == "aufgabe_termin":
+            await domina.handle_aufgabe_termin(update, context)
+            return
         if mode == "serie_wahl":
             await serie_handler.handle_serie_wahl(update, context)
             return

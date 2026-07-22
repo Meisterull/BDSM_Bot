@@ -51,6 +51,7 @@ ZEIT_REIHENFOLGE = [
     ("rollenspiel_vorschlag_time", "Rollenspiel-Vorschlag (Fr+Sa)"),
     ("wochenplanung_time", "Wochenplanung (sonntags)"),
     ("luecken_abend_time", "Lücken-Zustellung „heute Abend“"),
+    ("termin_zustellung_time", "Termin-Aufgaben-Zustellung (am Zieltag)"),
 ]
 
 # Wie config.validate(): Stunden strikt 00-23, Minuten 00-59

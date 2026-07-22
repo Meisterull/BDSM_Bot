@@ -541,8 +541,9 @@ async def luecken_check_job(bot: Bot) -> None:
 
 @_job_guard
 async def luecken_zustellung_job(bot: Bot) -> None:
-    """Stellt von der Domina freigegebene 'heute Abend'-Aufgaben (status='geplant')
-    zu, sobald ihr `zustellung_ab` erreicht ist. Restart-sicher (Qdrant-persistiert)."""
+    """Stellt geplante Aufgaben (status='geplant') zu, sobald ihr `zustellung_ab`
+    erreicht ist: Lücken-'heute Abend' UND Termin-Aufgaben ("Aufgabe für Tag X",
+    quelle='termin'). Restart-sicher (Qdrant-persistiert)."""
     geplant = await qdrant.get_tasks_by_status(["geplant"], limit=20)
     if not geplant:
         return
@@ -572,7 +573,8 @@ async def luecken_zustellung_job(bot: Bot) -> None:
         except Exception:
             await qdrant.update_task(point_id, {"status": "geplant"})
             raise
-        logger.info("Geplante Lücken-Aufgabe zugestellt (point_id=%s).", point_id)
+        logger.info("Geplante Aufgabe zugestellt (quelle=%s, point_id=%s).",
+                    task.get("quelle", "?"), point_id)
 
 
 @_job_guard

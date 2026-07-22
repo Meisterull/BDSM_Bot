@@ -32,12 +32,24 @@ STALE_STIMMUNG_SECONDS = int(os.getenv("STALE_STIMMUNG_SECONDS", "7200"))  # 2 S
 # fremde Anliegen im Fenster fängt die Klassifikation in tiny_task_feedback
 # (_ist_ablehnungsgrund → ANDERES wird als normaler Chat geroutet).
 STALE_TINYFB_SECONDS = int(os.getenv("STALE_TINYFB_SECONDS", "43200"))  # 12 Std
+# reaktion_pending sitzt auf dem DOMINA-Chat und wartet darauf, dass die Herrin
+# nach einem "nicht erledigt" eine Reaktion tippt (followup_response._handle_no).
+# Der zugehörige Task steht in Qdrant auf "nicht_erledigt", NICHT auf
+# "reaktion_pending" – dieser Mode ist also NICHT recovery-gedeckt (kein Pfad
+# schreibt je Task-Status "reaktion_pending"). Reagiert die Herrin nie, blockierte
+# er früher als _PROTECTED_MODE unbegrenzt ALLE Domina-seitigen Jobs (Log-Befund
+# 19.07.: >24h Dauerhänger). Darum bewusst kein Schutz, sondern ein beschränktes
+# Fenster: reagiert sie, endet der Mode sofort; vergisst sie es, läuft er ab und
+# die Jobs laufen wieder. 3h decken den Abend, ohne den Rest-Tageszyklus zu opfern.
+STALE_REAKTION_SECONDS = int(os.getenv("STALE_REAKTION_SECONDS", "10800"))  # 3 Std
 _MODE_MAX_AGE = {"stimmung": STALE_STIMMUNG_SECONDS,
-                 "tiny_task_feedback": STALE_TINYFB_SECONDS}
+                 "tiny_task_feedback": STALE_TINYFB_SECONDS,
+                 "reaktion_pending": STALE_REAKTION_SECONDS}
 # Wartezustände, die durch Qdrant/Recovery gedeckt sind – nie auto-verfallen lassen.
 # "pausiert" MUSS hier stehen: sonst setzt clear_if_stale die Safeword-Pause nach
 # STALE_MODE_SECONDS auf "chat" zurück und der Bot reagiert trotz Safeword wieder.
-_PROTECTED_MODES = {"followup", "gefuehl", "reaktion_pending", "pausiert"}
+# reaktion_pending gehört bewusst NICHT hierher (siehe Kommentar oben).
+_PROTECTED_MODES = {"followup", "gefuehl", "pausiert"}
 
 _DEFAULT_STATE = {
     "mode": "chat",        # chat | onboarding | followup | gefuehl | reaktion_pending
@@ -52,6 +64,7 @@ _DEFAULT_STATE = {
     "pending_task_level": None,
     "pending_task_profile": None,
     "pending_task_kategorie": None,
+    "pending_task_termin": None,   # ISO-Datum, wenn im Wortlaut ein Termin erkannt wurde
     # Serie
     "serie_task_text": None,
     "serie_task_level": None,
@@ -112,6 +125,10 @@ def clear_if_stale(chat_id: str, max_age: int | None = None) -> bool:
                 mode, (time.time() - since) / 60, chat_id)
     s["mode"] = "chat"
     s["mode_since"] = None
+    # Flow-Leichen miträumen (Review D6): ein verfallener reaktion_pending ließ
+    # sonst reaktion_fuer_task_id/strafe_id liegen, die die nächste Eingabe
+    # fehlrouten könnten. clear_flow_keys ist forward-referenziert (Modul-Ebene).
+    clear_flow_keys(chat_id)
     return True
 
 
@@ -123,6 +140,7 @@ FLOW_STATE_KEYS = (
     "profil_edit_feld", "profil_edit_rolle", "einstellungen_feld",
     # Aufgabe Bestätigung / Serie
     "pending_task_text", "pending_task_level", "pending_task_profile", "pending_task_kategorie",
+    "pending_task_termin",
     "serie_task_text", "serie_task_level", "serie_task_profile", "serie_task_kategorie",
     # Inspiration / Vorlagen / Löschen / Training / Quiz
     "inspiration_vorschlaege", "inspiration_point_ids", "inspiration_iteration", "inspiration_feedback",

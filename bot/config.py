@@ -125,6 +125,10 @@ LUECKEN_INTERVALL_TAGE = int(os.getenv("LUECKEN_INTERVALL_TAGE", "2"))
 LUECKEN_CHECK_TIME = os.getenv("LUECKEN_CHECK_TIME", "16:00")   # täglicher Nachmittags-Check
 LUECKEN_ABEND_TIME = os.getenv("LUECKEN_ABEND_TIME", "20:00")   # "Heute Abend"-Zustellung
 
+# Termin-Aufgaben 📅: Uhrzeit, zu der eine "Aufgabe für Tag X" am Zieltag an den
+# Sklaven rausgeht (morgens, damit der Tag zum Erledigen bleibt).
+TERMIN_ZUSTELLUNG_TIME = os.getenv("TERMIN_ZUSTELLUNG_TIME", "09:00")
+
 # Blitzaufgaben ⚡: unangekündigte Mini-Aufgabe mit Countdown (Opt-in via /blitz).
 # Der Check läuft alle 30 Min im Fenster; CHANCE pro Check hält es selten
 # (0.02 bei ~24 Checks/Tag ≈ 3-4x/Woche, gedrosselt durch MIN_ABSTAND_TAGE).
@@ -300,6 +304,7 @@ def validate() -> None:
         ("TRAINING_ERINNERUNG_TIME", TRAINING_ERINNERUNG_TIME),
         ("LUECKEN_CHECK_TIME", LUECKEN_CHECK_TIME),
         ("LUECKEN_ABEND_TIME", LUECKEN_ABEND_TIME),
+        ("TERMIN_ZUSTELLUNG_TIME", TERMIN_ZUSTELLUNG_TIME),
     ):
         # Stunden strikt 00-23: "[0-2]?\d" hätte auch 24-29 akzeptiert und der
         # Crash käme dann doch erst beim Job-Scheduling in post_init.

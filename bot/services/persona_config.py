@@ -35,6 +35,7 @@ ZEIT_FELDER = {
     "training_erinnerung_time": "TRAINING_ERINNERUNG_TIME",
     "luecken_check_time": "LUECKEN_CHECK_TIME",
     "luecken_abend_time": "LUECKEN_ABEND_TIME",
+    "termin_zustellung_time": "TERMIN_ZUSTELLUNG_TIME",
 }
 
 _DEFAULTS = {"bot_name": "", "sklave_anrede": "", "setup_kontext": "", "persona_stil": "", "sprache": "",

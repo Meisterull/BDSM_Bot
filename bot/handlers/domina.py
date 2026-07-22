@@ -65,7 +65,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Aufgabe gefunden → Limits-Check, dann Bestätigung anfragen
     if is_task and task_text:
         await _starte_aufgaben_bestaetigung(
-            update, chat_id, task_text, level, profile, sklave_profile
+            update, chat_id, task_text, level, profile, sklave_profile,
+            quelltext=text,
         )
         # Gespräch IMMER speichern (Review D6): beim gestarteten Bestätigungs-
         # Dialog ging vorher genau das aufgabenbezogene Gespräch dem Langzeit-
@@ -200,8 +201,11 @@ async def _starte_aufgaben_bestaetigung(
     level: int,
     profile: dict,
     sklave_profile: dict,
+    quelltext: str = "",
 ) -> bool:
     """Limits-Check der erkannten Aufgabe; wenn sauber, Bestätigungs-Dialog starten.
+    Erkennt dabei einen Termin ("am Samstag", "morgen", "26.07.") aus dem
+    Original-Wortlaut der Domina (`quelltext`) bzw. dem Aufgabentext.
     Gibt True zurück, wenn der Dialog gestartet wurde (False = Aufgabe blockiert)."""
     from bot.services import limits_check
     sk_hl = sklave_profile.get("hard_limits", []) or []
@@ -222,17 +226,82 @@ async def _starte_aufgaben_bestaetigung(
         )
         return False
 
+    # Termin zuerst im Original-Wortlaut suchen (der [AUFGABE:]-Tag verliert die
+    # Zeitangabe oft beim Umformulieren), dann im Aufgabentext selbst.
+    from bot.services import datum_erkennung
+    termin = datum_erkennung.finde_termin(quelltext) or datum_erkennung.finde_termin(task_text)
+
     s = state.get(chat_id)
     s["pending_task_text"] = task_text
     s["pending_task_level"] = level
     s["pending_task_profile"] = profile
     s["pending_task_kategorie"] = await kategorie_logik.klassifiziere(task_text)
+    s["pending_task_termin"] = termin[0].isoformat() if termin else None
     state.set_mode(chat_id, "aufgabe_bestaetigung")
-    await update.message.reply_text(
-        t("DOMINA_AUFGABE_ERKANNT", aufgabe=telegram_helper.escape_md(task_text)),
-        parse_mode="MarkdownV2"
-    )
+    if termin:
+        await update.message.reply_text(
+            t("DOMINA_AUFGABE_ERKANNT_TERMIN",
+              aufgabe=telegram_helper.escape_md(task_text),
+              termin=telegram_helper.escape_md(datum_erkennung.format_termin(termin[0]))),
+            parse_mode="MarkdownV2"
+        )
+    else:
+        await update.message.reply_text(
+            t("DOMINA_AUFGABE_ERKANNT", aufgabe=telegram_helper.escape_md(task_text)),
+            parse_mode="MarkdownV2"
+        )
     return True
+
+
+_PENDING_TASK_KEYS = ("pending_task_text", "pending_task_level",
+                      "pending_task_profile", "pending_task_kategorie",
+                      "pending_task_termin")
+
+
+def _weiter_zur_kette(s: dict, chat_id: str) -> None:
+    """pending_* → kette_*-State umziehen und die Kette-Frage vorbereiten."""
+    s["kette_erste_text"] = s.get("pending_task_text", "")
+    s["kette_level"] = s.get("pending_task_level", 1)
+    s["kette_profile"] = s.get("pending_task_profile", {})
+    s["kette_kategorie"] = s.get("pending_task_kategorie", "allgemein")
+    for key in _PENDING_TASK_KEYS:
+        s.pop(key, None)
+    state.set_mode(chat_id, "kette_frage")
+
+
+async def _erteile_termin_aufgabe(update: Update, chat_id: str, s: dict, datum) -> None:
+    """Speichert die bestätigte Aufgabe als geplanten Termin-Task. Zustellung
+    übernimmt der (generische) Zustellungs-Job im Scheduler, sobald
+    `zustellung_ab` erreicht ist; das Followup fragt am Zieltag zur
+    Followup-Zeit nach (follow_up_datum landet via followup_in_tagen dort)."""
+    from bot.services import datum_erkennung
+    task_text = s.get("pending_task_text", "")
+    level = s.get("pending_task_level", 1)
+    kategorie = s.get("pending_task_kategorie", "allgemein")
+
+    from bot.services import persona_config
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(config.TIMEZONE)
+    h, m = config.hm(persona_config.zeit("termin_zustellung_time"))
+    zustellung = datetime(datum.year, datum.month, datum.day, h, m, tzinfo=tz)
+    jetzt = datetime.now(tz)
+    if zustellung <= jetzt:
+        zustellung = jetzt
+
+    await qdrant.erstelle_task(
+        task_text, kategorie, level,
+        status="geplant", quelle="termin",
+        followup_in_tagen=max((datum - jetzt.date()).days, 0),
+        extra={"zustellung_ab": zustellung.astimezone(timezone.utc).isoformat(),
+               "termin_datum": datum.isoformat()},
+    )
+    for key in _PENDING_TASK_KEYS:
+        s.pop(key, None)
+    state.set_mode(chat_id, "chat")
+    await update.message.reply_text(
+        t("DOMINA_AUFGABE_TERMIN_GEPLANT", termin=datum_erkennung.format_termin(datum)),
+        parse_mode="Markdown"
+    )
 
 
 async def _handle_aufgabe_bestaetigung(
@@ -241,36 +310,50 @@ async def _handle_aufgabe_bestaetigung(
     chat_id: str,
     text: str,
 ) -> None:
-    """Verarbeitet die Ja/Nein Bestätigung → weiter zur Serie-Frage."""
+    """Verarbeitet die Ja/Nein Bestätigung. Mit erkanntem Termin → als geplanten
+    Task speichern; ohne Termin → Rückfrage wann (sofort oder Tag X)."""
     s = state.get(chat_id)
-    task_text = s.get("pending_task_text", "")
-    level = s.get("pending_task_level", 1)
-    profile = s.get("pending_task_profile", {})
-    kategorie = s.get("pending_task_kategorie", "allgemein")
-
     answer = text.lower().strip()
 
     if answer in synonyme.JA:
-        # Kette-Frage stellen
-        s["kette_erste_text"] = task_text
-        s["kette_level"] = level
-        s["kette_profile"] = profile
-        s["kette_kategorie"] = kategorie
-        for key in ("pending_task_text", "pending_task_level",
-                    "pending_task_profile", "pending_task_kategorie"):
-            s.pop(key, None)
-        state.set_mode(chat_id, "kette_frage")
-        await update.message.reply_text(t("DOMINA_KETTE_FRAGE"), parse_mode="Markdown")
+        termin_iso = s.get("pending_task_termin")
+        if termin_iso:
+            from datetime import date as _date
+            await _erteile_termin_aufgabe(update, chat_id, s, _date.fromisoformat(termin_iso))
+            return
+        # Kein Termin erkannt → fragen, wann sie erteilt werden soll.
+        state.set_mode(chat_id, "aufgabe_termin")
+        await update.message.reply_text(t("DOMINA_AUFGABE_WANN"), parse_mode="Markdown")
 
     elif answer in synonyme.NEIN:
-        for key in ("pending_task_text", "pending_task_level",
-                    "pending_task_profile", "pending_task_kategorie"):
+        for key in _PENDING_TASK_KEYS:
             s.pop(key, None)
         state.set_mode(chat_id, "chat")
         await update.message.reply_text(t("DOMINA_AUFGABE_VERWORFEN"))
 
     else:
         await update.message.reply_text(t("COMMON_JA_NEIN"))
+
+
+async def handle_aufgabe_termin(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Verarbeitet die Antwort auf die Wann-Rückfrage: 'sofort' → normaler Weg
+    (Kette-/Serie-Frage wie bisher), Tag/Datum → geplanter Termin-Task."""
+    from bot.services import datum_erkennung
+    chat_id = str(update.effective_chat.id)
+    text = update.message.text.strip()
+    s = state.get(chat_id)
+
+    ergebnis = datum_erkennung.parse_termin_antwort(text)
+    if ergebnis == "sofort":
+        _weiter_zur_kette(s, chat_id)
+        await update.message.reply_text(t("DOMINA_KETTE_FRAGE"), parse_mode="Markdown")
+    elif ergebnis is not None:
+        await _erteile_termin_aufgabe(update, chat_id, s, ergebnis)
+    else:
+        await update.message.reply_text(t("DOMINA_AUFGABE_WANN_UNKLAR"), parse_mode="Markdown")
 
 
 async def handle_kette_frage(
