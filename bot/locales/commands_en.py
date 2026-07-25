@@ -50,6 +50,7 @@ ALIASES = {
     "skill_bearbeiten": "skill_edit",
     # Domina – System
     "einstellungen": "settings",
+    "abwesend": "away",
     "luecken": "gap_filler",
     "ueberspringen": "skip",
     "abbrechen": "cancel",
@@ -119,6 +120,8 @@ BESCHREIBUNGEN = {
     # Domina – System (abbrechen/hilfe auch für Sklave)
     "einstellungen": ("⚙️ Set language & personality",
                       "Set language, personality style, names and setup"),
+    "abwesend": ("📆 Record an absence (feeds into suggestions)",
+                 "Record an absence: /away 20.07.-02.08. reason – tasks & suggestions take the period into account; /away end clears it"),
     "luecken": ("🕊 Gap filler on/off",
                 "Automatically get a task suggestion after a longer task lull (you approve it)"),
     "ueberspringen": ("Skip the optional comment", None),

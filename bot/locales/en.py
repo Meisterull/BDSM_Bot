@@ -813,6 +813,15 @@ MESSAGES = {
     "LUECKE_TOGGLE_AN": "🕊️ Gap filler *on*. If no task has been running for a while, I'll suggest something – nothing gets issued unless you approve it.",
     "LUECKE_TOGGLE_AUS": "🕊️ Gap filler *off*.",
 
+    # Absence (abwesenheit.py) – both roles may set/clear
+    "ABWESEND_STATUS_AKTIV": "📆 Absence on record: {zeitraum}{grund}.\nEverything keeps running – tasks and suggestions take the absence into account. Clear with /away end.",
+    "ABWESEND_STATUS_KEINE": "📆 No absence on record.\nSet one e.g. with: /away 20.07.-02.08. work trip – or /away 2 weeks.",
+    "ABWESEND_GESETZT": "📆 Recorded: away {zeitraum}{grund}.\nEverything keeps running – tasks and suggestions take the period into account (nothing that requires being at home). Back early? /away end.",
+    "ABWESEND_AUFGEHOBEN": "📆 Absence cleared – counts as being home again.",
+    "ABWESEND_UNVERSTANDEN": "⚠️ Couldn't understand the period. Examples: /away 20.07.-02.08. work trip · /away 2 weeks · /away until Sunday · /away end",
+    "ABWESEND_PARTNER_GESETZT": "📆 Info: an absence was recorded – {zeitraum}{grund}. Tasks and suggestions take it into account; change it anytime with /away.",
+    "ABWESEND_PARTNER_AUFGEHOBEN": "📆 Info: the absence was cleared – counts as being home again.",
+
     # --- Gefühl-/Erledigungs-Mechanik ---------------------------------------------------
     "GEFUEHL_BEWERTUNG_FRAGE": "⭐ How do you think he did? Give him 1-5.",
     "GEFUEHL_WUERFEL_ABZEICHEN": "🏅 New badges: {liste}",

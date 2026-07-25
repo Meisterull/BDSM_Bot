@@ -335,6 +335,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         entdeckte_wuensche=entdeckte_inj,
     ) + erinnerungs_kontext + regie
 
+    # Abwesenheit als harter Fakt (nicht über Retrieval-Zufall): die Herrin muss
+    # wissen, wann er weg ist und ab wann wieder da (/abwesend).
+    from bot.services import persona_config
+    system += persona_config.abwesenheit_hinweis()
+
     # Verbrauchte Schluss-Bilder der letzten Antworten explizit sperren – die
     # generische WORTVIELFALT-Regel allein verliert gegen eine History voller
     # Beispiele desselben Templates (Befund 02.07.: 7 von 15 Antworten endeten

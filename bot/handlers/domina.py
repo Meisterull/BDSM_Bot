@@ -165,6 +165,11 @@ async def _baue_system_prompt(
     _wunsch_hinweis = await _dossier.wunsch_kontext_hinweis(sklave_profile.get("entdeckte_wuensche"))
     if _wunsch_hinweis:
         system += "\n\n" + _wunsch_hinweis
+
+    # Abwesenheit als harter Fakt auch für den Coach – Aufgaben-Vorschläge und
+    # Planung müssen den Zeitraum kennen (/abwesend).
+    from bot.services import persona_config
+    system += persona_config.abwesenheit_hinweis()
     return system
 
 

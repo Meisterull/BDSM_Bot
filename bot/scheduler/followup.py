@@ -35,7 +35,10 @@ def _zweiwochen_takt() -> bool:
 def _job_guard(fn):
     """Scheduler-Job absichern: (1) bei aktiver Safeword-Pause gar nicht laufen
     (kein automatischer Versand, solange pausiert), (2) Qdrant-/LLM-Fehler dürfen
-    den Job nicht ungebremst durchschlagen lassen (Traceback-Log)."""
+    den Job nicht ungebremst durchschlagen lassen (Traceback-Log).
+    Eine Abwesenheit (/abwesend) pausiert BEWUSST nichts – alle Jobs laufen
+    weiter, der Zeitraum fließt nur als Fakt in die Generier-Prompts ein
+    (abwesenheit.prompt_hinweis in limits_check/Chat-Prompts)."""
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
         if state.is_paused():

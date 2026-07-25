@@ -23,7 +23,7 @@ from bot.handlers import (
     wunsch, kommentar, geheimnis, strafen_protokoll, tinytask,
     wuerfel, wunschkategorien, privileg, wette, blitz, arc, event_arc, roulette, dauer, quiz, advent, tiny_task_feedback, hilfe, resurface,
     lerntagebuch, coach_regeln, skill, kette_adaptiv, dossier, namen, meine_aufgaben,
-    einstellungen, luecke, pairing, admin,
+    einstellungen, luecke, pairing, admin, abwesenheit,
 )
 
 
@@ -727,6 +727,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler(ck.aliases("roulette"),            roulette.show))
     app.add_handler(CommandHandler(ck.aliases("dauer"),               dauer.starten))
     app.add_handler(CommandHandler(ck.aliases("luecken"),             luecke.toggle))
+    app.add_handler(CommandHandler(ck.aliases("abwesend"),            abwesenheit.command))
     app.add_handler(CommandHandler(ck.aliases("blitz"),               blitz.toggle))
     app.add_handler(CommandHandler(ck.aliases("arc"),                 arc.show))
     app.add_handler(CommandHandler(ck.aliases("arc_starten"),         arc.starten))

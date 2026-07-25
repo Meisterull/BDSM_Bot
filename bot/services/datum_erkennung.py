@@ -110,6 +110,71 @@ def finde_termin(text: str) -> tuple[date, str] | None:
     return _wochentag_treffer(text, heute)
 
 
+# Dauer-Angaben für Abwesenheiten ("2 Wochen", "10 Tage") – bewusst nur Ziffern,
+# ausgeschriebene Zahlwörter wären ein Fass ohne Boden (Regex-Kontrakt wie oben).
+_DAUER_RE = re.compile(r"\b(\d{1,3})\s*(tage?n?|wochen?|days?|weeks?)\b", re.IGNORECASE)
+
+
+def _datum_aus_match(m: re.Match, basis: date) -> date | None:
+    """DD.MM.[YYYY]-Match → date; ohne Jahr das nächste Vorkommen ab `basis`
+    (Jahreswechsel '28.12.–03.01.' löst sich über basis=von auf)."""
+    tag, monat, jahr = int(m.group(1)), int(m.group(2)), m.group(3)
+    try:
+        if jahr:
+            return date(int(jahr), monat, tag)
+        kandidat = date(basis.year, monat, tag)
+        if kandidat < basis:
+            kandidat = date(basis.year + 1, monat, tag)
+        return kandidat
+    except ValueError:
+        return None
+
+
+def finde_zeitraum(text: str) -> tuple[date, date] | None:
+    """Abwesenheits-Zeitraum im Freitext als (von, bis), beide einschließlich.
+
+    Verstanden werden: zwei Daten ('20.07.-02.08.', '20.07. bis 02.08.'),
+    EIN künftiges Datum (= bis, ab heute), eine Dauer ('2 Wochen', '10 Tage',
+    optional mit Startdatum: 'ab 26.07. 2 Wochen') sowie die Einzeltermin-Formen
+    aus finde_termin ('bis Sonntag', 'bis übermorgen'). None = nicht erkennbar."""
+    if not text:
+        return None
+    heute = _heute()
+
+    daten: list[date] = []
+    for m in _DATUM_RE.finditer(text):
+        d = _datum_aus_match(m, daten[0] if daten else heute)
+        if d is not None:
+            daten.append(d)
+        if len(daten) == 2:
+            break
+
+    if len(daten) == 2 and daten[0] <= daten[1]:
+        return daten[0], daten[1]
+
+    dauer_tage = 0
+    m = _DAUER_RE.search(text)
+    if m:
+        n = int(m.group(1))
+        dauer_tage = n * 7 if m.group(2).lower().startswith(("woche", "week")) else n
+
+    if len(daten) == 1:
+        von = daten[0] if daten[0] >= heute else heute
+        if dauer_tage:
+            return von, von + timedelta(days=dauer_tage)
+        if daten[0] > heute:
+            return heute, daten[0]
+        return None
+
+    if dauer_tage:
+        return heute, heute + timedelta(days=dauer_tage)
+
+    treffer = finde_termin(text)
+    if treffer:
+        return heute, treffer[0]
+    return None
+
+
 def parse_termin_antwort(text: str):
     """Antwort auf die Wann-Rückfrage: 'sofort' | date | None (unverstanden)."""
     bereinigt = (text or "").strip().lower().rstrip(".!")

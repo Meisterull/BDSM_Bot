@@ -41,6 +41,7 @@ ZEIT_FELDER = {
 _DEFAULTS = {"bot_name": "", "sklave_anrede": "", "setup_kontext": "", "persona_stil": "", "sprache": "",
              "bot_locale": "", "safeword": "", "resume_wort": "",
              "dom_geschlecht": "", "sub_geschlecht": "",
+             "abwesend_von": "", "abwesend_bis": "", "abwesend_grund": "",
              **{feld: "" for feld in ZEIT_FELDER}}
 
 _caches: dict[str, dict] = {}
@@ -247,6 +248,85 @@ async def set_rollen(dom: str, sub: str) -> tuple[str, str]:
     cache["sub_geschlecht"] = sub
     await qdrant.patch_profile_fields(_profil_user_id(), {"dom_geschlecht": dom, "sub_geschlecht": sub})
     return dom, sub
+
+
+def abwesenheit() -> tuple["date", "date", str] | None:
+    """Eingetragene Abwesenheit des Paares als (von, bis, grund) – auch eine erst
+    GEPLANTE (von in der Zukunft), damit Prompts sie ankündigen können. None,
+    wenn keine gesetzt oder der Zeitraum abgelaufen ist (läuft automatisch aus,
+    kein Aufräum-Job nötig)."""
+    from datetime import date
+    cache = _aktueller_cache()
+    von_s, bis_s = cache.get("abwesend_von", ""), cache.get("abwesend_bis", "")
+    if not von_s or not bis_s:
+        return None
+    try:
+        von, bis = date.fromisoformat(von_s), date.fromisoformat(bis_s)
+    except ValueError:
+        return None
+    if _heute_lokal() > bis:
+        return None
+    return von, bis, cache.get("abwesend_grund", "")
+
+
+def ist_abwesend() -> bool:
+    """True nur im LAUFENDEN Zeitraum (von <= heute <= bis) – eine erst geplante
+    Abwesenheit zählt nicht. BEWUSST kein Job-Stopp daran gekoppelt: alle Jobs
+    laufen während einer Abwesenheit weiter, nur die Generier-Prompts bekommen
+    den Zeitraum als Fakt (abwesenheit_hinweis)."""
+    a = abwesenheit()
+    return bool(a and a[0] <= _heute_lokal())
+
+
+def abwesenheit_hinweis() -> str:
+    """Prompt-Baustein (wie sprache_anweisung): die eingetragene Abwesenheit als
+    harter Fakt für Herrin-/Coach-Chat und ALLE Aufgaben-Generatoren (zentral
+    eingespeist in limits_check.generate_mit_limit_retry). Leer = keine.
+    Deterministisch statt über Retrieval – sonst 'weiß' das Modell es nur, wenn
+    der Gesprächsschnipsel zufällig in den Kontext-Treffern landet."""
+    from datetime import timedelta
+    a = abwesenheit()
+    if not a:
+        return ""
+    von, bis, grund = a
+    from bot.prompts import rollen  # lazy: rollen importiert persona_config (lazy)
+    s = rollen.sub()
+    wer = s["label_nom"][0].upper() + s["label_nom"][1:]
+    zeitraum = f"{von.strftime('%d.%m.%Y')} – {bis.strftime('%d.%m.%Y')}"
+    grund_teil = f", Grund: {grund}" if grund else ""
+    if von > _heute_lokal():
+        lage = f"{wer} wird ABWESEND sein (verreist/unterwegs, nicht zu Hause): {zeitraum}{grund_teil}."
+    else:
+        lage = f"{wer} ist zurzeit ABWESEND (verreist/unterwegs, nicht zu Hause): {zeitraum}{grund_teil}."
+    zurueck = (bis + timedelta(days=1)).strftime("%d.%m.%Y")
+    return (
+        "\n\nABWESENHEIT (Fakt – hat Vorrang vor allem, was der Verlauf nahelegt): "
+        + lage
+        + f" Ab dem {zurueck} ist {s['nom']} wieder zu Hause."
+        + " Berücksichtige das bei allem, was du vorschlägst oder aufträgst: nichts, was"
+        + " Anwesenheit zu Hause, häusliche Ausstattung oder gemeinsame Zeit vor Ort erfordert –"
+        + " unterwegs machbare Aufgaben (Nachrichten, Fotos, Übungen ohne Hilfsmittel) sind okay."
+        + f" Behaupte nach der Rückkehr NICHT, {s['nom']} sei noch weg."
+    )
+
+
+def _heute_lokal() -> "date":
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo(config.TIMEZONE)).date()
+
+
+async def set_abwesenheit(von: "date | None", bis: "date | None", grund: str = "") -> None:
+    """Setzt (oder mit von=bis=None: löscht) die Abwesenheit des Paares.
+    Darf von BEIDEN Rollen geändert werden (handlers/abwesenheit.py) –
+    persistiert wird wie alle Persona-Felder im Dom-Profil."""
+    werte = {
+        "abwesend_von": von.isoformat() if von else "",
+        "abwesend_bis": bis.isoformat() if bis else "",
+        "abwesend_grund": (grund or "").strip() if von else "",
+    }
+    _aktueller_cache().update(werte)
+    await qdrant.patch_profile_fields(_profil_user_id(), werte)
 
 
 def zeit(feld: str) -> str:

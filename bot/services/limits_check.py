@@ -385,6 +385,14 @@ async def generate_mit_limit_retry(
         builder_system, prompt = prompt
         system = system or builder_system
 
+    # Eingetragene Abwesenheit (/abwesend) zentral an ALLE Aufgaben-/Vorschlags-
+    # Generatoren durchreichen: Jobs laufen waehrend einer Abwesenheit bewusst
+    # weiter, aber die Vorschlaege muessen wissen, dass er/sie nicht zu Hause ist.
+    from bot.services import persona_config
+    hinweis = persona_config.abwesenheit_hinweis()
+    if hinweis:
+        system = (system or "") + hinweis
+
     text = await grok.simple(prompt, system=system, **grok_kwargs)
     treffer = await verletzungen(text, sklave_hard_limits, domina_grenzen)
     if not treffer:

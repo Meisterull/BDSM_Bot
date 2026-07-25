@@ -811,6 +811,15 @@ MESSAGES = {
     "LUECKE_TOGGLE_AN": "🕊️ Lücken-Füller *an*. Wenn länger keine Aufgabe läuft, schlage ich dir was vor – erteilt wird nur, was du freigibst.",
     "LUECKE_TOGGLE_AUS": "🕊️ Lücken-Füller *aus*.",
 
+    # Abwesenheit (abwesenheit.py) – beide Rollen dürfen setzen/aufheben
+    "ABWESEND_STATUS_AKTIV": "📆 Abwesenheit eingetragen: {zeitraum}{grund}.\nAlles läuft normal weiter – Aufgaben und Vorschläge berücksichtigen die Abwesenheit. Aufheben mit /abwesend ende.",
+    "ABWESEND_STATUS_KEINE": "📆 Keine Abwesenheit eingetragen.\nEintragen z. B. mit: /abwesend 20.07.-02.08. Dienstreise – oder /abwesend 2 wochen.",
+    "ABWESEND_GESETZT": "📆 Eingetragen: abwesend {zeitraum}{grund}.\nAlles läuft normal weiter – Aufgaben und Vorschläge berücksichtigen den Zeitraum (nichts, was Anwesenheit zu Hause erfordert). Früher zurück? /abwesend ende.",
+    "ABWESEND_AUFGEHOBEN": "📆 Abwesenheit aufgehoben – gilt wieder als zu Hause.",
+    "ABWESEND_UNVERSTANDEN": "⚠️ Zeitraum nicht verstanden. Beispiele: /abwesend 20.07.-02.08. Dienstreise · /abwesend 2 wochen · /abwesend bis Sonntag · /abwesend ende",
+    "ABWESEND_PARTNER_GESETZT": "📆 Info: Abwesenheit wurde eingetragen – {zeitraum}{grund}. Aufgaben und Vorschläge berücksichtigen das; ändern jederzeit mit /abwesend.",
+    "ABWESEND_PARTNER_AUFGEHOBEN": "📆 Info: Die Abwesenheit wurde aufgehoben – gilt wieder als zu Hause.",
+
     # --- Gefühl-/Erledigungs-Mechanik ---------------------------------------------------
     "GEFUEHL_BEWERTUNG_FRAGE": "⭐ Wie fandest du, wie er das gemacht hat? Gib ihm 1-5.",
     "GEFUEHL_WUERFEL_ABZEICHEN": "🏅 Neue Abzeichen: {liste}",
