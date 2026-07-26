@@ -404,6 +404,78 @@ async def test_resume_ueberspringt_manuelle_pause():
         _state._state.clear()
 
 
+# ==========================================================================
+# NIEDRIG/AUFRÄUMEN (N1–N10, A1–A3)
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# N3 – Hybrid-Kontext: rein semantische Treffer bekommen garantierte Plätze
+# --------------------------------------------------------------------------
+
+async def test_hybrid_kontext_semantik_garantie():
+    from bot.services import qdrant as _q
+
+    def _e(sid, thema="a"):
+        return {"session_id": sid, "thema": thema, "datum": "2026-07-01"}
+
+    recents = [_e(f"r{i}") for i in range(10)]
+
+    class _R:
+        def __init__(self, payload):
+            self.payload = payload
+
+    def fake_scroll(**kwargs):
+        return [_R(dict(e)) for e in recents], None
+
+    class _QP:
+        points = [_R(_e("sem1", "x")), _R(_e("sem2", "y")), _R(_e("r0"))]
+
+    def fake_query_points(**kwargs):
+        return _QP()
+
+    orig_client = _q.client
+    _q.client = MagicMock()
+    _q.client.scroll = fake_scroll
+    _q.client.query_points = fake_query_points
+    try:
+        out = await _q.get_hybrid_conversation_context("sklave", [0.0] * 8, limit=6)
+        ids = [e.get("session_id") for e in out]
+        assert "sem1" in ids and "sem2" in ids, \
+            f"Regression N3: semantische Treffer fehlen im Kontext ({ids})"
+        assert ids[:3] == ["r0", "r1", "r2"], f"Kontinuitäts-Kopf kaputt: {ids[:3]}"
+        assert len(ids) == 6 and len(set(ids)) == 6, f"Duplikate/falsche Länge: {ids}"
+    finally:
+        _q.client = orig_client
+
+
+# --------------------------------------------------------------------------
+# A1 – erstelle_task schreibt keine toten None-Defaults mehr
+# --------------------------------------------------------------------------
+
+async def test_erstelle_task_ohne_none_defaults():
+    from bot.services import qdrant as _q
+
+    captured = {}
+
+    async def fake_save_task(payload):
+        captured.update(payload)
+        return "pid"
+
+    orig = _q.save_task
+    _q.save_task = fake_save_task
+    try:
+        await _q.erstelle_task("Aufgabe", "allgemein", 1)
+        for feld in ("serie_id", "serie_tag", "serie_gesamt", "gefuehl", "domina_reaktion"):
+            assert feld not in captured, \
+                f"Regression A1: toter None-Default {feld} ist zurück"
+        # Serien setzen ihre Felder weiterhin über extra
+        captured.clear()
+        await _q.erstelle_task("Aufgabe", "allgemein", 1, extra={"serie_id": "s1", "serie_tag": 2})
+        assert captured.get("serie_id") == "s1" and captured.get("serie_tag") == 2
+    finally:
+        _q.save_task = orig
+
+
 # --------------------------------------------------------------------------
 
 def main() -> None:
@@ -418,6 +490,8 @@ def main() -> None:
         test_profile_patch_doppeltes_list_add,
         test_profil_neuanlage_deterministische_id,
         test_resume_ueberspringt_manuelle_pause,
+        test_hybrid_kontext_semantik_garantie,
+        test_erstelle_task_ohne_none_defaults,
     ):
         asyncio.run(coro())
         print(f"✅ {coro.__name__}")

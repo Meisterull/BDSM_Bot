@@ -3,7 +3,6 @@ Ollama Embeddings via jina-embeddings-v2-base-de (768 dim, Default in config.OLL
 Mit exponential backoff Retry bei Fehlern.
 """
 import asyncio
-import hashlib
 import logging
 import httpx
 
@@ -70,19 +69,3 @@ async def get_embedding(text: str) -> list[float]:
 
     logger.error("Ollama nach %d Versuchen nicht erreichbar.", _MAX_RETRIES)
     raise last_exc
-
-
-def get_sparse_vector(text: str) -> tuple[list[int], list[float]]:
-    """
-    Deterministischer Bag-of-Words Sparse Vector für Qdrant.
-    Nutzt MD5 statt hash() da hash() nicht deterministisch ist.
-    Gibt (indices, values) zurück.
-    """
-    words = text.lower().split()
-    freq: dict[int, float] = {}
-    for word in words:
-        idx = int(hashlib.md5(word.encode()).hexdigest(), 16) % 30000
-        freq[idx] = freq.get(idx, 0.0) + 1.0
-    if not freq:
-        return [0], [0.0]
-    return list(freq.keys()), list(freq.values())

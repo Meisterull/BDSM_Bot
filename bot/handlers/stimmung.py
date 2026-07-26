@@ -16,7 +16,8 @@ from bot.messages import t
 
 logger = logging.getLogger(__name__)
 
-STIMMUNG_FRAGE = t("STIMMUNG_FRAGE")
+# Kein Modul-Level t() (Review D8/N8): beim Import gibt es keinen Paar-
+# Kontext – ein EN-Zweitpaar bekäme sonst die eingefrorene DE-Fassung.
 
 
 def _zu_aehnlich(frage: str, vorherige: list[str]) -> bool:
@@ -60,14 +61,14 @@ async def _frage_text() -> str:
     except Exception as e:
         logger.warning("Stimmungs-Frage per LLM fehlgeschlagen – Standardtext: %s", e)
 
-    return text or STIMMUNG_FRAGE
+    return text or t("STIMMUNG_FRAGE")
 
 
 async def _merke_frage(frage: str) -> None:
     """Gesendete Frage in die Sperr-Liste (typ=stimmung_frage) – NACH dem
     erfolgreichen Senden aufrufen, sonst blockt eine nie zugestellte
     Formulierung künftige Fragen (Trace 06.07., Lücke 6)."""
-    if frage == STIMMUNG_FRAGE:
+    if frage == t("STIMMUNG_FRAGE"):
         return  # statischer Fallback gehört nicht in die Sperr-Liste
     try:
         await qdrant.save_training("sklave", {"typ": "stimmung_frage", "zusammenfassung": frage})

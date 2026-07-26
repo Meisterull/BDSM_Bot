@@ -1,17 +1,13 @@
 """
 Paar-Registry – zentrale Auflösung "wer ist wer" (Multiuser-Fundament).
 
-Schritt 1+2 der Migrations-Strategie (TODO.md, Git-Stand 746b20a): statt an
->100 Stellen `chat_id == config.DOMINA_CHAT_ID` zu vergleichen, beantwortet
-dieses Modul zentral: Zu welchem Paar gehört diese Chat-ID, und in welcher
-Rolle? Callsites werden inkrementell auf `resolve()`/`default_paar()`
-migriert; solange nur das Env-Paar existiert, ist das Verhalten identisch.
-
-WICHTIG: Es gibt bewusst noch KEINEN Registrierungs-Flow für weitere Paare.
-Die Persistenzschicht (Qdrant-Queries ohne Paar-Filter, `geheimnisse` ohne
-user_id, globales Safeword, Scheduler-Jobs) ist noch nicht mandantenfähig –
-ein zweites Paar würde heute Daten mischen. Erst wenn diese Schritte (3–6
-der Strategie) stehen, bekommt die Registry Persistenz + Pairing-Flow.
+Statt an >100 Stellen `chat_id == config.DOMINA_CHAT_ID` zu vergleichen,
+beantwortet dieses Modul zentral: Zu welchem Paar gehört diese Chat-ID, und
+in welcher Rolle? Seit dem Multiuser-Abschluss (7-Schritte-Umbau, 04.07.2026)
+ist die Persistenzschicht mandantenfähig (alle Qdrant-Queries paar-gefiltert,
+Safeword/Pause pro Paar, Scheduler via _pro_paar) und der Registrierungs-Flow
+für weitere Paare lebt HIER (Pairing-Registry + Invites weiter unten) –
+gated über PAIRING_ENABLED + ADMIN_CHAT_ID (Default AUS).
 """
 import asyncio
 import contextlib

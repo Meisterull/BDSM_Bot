@@ -92,7 +92,8 @@ async def _lade_generierungs_kontext(level: int) -> dict:
     """Lädt Gesprächs-Kontext, letzte Inspirationen, Stimmung, Bewertungs-Kontext
     und das frische Sklaven-Profil für den Vorschlags-Prompt."""
     query_vector = await emb.get_embedding(f"Aufgabe Inspiration Level {level} BDSM")
-    ctx_entries = await qdrant.get_hybrid_conversation_context("domina", query_vector, limit=5)
+    ctx_entries = await qdrant.get_hybrid_conversation_context("domina", query_vector, limit=5,
+                                                                felder=qdrant.KONTEXT_FELDER)
     stimmung_entry = await qdrant.get_latest_stimmung("sklave")
     return {
         "ctx_entries": ctx_entries,
@@ -303,7 +304,11 @@ async def _save_as_vorlage(vorschlag_text: str, point_id: str) -> None:
             },
         )],
     )
-    await _update_vorschlag_status(point_id, "gemerkt")
+    # point_id kann None sein (Vorschlag ohne gespeicherten Rückverweis, s.
+    # _handle_nummer) – dann entfällt nur das Status-Update. Vorher versprach
+    # das der Kommentar am Callsite, der Code hätte aber gecrasht (Review D8/A3).
+    if point_id:
+        await _update_vorschlag_status(point_id, "gemerkt")
 
 
 async def _lade_letzte_aufgaben_kontext() -> list[str]:

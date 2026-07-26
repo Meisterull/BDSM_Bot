@@ -49,9 +49,9 @@ def parse_kinderfreie_zeiten(text: str) -> list[str] | None:
             return None
         if (h1, m1) == (h2, m2):
             return None  # leeres Fenster ("20:00-20:00")
-        # Über-Nacht-Fenster ("21:00-06:00" – Kinder schlafen) sind GÜLTIG: die
-        # Konsumenten setzen die Fenster nur als Text in Prompts ein, kein Code
-        # vergleicht Uhrzeiten dagegen.
+        # Über-Nacht-Fenster ("21:00-06:00" – Kinder schlafen) sind GÜLTIG:
+        # ist_im_fenster() behandelt sie korrekt (seit dem Blitz-Feature
+        # vergleicht blitz_check_job real Uhrzeiten gegen diese Fenster).
         fenster.append(f"{h1:02d}:{m1:02d}-{h2:02d}:{m2:02d}")
 
     return fenster or None

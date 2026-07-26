@@ -72,11 +72,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Dialog ging vorher genau das aufgabenbezogene Gespräch dem Langzeit-
         # Gedächtnis verloren – die Aufgabe selbst liegt separat in `tasks`,
         # aber ihr Kontext (Wortlaut/Stimmung der Domina) nur hier.
-        await _save_conversation(text, response, query_vector)
+        await _save_conversation(text, response)
         return
 
     await _check_level_up(update, context, profile, level)
-    await _save_conversation(text, response, query_vector)
+    await _save_conversation(text, response)
 
     # Vorlieben / No-Gos der Domina aus dem Gespräch erkennen und als ✅/🗑-Vorschlag
     # fürs eigene Profil anbieten. Bewusst ganz am Ende des Nicht-Task-Pfads:
@@ -97,20 +97,29 @@ async def _baue_system_prompt(
 ) -> str:
     """Lädt allen Chat-Kontext (Konversation, Lerntagebuch, Coach-Regeln, Rollenspiel,
     Vertrauen, Stimmung, entdeckte Wünsche) und baut den System-Prompt des Coachs."""
+    # Unabhängige Kontext-Loads parallel statt seriell (Review D8/N2) – vorher
+    # 6 serielle Qdrant-Roundtrips pro Domina-Nachricht.
     # limit=6 statt 12: à ~2000 Zeichen pro Eintrag wuchs der System-Prompt sonst
     # auf >30k Zeichen (plus Lerntagebücher, Dossier, Regeln).
-    ctx_entries = await qdrant.get_hybrid_conversation_context("domina", query_vector, limit=6)
+    import asyncio
+    (ctx_entries, lerntagebuch_entries, aktive_regeln, letzte_kategorien,
+     vertrauens_score, stimmung_entry) = await asyncio.gather(
+        qdrant.get_hybrid_conversation_context("domina", query_vector, limit=6,
+                                               felder=qdrant.KONTEXT_FELDER),
+        qdrant.get_recent_lerntagebuch("domina", limit=3),
+        qdrant.get_active_coach_regeln("domina"),
+        qdrant.get_recent_task_kategorien("sklave", limit=5),
+        qdrant.get_vertrauens_score("sklave"),
+        qdrant.get_latest_stimmung("sklave"),
+    )
     context_str = domina_coach.format_context(ctx_entries)
 
     # Langzeit-Wissen: letzte Lerntagebuch-Einträge
-    lerntagebuch_entries = await qdrant.get_recent_lerntagebuch("domina", limit=3)
     lerntagebuch_str = domina_coach.format_lerntagebuch(lerntagebuch_entries)
 
     # Gelernte Regeln + Notizen (bestaetigt) als harter Prompt-Block
-    aktive_regeln = await qdrant.get_active_coach_regeln("domina")
     coach_regeln_texte = [r.get("text", "") for r in aktive_regeln if r.get("typ") == "regel"]
     coach_notiz_texte = [r.get("text", "") for r in aktive_regeln if r.get("typ") == "notiz"]
-    letzte_kategorien = await qdrant.get_recent_task_kategorien("sklave", limit=5)
     sklave_persoenlichkeit = {
         "tags": sklave_profile.get("persoenlichkeit_tags", []),
         "reaktionen": sklave_profile.get("kategorie_reaktionen", {}),
@@ -129,10 +138,8 @@ async def _baue_system_prompt(
             "vokabular": s_domina.get("szenario_vokabular", []),
         }
 
-    # Schwierigkeit + Vertrauens-Score + Stimmung
+    # Schwierigkeit + Vertrauens-Score + Stimmung (Score/Stimmung aus dem gather oben)
     schwierigkeit = profile.get("aufgaben_schwierigkeit", "normal")
-    vertrauens_score = await qdrant.get_vertrauens_score("sklave")
-    stimmung_entry = await qdrant.get_latest_stimmung("sklave")
     stimmung = stimmung_entry.get("zusammenfassung", "") if stimmung_entry else ""
 
     system = domina_coach.get(
@@ -405,7 +412,7 @@ async def handle_kette_aufgaben(
     text = update.message.text.strip()
     s = state.get(chat_id)
 
-    if text.lower() == "fertig":
+    if text.lower() in synonyme.FERTIG:
         kette_liste = s.get("kette_aufgaben_liste", [])
         level = s.get("kette_level", 1)
         profile = s.get("kette_profile", {})
@@ -499,7 +506,12 @@ async def handle_kette_aufgaben(
         )
 
 
-async def _save_conversation(text: str, response: str, query_vector: list[float]) -> None:
+async def _save_conversation(text: str, response: str) -> None:
+    # Länge-Gate wie im Sklave-Pfad (Review D8/N10): Kurznachrichten ("ok")
+    # blähen conversations nur auf. query_vector-Parameter entfernt – er wurde
+    # nie genutzt (save_conversation embeddet selbst).
+    if len(text) <= 10:
+        return
     themen = _detect_themen(text + " " + response)
     session_id = f"sess_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
 

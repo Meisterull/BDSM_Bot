@@ -7,6 +7,9 @@ Matching identisch zur bisherigen lokalen Definition.
 
 JA = ("ja", "j", "yes", "y")
 NEIN = ("nein", "n", "no")
+# Ketten-Abschluss (Review D8/N8): EN-Paare sollen die Kette auch
+# mit "done" abschließen können – "fertig" war hartkodiert.
+FERTIG = ("fertig", "done", "finished")
 
 import re as _re
 

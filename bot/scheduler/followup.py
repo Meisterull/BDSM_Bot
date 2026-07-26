@@ -348,7 +348,8 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     # altes Gespräch ist kein "aktueller Kontext" für den Tages-Vorschlag –
     # weglassen, statt das Modell auf verjährte Themen zu lenken.
     query_vector = await _tiny_query_vector()
-    ctx_entries = await qdrant.get_hybrid_conversation_context("domina", query_vector, limit=3)
+    ctx_entries = await qdrant.get_hybrid_conversation_context("domina", query_vector, limit=3,
+                                                                felder=qdrant.KONTEXT_FELDER)
     ctx_entries = [e for e in ctx_entries if _eintrag_alter_tage(e.get("datum", "")) <= 7]
     conversation_context = domina_coach.format_context(ctx_entries)
 
@@ -637,8 +638,8 @@ async def blitz_check_job(bot: Bot) -> None:
     if jetzt - letzte < timedelta(days=config.BLITZ_MIN_ABSTAND_TAGE):
         return
 
-    offene = await qdrant.get_tasks_by_status(["offen"], limit=50)
-    if any(t.get("quelle") == "blitz" for t in offene):
+    # Serverseitig im quelle-Index zählen statt 50 Voll-Payloads laden (D8/N5).
+    if await qdrant.count_tasks_by_status(["offen"], quelle="blitz") > 0:
         return
 
     if random.random() >= config.BLITZ_CHANCE:
@@ -651,13 +652,16 @@ async def blitz_check_job(bot: Bot) -> None:
 @_job_guard
 async def blitz_ablauf_job(bot: Bot) -> None:
     """Markiert Blitzaufgaben mit abgelaufenem Countdown als verpasst –
-    restart-sicher (Deadline liegt Qdrant-persistiert am Task)."""
-    offene = await qdrant.get_tasks_by_status(["offen"], limit=50)
+    restart-sicher (Deadline liegt Qdrant-persistiert am Task).
+
+    Läuft alle 5 Min (288×/Tag/Paar) – darum billiger count als Vorprüfung
+    und der quelle-Filter serverseitig im Index statt in Python (D8/N5)."""
+    if await qdrant.count_tasks_by_status(["offen"], quelle="blitz") == 0:
+        return
+    offene = await qdrant.get_tasks_by_status(["offen"], limit=50, quelle="blitz")
     jetzt_iso = datetime.now(timezone.utc).isoformat()
     from bot.handlers import blitz  # lazy
     for task in offene:
-        if task.get("quelle") != "blitz":
-            continue
         deadline = task.get("blitz_deadline", "")
         if deadline and jetzt_iso > deadline:
             try:
@@ -964,6 +968,12 @@ async def lernkurve_job(bot: Bot) -> None:
     domina_profile = await qdrant.get_user_profile("domina") or {}
     level = domina_profile.get("aktuelles_level", 1)
     daten = await qdrant.get_lernkurve_daten("sklave")
+
+    # Leer-Guard (Review D8/N6, wie die anderen Verdichtungs-Jobs): bei null
+    # Aktivität in 2 Wochen weder Reasoning-Call noch Analyse-über-nichts senden.
+    if daten["erledigt"] + daten["nicht_erledigt"] == 0:
+        logger.info("Lernkurve-Job übersprungen – keine Task-Aktivität im Zeitraum.")
+        return
 
     system = f"""Du schaust mit der Domina auf die letzten 2 Wochen – wie eine vertraute Freundin, die ihr ehrliches Feedback gibt.
 

@@ -63,22 +63,24 @@ async def run_io(fn, *args, **kwargs):
 # ---------------------------------------------------------------------------
 
 _DENSE = qm.VectorParams(size=config.EMBEDDING_DIM, distance=qm.Distance.COSINE, on_disk=True)
-_SPARSE = qm.SparseVectorParams(index=qm.SparseIndexParams(on_disk=True))
 
 
 def ensure_collections() -> None:
-    """Erstellt fehlende Collections. Existierende werden nicht verändert."""
+    """Erstellt fehlende Collections. Existierende werden nicht verändert.
+
+    Review D8/N4: Sparse-Vektoren komplett gestrichen – sie wurden von allen
+    Writern berechnet und geschrieben, aber von keinem einzigen Query-Pfad je
+    gelesen (nur `using="text"`-Dense-Queries). Bestehende Collections behalten
+    ihre Sparse-Config (harmlos, wird ignoriert); Punkte OHNE Sparse-Vektor sind
+    in Qdrant auch bei vorhandener Sparse-Config gültig."""
     existing = {c.name for c in client.get_collections().collections}
 
-    def _create(name: str, with_sparse: bool = True):
+    def _create(name: str):
         if name in existing:
             return
-        vectors = {"text": _DENSE}
-        sparse = {"sparse": _SPARSE} if with_sparse else {}
         client.create_collection(
             collection_name=name,
-            vectors_config=vectors,
-            sparse_vectors_config=sparse if with_sparse else None,
+            vectors_config={"text": _DENSE},
             on_disk_payload=True,
         )
 
@@ -86,13 +88,13 @@ def ensure_collections() -> None:
     _create("knowledge_base")
     _create("progress")
     _create("tasks")
-    _create("user_profiles", with_sparse=False)
+    _create("user_profiles")
     _create("training")
     _create("wuensche")
-    _create("geheimnisse", with_sparse=False)
+    _create("geheimnisse")
     _create("strafen")
-    _create("coach_regeln", with_sparse=False)
-    _create("skills", with_sparse=False)
+    _create("coach_regeln")
+    _create("skills")
     # Payload Indexes
     _idx = [
         ("conversations",  "user_id",         "keyword",  True),
@@ -100,7 +102,8 @@ def ensure_collections() -> None:
         ("conversations",  "session_id",       "keyword",  False),
         ("knowledge_base", "user_id",          "keyword",  True),
         ("knowledge_base", "kategorie",        "keyword",  False),
-        ("knowledge_base", "level",            "integer",  False),
+        # level-Index entfernt (Review D8/A2): hatte weder Writer noch Reader,
+        # und kein Live-Punkt trug das Feld.
         ("knowledge_base", "status",           "keyword",  False),
         ("knowledge_base", "typ",              "keyword",  False),
         ("knowledge_base", "erstellt_am",      "datetime", False),
@@ -290,7 +293,6 @@ async def save_task(task_data: dict) -> str:
     point_id = str(uuid.uuid4())
     task_text = task_data.get("aufgabe", "")
     vector = await emb.get_embedding(task_text)
-    indices, values = emb.get_sparse_vector(task_text)
 
     await _aio(client.upsert,
         collection_name="tasks",
@@ -298,7 +300,6 @@ async def save_task(task_data: dict) -> str:
             id=point_id,
             vector={
                 "text": vector,
-                "sparse": qm.SparseVector(indices=indices, values=values),
             },
             # user_id kommt aus Caller-Dicts oft als Rollen-Literal → am
             # Persistenz-Eintritt über den Paar-Kontext qualifizieren.
@@ -354,6 +355,10 @@ async def erstelle_task(
     Payload-Schema + FOLLOWUP_TIME-Berechnung an einem Ort. `extra` ergänzt bzw.
     überschreibt Felder (z.B. serie_id/serie_tag/serie_gesamt, resurface_von).
     `user_id` = Mandanten-Key des Sub (paare.Paar.user_id); Default = Env-Paar."""
+    # Keine None-Defaults für serie_*/gefuehl/domina_reaktion mehr (Review D8/A1):
+    # sie verschmutzten JEDEN Nicht-Serien-Task mit toten Feldern (Live-Muster
+    # „serie_* immer None"). Serien setzen ihre Felder über `extra`; alle Leser
+    # nutzen ohnehin .get().
     payload = {
         "user_id": mandanten_key(user_id),
         "status": status,
@@ -363,11 +368,6 @@ async def erstelle_task(
         "erteilt_am": datetime.now(timezone.utc).isoformat(),
         "follow_up_datum": _followup_zeitpunkt_utc(followup_in_tagen),
         "erteilt_von": "domina",
-        "serie_id": None,
-        "serie_tag": None,
-        "serie_gesamt": None,
-        "gefuehl": None,
-        "domina_reaktion": None,
     }
     if quelle:
         payload["quelle"] = quelle
@@ -404,13 +404,17 @@ async def update_task(point_id: str, updates: dict) -> None:
 
 
 async def get_tasks_by_status(status_list: list[str], limit: int = 100, sort_by_datum: bool = False,
-                              user_id: Optional[str] = "sklave") -> list[dict]:
+                              user_id: Optional[str] = "sklave",
+                              quelle: Optional[str] = None) -> list[dict]:
     """`user_id` = Mandanten-Key (paare.Paar.user_id). Default = Env-Paar ("sklave",
     verifiziert: alle Bestandsdaten tragen diesen Key). None = bewusst global
-    über alle Paare (nur für Betreiber-Tooling wie Backup/Migration)."""
+    über alle Paare (nur für Betreiber-Tooling wie Backup/Migration).
+    `quelle` filtert serverseitig im Index (Review D8/N5, z.B. Blitz-Jobs)."""
     must = [qm.FieldCondition(key="status", match=qm.MatchAny(any=status_list))]
     if user_id is not None:
         must.append(qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id))))
+    if quelle is not None:
+        must.append(qm.FieldCondition(key="quelle", match=qm.MatchValue(value=quelle)))
     scroll_kwargs = dict(
         collection_name="tasks",
         scroll_filter=qm.Filter(must=must),
@@ -426,12 +430,15 @@ async def get_tasks_by_status(status_list: list[str], limit: int = 100, sort_by_
     return [r.payload for r in results]
 
 
-async def count_tasks_by_status(status_list: list[str], user_id: Optional[str] = "sklave") -> int:
+async def count_tasks_by_status(status_list: list[str], user_id: Optional[str] = "sklave",
+                                quelle: Optional[str] = None) -> int:
     """Billiger Existenz-/Mengen-Check ohne Payload-Transfer (für Vorprüfungen).
-    `user_id`-Semantik wie get_tasks_by_status."""
+    `user_id`/`quelle`-Semantik wie get_tasks_by_status."""
     must = [qm.FieldCondition(key="status", match=qm.MatchAny(any=status_list))]
     if user_id is not None:
         must.append(qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id))))
+    if quelle is not None:
+        must.append(qm.FieldCondition(key="quelle", match=qm.MatchValue(value=quelle)))
     result = await _aio(client.count,
         collection_name="tasks",
         count_filter=qm.Filter(must=must),
@@ -470,7 +477,6 @@ async def save_conversation(user_id: str, session_id: str, data: dict) -> str:
     point_id = str(uuid.uuid4())
     text = data.get("zusammenfassung", "")
     vector = await emb.get_embedding(text)
-    indices, values = emb.get_sparse_vector(text)
 
     payload = {
         "user_id": mandanten_key(user_id),
@@ -484,7 +490,6 @@ async def save_conversation(user_id: str, session_id: str, data: dict) -> str:
             id=point_id,
             vector={
                 "text": vector,
-                "sparse": qm.SparseVector(indices=indices, values=values),
             },
             payload=payload,
         )],
@@ -492,7 +497,15 @@ async def save_conversation(user_id: str, session_id: str, data: dict) -> str:
     return point_id
 
 
-async def get_conversation_context(user_id: str, query_vector: list[float], limit: int = 5) -> list[dict]:
+# Felder, die die Chat-Kontext-Konsumenten (format_context, _erinnerung,
+# _diversify_by_thema) tatsächlich lesen. Die Volltextfelder (domina_nachricht/
+# coach_antwort/sklave_nachricht/herrin_antwort, mehrere KB je Punkt) braucht
+# nur das Dossier – Chat-Pfade übergeben diese Liste (Review D8/N3).
+KONTEXT_FELDER = ["datum", "zusammenfassung", "wichtige_punkte", "themen", "thema", "session_id"]
+
+
+async def get_conversation_context(user_id: str, query_vector: list[float], limit: int = 5,
+                                   felder: list[str] | None = None) -> list[dict]:
     # client.search wurde in qdrant-client 1.18 entfernt -> query_points (seit 1.10).
     res = await _aio(client.query_points,
         collection_name="conversations",
@@ -502,7 +515,7 @@ async def get_conversation_context(user_id: str, query_vector: list[float], limi
             qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id)))
         ]),
         limit=limit,
-        with_payload=True,
+        with_payload=felder if felder else True,
     )
     return [p.payload for p in res.points]
 
@@ -532,37 +545,54 @@ def _diversify_by_thema(entries: list[dict], k: int) -> list[dict]:
     return out
 
 
-async def get_hybrid_conversation_context(user_id: str, query_vector: list[float], limit: int = 12) -> list[dict]:
+async def get_hybrid_conversation_context(user_id: str, query_vector: list[float], limit: int = 12,
+                                           felder: list[str] | None = None) -> list[dict]:
     """Kombiniert neueste + semantisch ähnliche Einträge, ohne Duplikate.
 
     Default ist großzügig (12), damit der Coach „immer dabei"-Kontext hat.
-    Aufteilung: 3 neueste fix (Kontinuität) + Rest thematisch diversifiziert, damit
-    nicht ein Dauer-Motiv den gesamten Kontext dominiert.
-    """
-    semantic = await get_conversation_context(user_id, query_vector, limit=8)
+    Aufteilung: 3 neueste fix (Kontinuität) + bis zu 2 GARANTIERTE Plätze für
+    rein semantische Treffer + Rest thematisch diversifiziert.
 
-    results, _ = await _aio(client.scroll,
-        collection_name="conversations",
-        scroll_filter=qm.Filter(must=[
-            qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id)))
-        ]),
-        limit=50, order_by=qm.OrderBy(key="datum", direction="desc"),
-        with_payload=True, with_vectors=False,
+    Review D8/N3: vorher startete der Pool mit 50 Recency-Voll-Payloads und die
+    semantischen Treffer hingen hinten dran – durch kopf=3 + Bucket-Diversify
+    schafften sie es praktisch nie in den Kontext (der Embedding-Call zahlte
+    für nichts). Jetzt: Recency 24, beide Arme parallel, Semantik-Slots fix.
+    `felder` beschränkt den Payload-Transfer (Chat-Pfade: KONTEXT_FELDER);
+    None = voller Payload (Dossier braucht die Volltextfelder)."""
+    import asyncio
+
+    async def _recent() -> list[dict]:
+        results, _ = await _aio(client.scroll,
+            collection_name="conversations",
+            scroll_filter=qm.Filter(must=[
+                qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id)))
+            ]),
+            limit=24, order_by=qm.OrderBy(key="datum", direction="desc"),
+            with_payload=felder if felder else True, with_vectors=False,
+        )
+        return [r.payload for r in results]
+
+    semantic, recent = await asyncio.gather(
+        get_conversation_context(user_id, query_vector, limit=8, felder=felder),
+        _recent(),
     )
-    recent = [r.payload for r in results]
+    recent_ids = {e.get("session_id") for e in recent}
 
-    # Kandidaten-Pool: neueste zuerst, dann semantisch Ähnliche (dedupliziert).
-    pool = list(recent)
-    seen = {e.get("session_id") for e in recent}
-    for e in semantic:
-        if e.get("session_id") not in seen:
-            pool.append(e)
-            seen.add(e.get("session_id"))
+    # 3 neueste fix für Kontinuität.
+    kopf = recent[:3]
 
-    # 3 neueste fix für Kontinuität, der Rest über die Themen diversifiziert.
-    kopf = pool[:3]
-    rest = _diversify_by_thema(pool[3:], limit - len(kopf))
-    return kopf + rest
+    # Bis zu 2 garantierte Plätze für Treffer, die Recency allein nie zeigen
+    # würde (nur bei ausreichendem Budget – bei limit<=4 gewinnt Kontinuität).
+    sem_neu = [e for e in semantic if e.get("session_id") not in recent_ids]
+    garantiert = sem_neu[:2] if limit > 4 else sem_neu[:1] if limit == 4 else []
+    garantiert_ids = {e.get("session_id") for e in garantiert}
+
+    # Rest über die Themen diversifiziert (Recency-Tail + übrige Semantik-Treffer).
+    rest_pool = recent[3:] + [
+        e for e in sem_neu if e.get("session_id") not in garantiert_ids
+    ]
+    rest = _diversify_by_thema(rest_pool, limit - len(kopf) - len(garantiert))
+    return kopf + garantiert + rest
 
 
 async def save_lerntagebuch(user_id: str, zeitraum: str, inhalt: str) -> str:
@@ -825,7 +855,12 @@ async def get_recent_inspirationen(limit: int = 5, user_id: str = "domina") -> l
         scroll_filter=qm.Filter(must=[
             qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id))),
             qm.FieldCondition(key="kategorie", match=qm.MatchValue(value="inspiration")),
-            qm.FieldCondition(key="status", match=qm.MatchAny(any=["vorgeschlagen", "abgelehnt"])),
+            # nicht_gewaehlt mitzählen (Review D8/N7): auch die wurden der
+            # Domina schon gezeigt (live 8 von 30 Punkten) und fehlten in der
+            # „NICHT wiederholen"-Liste. `gemerkt` bleibt bewusst draußen –
+            # gemerkte Ideen DÜRFEN wieder auftauchen.
+            qm.FieldCondition(key="status", match=qm.MatchAny(
+                any=["vorgeschlagen", "abgelehnt", "nicht_gewaehlt"])),
         ]),
         limit=20, order_by=qm.OrderBy(key="erstellt_am", direction="desc"),
         with_payload=True, with_vectors=False,
@@ -941,7 +976,6 @@ async def save_progress(user_id: str, data: dict) -> str:
     point_id = str(uuid.uuid4())
     text = data.get("beschreibung", "")
     vector = await emb.get_embedding(text)
-    indices, values = emb.get_sparse_vector(text)
 
     payload = {
         "user_id": mandanten_key(user_id),
@@ -954,7 +988,6 @@ async def save_progress(user_id: str, data: dict) -> str:
             id=point_id,
             vector={
                 "text": vector,
-                "sparse": qm.SparseVector(indices=indices, values=values),
             },
             payload=payload,
         )],
@@ -1017,7 +1050,6 @@ async def save_training(user_id: str, data: dict) -> str:
     point_id = str(uuid.uuid4())
     text = data.get("zusammenfassung", "")
     vector = await emb.get_embedding(text)
-    indices, values = emb.get_sparse_vector(text)
 
     payload = {
         "user_id": mandanten_key(user_id),
@@ -1030,7 +1062,6 @@ async def save_training(user_id: str, data: dict) -> str:
             id=point_id,
             vector={
                 "text": vector,
-                "sparse": qm.SparseVector(indices=indices, values=values),
             },
             payload=payload,
         )],
@@ -1074,7 +1105,6 @@ async def save_wunsch(user_id: str, data: dict) -> str:
     point_id = str(uuid.uuid4())
     text = data.get("text", "")
     vector = await emb.get_embedding(text)
-    indices, values = emb.get_sparse_vector(text)
 
     await _aio(client.upsert,
         collection_name="wuensche",
@@ -1082,7 +1112,6 @@ async def save_wunsch(user_id: str, data: dict) -> str:
             id=point_id,
             vector={
                 "text": vector,
-                "sparse": qm.SparseVector(indices=indices, values=values),
             },
             payload={**data, "user_id": mandanten_key(user_id), "qdrant_point_id": point_id},
         )],
@@ -1239,7 +1268,6 @@ async def save_strafe(data: dict) -> str:
     point_id = str(uuid.uuid4())
     text = data.get("bestrafung_text", data.get("aufgabe", ""))
     vector = await emb.get_embedding(text)
-    indices, values = emb.get_sparse_vector(text)
 
     await _aio(client.upsert,
         collection_name="strafen",
@@ -1247,7 +1275,6 @@ async def save_strafe(data: dict) -> str:
             id=point_id,
             vector={
                 "text": vector,
-                "sparse": qm.SparseVector(indices=indices, values=values),
             },
             payload={**data, "user_id": mandanten_key(data.get("user_id", "sklave")),
                      "qdrant_point_id": point_id},

@@ -161,6 +161,9 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     s.pop("wuerfel_kategorie", None)
     s.pop("wuerfel_aufgabe", None)
+    # Nonce auch im Erteilen-Pfad aufräumen (Review D8/A3) – der Verwerfen-Pfad
+    # tat es schon; ein liegengebliebener Nonce war folgenlos, aber inkonsistent.
+    s.pop("wuerfel_nonce", None)
 
     try:
         anweisung = await grok.simple(fp.aufgabe_an_sklaven(aufgabe_text), max_tokens=250)

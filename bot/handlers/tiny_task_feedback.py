@@ -20,8 +20,7 @@ logger = logging.getLogger(__name__)
 # Referenzen auf Fire-and-forget-Tasks halten, sonst GC sie evtl. vor Abschluss.
 _BG_TASKS: set = set()
 
-ANTWORT_UEBERNOMMEN = t("TINYFB_ANTWORT_UEBERNOMMEN")
-ANTWORT_GUT = t("TINYFB_ANTWORT_GUT")
+# Kein Modul-Level t() (Review D8/N8): t() ist bewusst per-Paar-dynamisch.
 
 
 async def _positives_feedback(point_id: str, action: str) -> str:
@@ -33,10 +32,10 @@ async def _positives_feedback(point_id: str, action: str) -> str:
     if action == "uebernommen":
         await qdrant.mark_tiny_task_status(point_id, "uebernommen")
         await kategorie_logik.record_domina_praeferenz(kategorien, "genutzt")
-        return ANTWORT_UEBERNOMMEN
+        return t("TINYFB_ANTWORT_UEBERNOMMEN")
     await qdrant.mark_tiny_task_status(point_id, "gut_aber_ungenutzt", grund="Vorschlag war gut, heute aber nicht umgesetzt")
     await kategorie_logik.record_domina_praeferenz(kategorien, "gut")
-    return ANTWORT_GUT
+    return t("TINYFB_ANTWORT_GUT")
 
 
 async def _vorschlag_aus_ablehnung(bot, tiny_task_inhalt: str, kategorien: list, grund: str) -> None:

@@ -1,6 +1,7 @@
 """
 Sklave Handler – normaler Chat (außerhalb Follow-up States).
 """
+import asyncio
 import difflib
 import logging
 import re
@@ -192,6 +193,43 @@ def _dauermotive(vorherige: list[str], user_text: str, anrede: str = "") -> list
     return sorted(kandidaten, key=lambda w: (-zaehler[w], w))[:3]
 
 
+# Referenzen auf Fire-and-forget-Tasks halten, sonst GC sie evtl. vor Abschluss.
+_BG_TASKS: set = set()
+
+
+async def _post_reply_pipeline(bot, text: str) -> None:
+    """Best-effort-Nachverarbeitung NACH der ausgelieferten Antwort (Review D8/N1):
+    Wunsch-Erfassung, Präferenz-Detektor und Domina-Relay brauchen je einen
+    Grok-Call und liefen vorher inline unter dem Paar-Lock. Jeder Schritt hat
+    sein eigenes Fangnetz – ein Fehler bricht die anderen nicht ab."""
+    # Geäußerte Wünsche / "würde gern mal ausprobieren" dauerhaft aufnehmen
+    # (gated über Signalwörter, hard-limit-gefiltert). Profile liest der
+    # Erfasser bewusst selbst frisch: Read-then-Patch auf entdeckte_wuensche
+    # mit einem stale Handler-Profil könnte parallel Gespeichertes verlieren.
+    if len(text) > 6:
+        try:
+            from bot.handlers import dossier as _dossier
+            neuer_wunsch = await _dossier.erfasse_wunsch_aus_chat(text)
+            if neuer_wunsch:
+                logger.debug("Neuer entdeckter Wunsch aufgenommen: %s", neuer_wunsch)
+        except Exception as e:
+            logger.error("Wunsch-Erfassung fehlgeschlagen: %s", e)
+
+    # Vorlieben / No-Gos erkennen und dem Sklaven als ✅/🗑-Vorschlag anbieten.
+    try:
+        from bot.services import praeferenz_detektor
+        await praeferenz_detektor.erkenne_und_schlage_vor(bot, "sklave", text)
+    except Exception as e:
+        logger.error("Präferenz-Detektor (Sklave) fehlgeschlagen: %s", e)
+
+    # Will er, dass seine echte Domina etwas erfährt? Via Grok als Coach-Hinweis.
+    try:
+        from bot.services import domina_relay
+        await domina_relay.pruefe_und_leite_weiter(bot, text)
+    except Exception as e:
+        logger.error("Domina-Hinweis-Weiterleitung fehlgeschlagen: %s", e)
+
+
 def _rotierende_auswahl(items: list, k: int, offset: int) -> list:
     """Rotierende Teilmenge (max k Elemente). Variiert über die Turns hinweg, welche
     Vorlieben/Motive dem Prompt vorne stehen, statt immer dieselben Top-Einträge –
@@ -215,34 +253,61 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if state.get_mode(chat_id) == "onboarding":
         return
 
-    # Profil laden (Sklave + Domina – damit die Bot-Herrin auch die Grenzen
-    # ihrer "echten" Person-Vorlage respektiert)
-    profile = await qdrant.get_user_profile("sklave") or {}
-    domina_profile = await qdrant.get_user_profile("domina") or {}
-
-    # Offene Aufgaben laden
-    offene = await qdrant.get_tasks_by_status(["offen", "gefragt"])
-    offene_str = "\n".join(f"- {t.get('aufgabe', '')}" for t in offene) or "Keine offenen Aufgaben."
-    offene_anzahl = len(offene)
-
-    # Vergangene Gespräche als Erinnerungs-Kontext (hybrid, nur wenn Nachricht inhaltsreich ist)
-    erinnerungs_kontext = ""
-    query_vector = None
-    if len(text) > 10:
+    # Unabhängige Kontext-Loads parallel statt seriell (Review D8/N2): Profile,
+    # offene Tasks, Erinnerungs-Kontext, letzte Gefühle und Stimmung hängen
+    # nicht voneinander ab – vorher ~8 serielle Awaits pro Nachricht.
+    async def _erinnerung() -> str:
+        """Vergangene Gespräche als Erinnerungs-Kontext (hybrid, nur wenn die
+        Nachricht inhaltsreich ist). Best-effort mit eigenem Fangnetz."""
+        if len(text) <= 10:
+            return ""
         try:
             query_vector = await emb.get_embedding(text)
-            entries = await qdrant.get_hybrid_conversation_context("sklave", query_vector, limit=6)
-            if entries:
-                lines = []
-                for e in entries[:6]:
-                    datum = (e.get("datum") or "")[:10]
-                    z = e.get("zusammenfassung", "")[:300]
-                    if z:
-                        lines.append(f"[{datum}] {z}")
-                if lines:
-                    erinnerungs_kontext = "\n\nFrühere Gespräche mit ihm (als Kontext, nicht direkt zitieren):\n" + "\n".join(lines)
+            entries = await qdrant.get_hybrid_conversation_context("sklave", query_vector, limit=6,
+                                                                    felder=qdrant.KONTEXT_FELDER)
+            lines = []
+            for e in entries[:6]:
+                datum = (e.get("datum") or "")[:10]
+                z = e.get("zusammenfassung", "")[:300]
+                if z:
+                    lines.append(f"[{datum}] {z}")
+            if lines:
+                return ("\n\nFrühere Gespräche mit ihm (als Kontext, nicht direkt zitieren):\n"
+                        + "\n".join(lines))
         except Exception as e:
             logger.error("Fehler beim Laden des Erinnerungs-Kontextes (Sklave): %s", e)
+        return ""
+
+    async def _letzte_gefuehle() -> list[str]:
+        """Letzte Gefühle (echte Worte) als emotionales Kennenlern-Material."""
+        gefuehle = []
+        try:
+            erledigt = await qdrant.get_tasks_by_status(["erledigt"], limit=10, sort_by_datum=True)
+            for task in erledigt:
+                g = (task.get("gefuehl") or "").strip()
+                if g:
+                    kat = task.get("kategorie", "")
+                    gefuehle.append(f"{kat}: {g[:70]}" if kat else g[:70])
+                if len(gefuehle) == 3:
+                    break
+        except Exception as e:
+            logger.error("Fehler beim Laden letzter Gefühle (Sklave): %s", e)
+        return gefuehle
+
+    (profile, domina_profile, offene, erinnerungs_kontext,
+     letzte_gefuehle, stimmung_entry) = await asyncio.gather(
+        qdrant.get_user_profile("sklave"),
+        qdrant.get_user_profile("domina"),
+        qdrant.get_tasks_by_status(["offen", "gefragt"]),
+        _erinnerung(),
+        _letzte_gefuehle(),
+        qdrant.get_latest_stimmung("sklave"),
+    )
+    profile = profile or {}
+    domina_profile = domina_profile or {}
+
+    offene_str = "\n".join(f"- {t.get('aufgabe', '')}" for t in offene) or "Keine offenen Aufgaben."
+    offene_anzahl = len(offene)
 
     # Gelerntes Wissen über ihn zusammenstellen, damit die Herrin ihn spürbar kennt
     mag = kategorie_logik.top_kategorien(profile)
@@ -254,18 +319,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"{k}: {kategorie_logik.level_label(kategorie_logik.kategorie_level(profile, k))}"
         for k in level_quellen[:5]
     )
-    # Letzte Gefühle (echte Worte) als emotionales Kennenlern-Material
-    letzte_gefuehle = []
-    try:
-        erledigt = await qdrant.get_tasks_by_status(["erledigt"], sort_by_datum=True)
-        for task in erledigt[:3]:
-            g = (task.get("gefuehl") or "").strip()
-            if g:
-                kat = task.get("kategorie", "")
-                letzte_gefuehle.append(f"{kat}: {g[:70]}" if kat else g[:70])
-    except Exception as e:
-        logger.error("Fehler beim Laden letzter Gefühle (Sklave): %s", e)
-    stimmung_entry = await qdrant.get_latest_stimmung("sklave")
     stimmung = stimmung_entry.get("zusammenfassung", "") if stimmung_entry else ""
 
     # Anti-Verengung: Bei kurzen Alltags-Check-ins ("läuft so", "stressig") nicht
@@ -417,8 +470,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             except Exception as e2:
                 logger.error("Lokales Fallback-Modell ebenfalls fehlgeschlagen: %s", e2)
         if not response:
-            # User-Nachricht aus History entfernen bei Fehler
-            state.remove_last_message(chat_id)
+            # User-Nachricht aus History entfernen bei Fehler. role="user"
+            # (Review D8/N9): schiebt ein Scheduler-Job (läuft ohne Paar-Lock)
+            # im Grok-Fenster eine Assistant-Nachricht in die History, würde
+            # sonst die falsche Nachricht gepoppt (vgl. domina.py).
+            state.remove_last_message(chat_id, "user")
             await update.message.reply_text(t("FALLBACK_SKLAVE_CHAT"))
             return
         # Antwort direkt ausliefern und hier enden: Anti-Echo-Neugenerierung und
@@ -458,32 +514,15 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await update.message.reply_text(response)
 
-    # Geäußerte Wünsche / "würde gern mal ausprobieren" aus dem Chat dauerhaft aufnehmen
-    # (gated über Signalwörter, hard-limit-gefiltert). Best-effort, nie den Chat blockieren.
-    if len(text) > 6:
-        try:
-            from bot.handlers import dossier as _dossier
-            neuer_wunsch = await _dossier.erfasse_wunsch_aus_chat(text)
-            if neuer_wunsch:
-                logger.debug("Neuer entdeckter Wunsch aufgenommen: %s", neuer_wunsch)
-        except Exception as e:
-            logger.error("Wunsch-Erfassung fehlgeschlagen: %s", e)
-
-    # Vorlieben / No-Gos aus dem Gespräch erkennen und dem Sklaven als ✅/🗑-Vorschlag
-    # fürs eigene Profil anbieten (best-effort, gated, blockiert den Chat nie).
-    try:
-        from bot.services import praeferenz_detektor
-        await praeferenz_detektor.erkenne_und_schlage_vor(context.bot, "sklave", text)
-    except Exception as e:
-        logger.error("Präferenz-Detektor (Sklave) fehlgeschlagen: %s", e)
-
-    # Will er, dass seine echte Domina etwas erfährt? Dann nicht roh durchreichen,
-    # sondern via Grok als Coach-Hinweis an die Domina (best-effort, blockiert nie).
-    try:
-        from bot.services import domina_relay
-        await domina_relay.pruefe_und_leite_weiter(context.bot, text)
-    except Exception as e:
-        logger.error("Domina-Hinweis-Weiterleitung fehlgeschlagen: %s", e)
+    # Best-effort-Nachverarbeitung (Wunsch-Erfassung, Präferenz-Detektor,
+    # Domina-Relay = bis zu 3 Grok-Calls) als Hintergrund-Task (Review D8/N1):
+    # der PaarSerialisierterProzessor hält während des Handlers den Paar-Lock –
+    # inline warteten beide Partner sonst u.U. 10-30 s auf ihre nächste
+    # Nachricht. Referenz halten wie tiny_task_feedback._BG_TASKS; der
+    # Paar-Kontext (contextvar) wandert per create_task-Kontext-Kopie mit.
+    _bg = asyncio.create_task(_post_reply_pipeline(context.bot, text))
+    _BG_TASKS.add(_bg)
+    _bg.add_done_callback(_BG_TASKS.discard)
 
     # Konversation persistieren, damit die Herrin in zukünftigen Sessions Kontinuität zeigen kann.
     # Nur wenn der Sklave inhaltlich etwas gesagt hat (kein 'ja'/'ok' o.ä.) – sonst bläht das die DB auf.
