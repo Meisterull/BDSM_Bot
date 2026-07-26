@@ -120,6 +120,7 @@ def ensure_collections() -> None:
         ("tasks",          "kommentar_am",     "datetime", False),
         ("tasks",          "kette_id",         "keyword",  False),
         ("tasks",          "kette_position",   "integer",  False),
+        ("tasks",          "serie_id",         "keyword",  False),  # /loeschen s (Serie stoppen)
         ("tasks",          "kategorie",        "keyword",  False),
         ("tasks",          "quelle",           "keyword",  False),
         ("tasks",          "arc_id",           "keyword",  False),
@@ -1179,6 +1180,27 @@ async def get_kette_wartende(kette_id: str) -> list[dict]:
         limit=100, with_payload=True, with_vectors=False,
     )
     return sorted([r.payload for r in results], key=lambda x: x.get("kette_position", 0))
+
+
+async def get_gruppen_glieder(feld: str, wert: str, status: list[str] | None = None) -> list[dict]:
+    """Alle Glieder einer Serie (feld="serie_id") oder Kette (feld="kette_id"),
+    optional auf Status eingeschränkt – für /loeschen `s` (ganze Serie/Kette
+    stoppen) und den kette_wartend-Sweep. Sortiert nach Position bzw. Datum."""
+    bedingungen = [
+        qm.FieldCondition(key=feld, match=qm.MatchValue(value=wert)),
+        qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key("sklave"))),
+    ]
+    if status is not None:
+        bedingungen.append(qm.FieldCondition(key="status", match=qm.MatchAny(any=status)))
+    results, _ = await _aio(client.scroll,
+        collection_name="tasks",
+        scroll_filter=qm.Filter(must=bedingungen),
+        limit=100, with_payload=True, with_vectors=False,
+    )
+    return sorted(
+        [r.payload for r in results],
+        key=lambda x: (x.get("kette_position", 0), x.get("erteilt_am", "")),
+    )
 
 
 async def get_naechster_ketten_task(kette_id: str, aktuelle_position: int) -> Optional[dict]:

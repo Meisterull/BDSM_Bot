@@ -375,12 +375,15 @@ MESSAGES = {
     "AUFGABEN_LOESCHEN_TITEL": "📋 *Open tasks:*\n",
     "AUFGABEN_LOESCHEN_FUSS": (
         "\nWrite the *number* followed by:\n"
-        "`p` = pause  |  `x` = delete\n"
+        "`p` = pause  |  `x` = delete  |  `s` = stop the whole series/chain\n"
         "Example: `1 p` or `2 x`\n"
         "\nOr /abbrechen"
     ),
     "AUFGABEN_GELOESCHT": "🗑 Task deleted.",
-    "AUFGABEN_UNGUELTIG": "Invalid input. Example: `1 p` (pause) or `1 x` (delete)\nOr /abbrechen",
+    "AUFGABEN_UNGUELTIG": "Invalid input. Example: `1 p` (pause), `1 x` (delete) or `1 s` (stop series/chain)\nOr /abbrechen",
+    "AUFGABEN_KEINE_SERIE": "This task doesn't belong to a series/chain. Use `x` to delete it.",
+    "AUFGABEN_SERIE_STOPP_BESTAETIGUNG": "⚠️ Really stop the whole series/chain?\n\n_{aufgabe}_\n\n🔄 *{anzahl}* task(s) will be discarded.\n\nReply with `ja` or `nein`",
+    "AUFGABEN_SERIE_GESTOPPT": "🗑 Series/chain stopped – {anzahl} task(s) discarded.",
     "AUFGABEN_LISTE_VERALTET": "⚠️ The selection list is outdated. Please restart /loeschen.",
     "AUFGABEN_BEREITS_MARKIERT": "⚠️ This task has already been marked as '{status}'. Restart /loeschen.",
     "AUFGABEN_PAUSIERT": "⏸ Task paused.",
@@ -537,6 +540,27 @@ MESSAGES = {
     "PRIVILEG_ENTSCHEIDUNG_GESPEICHERT": "✅ Decision saved.",
     "PRIVILEG_NICHT_GEFUNDEN": "⚠️ Privilege no longer found.",
     "PRIVILEG_PUNKTE_ZURUECK": "\n_(Points refunded: {kosten})_",
+    "PRIVILEG_VERFALLEN_ERSTATTET": (
+        "⌛ Your redemption expired (no decision from your Mistress): {namen}.\n"
+        "_(Points refunded: {kosten})_"
+    ),
+    "PRIVILEG_FREI_AUFGABE_PROMPT": (
+        "🎁 *Free task:* You may propose your next task yourself.\n"
+        "Send it to me in one message now – or /abbrechen "
+        "(the privilege stays open, re-enter via /privileg)."
+    ),
+    "PRIVILEG_FREI_AUFGABE_GRENZEN": (
+        "🚫 Your proposal violates set limits:\n{treffer}\n\n"
+        "Rephrase it – or /abbrechen."
+    ),
+    "PRIVILEG_FREI_AUFGABE_ERSTELLT": (
+        "✅ Your free task has been assigned. It counts like any other task – "
+        "I'll check in at the usual time."
+    ),
+    "PRIVILEG_FREI_AUFGABE_AN_DOMINA": (
+        "🎁 *Free task redeemed:* He chose his next task himself:\n\n"
+        "_{aufgabe}_"
+    ),
     # Persona-Fallbacks bei LLM-Ausfall (Stimme der Herrin)
     "FALLBACK_PRIVILEG_GEWAEHRT": "Granted: {name}.",
     "FALLBACK_PRIVILEG_VERWEIGERT": "Not this time – I'm not granting you {name}. Your {kosten} points have been returned.",
@@ -942,6 +966,11 @@ MESSAGES = {
     "KETTE_FEHLSCHLAG_FRAGE": (
         "🔗 *Chain: link {pos}/{gesamt} was not completed.*\n\n"
         "The next link would be:\n_{naechste}_\n\n"
+        "Should the chain continue or be aborted?"
+    ),
+    "KETTE_HAENGT_FRAGE": (
+        "🔗 *Chain is stuck: link {pos}/{gesamt} is waiting, but nothing is in progress anymore.*\n\n"
+        "The waiting link:\n_{naechste}_\n\n"
         "Should the chain continue or be aborted?"
     ),
     "BUTTON_KETTE_WEITER": "▶️ Continue",

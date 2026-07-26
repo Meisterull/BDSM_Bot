@@ -145,7 +145,7 @@ FLOW_STATE_KEYS = (
     # Inspiration / Vorlagen / Löschen / Training / Quiz
     "inspiration_vorschlaege", "inspiration_point_ids", "inspiration_iteration", "inspiration_feedback",
     "neue_vorlage_name", "vorlagen_liste",
-    "loeschen_tasks", "loeschen_bestaetigung_id",
+    "loeschen_tasks", "loeschen_bestaetigung_id", "loeschen_serie_stopp",
     "training_typ", "training_uebung",
     "quiz_frage", "quiz_musterantwort",
     # Rollenspiel / Wunsch / Kommentar / Geheimnis

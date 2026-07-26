@@ -3,6 +3,7 @@ Reaktion Handler.
 Verarbeitet die Antwort der Domina nach Nicht-Erledigung einer Aufgabe.
 """
 import logging
+from datetime import datetime, timezone
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -65,7 +66,14 @@ async def _bestaetigen(update, context, chat_id, task_id, strafe_id, s) -> None:
     strafe = await qdrant.get_strafe(strafe_id)
     bestrafung_text = strafe.get("bestrafung_text", "") if strafe else ""
 
-    await qdrant.update_task(task_id, {"status": "reaktion_gesendet", "domina_reaktion": "bestätigt"})
+    # Status bleibt "nicht_erledigt" (Review D8/H5): der frühere Flip auf
+    # "reaktion_gesendet" hatte keinen einzigen Leser und ließ den Fehlschlag
+    # aus Eskalations-Streak, Lernkurve und Tonlagen-Zählung verschwinden.
+    # Die Reaktion ist über domina_reaktion/reaktion_am am Task markiert.
+    await qdrant.update_task(task_id, {
+        "domina_reaktion": "bestätigt",
+        "reaktion_am": datetime.now(timezone.utc).isoformat(),
+    })
     await qdrant.update_strafe(strafe_id, {"status": "angeordnet"})
     _clear_state(chat_id, s)
 
@@ -90,7 +98,10 @@ async def _bestaetigen(update, context, chat_id, task_id, strafe_id, s) -> None:
 
 async def _alternativ_senden(update, context, chat_id, task_id, strafe_id, s, text) -> None:
     """Leitet eine alternative Reaktion der Domina weiter."""
-    await qdrant.update_task(task_id, {"status": "reaktion_gesendet", "domina_reaktion": text})
+    await qdrant.update_task(task_id, {
+        "domina_reaktion": text,
+        "reaktion_am": datetime.now(timezone.utc).isoformat(),
+    })
     if strafe_id:
         # Stale-Guard (Review D6): nur einen noch VORGESCHLAGENEN Eintrag auf
         # "abgelehnt" setzen – eine parallel schon angeordnete/erledigte Strafe
@@ -109,7 +120,10 @@ async def _alternativ_senden(update, context, chat_id, task_id, strafe_id, s, te
 async def _weiterleiten(update, context, chat_id, task_id, s, text, clear=True) -> None:
     """Reformuliert und leitet eine Domina-Nachricht an den Sklaven weiter."""
     if clear:
-        await qdrant.update_task(task_id, {"status": "reaktion_gesendet", "domina_reaktion": text})
+        await qdrant.update_task(task_id, {
+            "domina_reaktion": text,
+            "reaktion_am": datetime.now(timezone.utc).isoformat(),
+        })
         _clear_state(chat_id, s)
 
     try:

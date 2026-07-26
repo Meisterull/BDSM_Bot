@@ -419,7 +419,8 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
             return
 
         # Vor allem anderen: Cleanup verbrauchter/abgelaufener Privilegien
-        await privileg_effekte.cleanup()
+        # (mit bot: unentschiedene Einlösungen werden erstattet + gemeldet)
+        await privileg_effekte.cleanup(bot)
 
         # Privileg 'pause_tag': Skip heute komplett wenn aktiv. Verbrauch erst NACH
         # erfolgreichem Versand der Pause-Meldung (sonst bei Sendefehler verbrannt).
@@ -710,6 +711,81 @@ async def _process_serie_tasks(bot: Bot) -> None:
         logger.exception("Fehler bei Serie Tasks")
 
 
+# Hängende Ketten: so lange wartet der Sweep ab der ersten Beobachtung (bzw.
+# zwischen zwei Nachfragen), bevor er die Domina (erneut) fragt. Puffer, damit
+# frische Weiter/Abbruch- und Anpassungs-Entscheidungen nicht überfahren werden.
+_KETTE_SWEEP_WARTE_TAGE = 2
+
+# Glied-Status, bei denen die Kette normal weiterläuft (kein Eingriff nötig).
+_KETTE_AKTIVE_STATUS = ("offen", "gefragt", "gefuehl_pending")
+
+
+async def _process_kette_tasks(bot: Bot) -> None:
+    """Fangnetz für hängende Ketten (Review D8/H3): der Ketten-Fortschritt ist
+    rein event-getrieben (Erledigt-Pfad, Fehlschlag-Buttons) – wird ein Glied
+    gelöscht oder eine Entscheidungsfrage nie beantwortet, wartete der Rest
+    vorher für immer auf `kette_wartend` (Live-Fall: Kette hing seit 17.05.).
+
+    Vorgehen konservativ („nichts wird still angewendet"): eine Kette, deren
+    niedrigstes wartendes Glied nur noch terminale Vorgänger hat, wird erst
+    per `kette_sweep_am` beobachtet; besteht der Zustand nach
+    _KETTE_SWEEP_WARTE_TAGE weiter, bekommt die Domina die bestehende
+    Weiter/Abbruch-Buttonfrage (kettefail-Callback, inkl. Doppel-Tap-Guard)."""
+    try:
+        wartende = await qdrant.get_tasks_by_status(["kette_wartend"])
+        ketten: dict[str, dict] = {}
+        for task in wartende:
+            kid = task.get("kette_id")
+            if not kid:
+                continue
+            bisher = ketten.get(kid)
+            if bisher is None or task.get("kette_position", 0) < bisher.get("kette_position", 0):
+                ketten[kid] = task
+
+        now = datetime.now(timezone.utc)
+        from bot.handlers import kette_adaptiv  # lazy (Handler-Import im Scheduler)
+        for kid, glied in ketten.items():
+            alle = await qdrant.get_gruppen_glieder("kette_id", kid)
+            pos = glied.get("kette_position", 0)
+            vorgaenger_aktiv = any(
+                g.get("kette_position", 0) < pos and g.get("status") in _KETTE_AKTIVE_STATUS
+                for g in alle
+            )
+            if vorgaenger_aktiv:
+                continue  # Kette läuft normal – Erledigt-/Fehlschlag-Pfad übernimmt
+
+            gid = glied.get("qdrant_point_id")
+            if not gid:
+                continue
+            sweep_am = glied.get("kette_sweep_am")
+            if sweep_am:
+                sweep_dt = _parse_datum(sweep_am)
+                if now - sweep_dt < timedelta(days=_KETTE_SWEEP_WARTE_TAGE):
+                    continue  # Beobachtungs-/Entscheidungsfenster läuft noch
+
+            if not sweep_am:
+                # Erst nur beobachten – die Domina kann gerade mitten in einer
+                # frischen Button-Entscheidung stecken.
+                await qdrant.update_task(gid, {"kette_sweep_am": now.isoformat()})
+                continue
+
+            await telegram_helper.send_domina(
+                bot,
+                t("KETTE_HAENGT_FRAGE",
+                  pos=glied.get("kette_position", "?"),
+                  gesamt=glied.get("kette_gesamt", "?"),
+                  naechste=glied.get("aufgabe", "")[:200]),
+                parse_mode="Markdown",
+                reply_markup=kette_adaptiv._fehlschlag_buttons(gid),
+            )
+            # Throttle: erst nach erneuter Wartezeit wieder nachfragen.
+            await qdrant.update_task(gid, {"kette_sweep_am": now.isoformat()})
+            logger.info("Kette %s hängt (Glied %s wartet, keine aktiven Vorgänger) – "
+                        "Weiter/Abbruch-Frage an Domina gesendet.", kid, gid)
+    except Exception:
+        logger.exception("Fehler beim Ketten-Fangnetz")
+
+
 @_job_guard
 async def followup_job(bot: Bot) -> None:
     logger.info("Follow-up Job gestartet: %s", datetime.now(timezone.utc).isoformat())
@@ -719,6 +795,9 @@ async def followup_job(bot: Bot) -> None:
 
     # Serie Tasks aktivieren
     await _process_serie_tasks(bot)
+
+    # Hängende Ketten einsammeln (Review D8/H3)
+    await _process_kette_tasks(bot)
 
     # Follow-up an Sklave – Existenz-Check zuerst, der Kontext (Streak/Stimmung/
     # nicht_erledigt) wird nur geladen, wenn es überhaupt offene Followups gibt.

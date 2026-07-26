@@ -105,16 +105,25 @@ async def hat_naechste_aus_wunsch() -> bool:
 # Cleanup – verbrauchte und abgelaufene Einträge entfernen
 # ---------------------------------------------------------------------------
 
-async def cleanup() -> int:
+async def cleanup(bot=None) -> int:
     """Entfernt verbrauchte und abgelaufene Einträge aus 'aktive_privilegien'.
-    Returns Anzahl entfernter Einträge."""
+    Returns Anzahl entfernter Einträge.
+
+    UNENTSCHIEDENE Einlösungen (Domina hat >7 Tage weder bestätigt noch
+    verweigert) werden mit Punkte-Rückerstattung entfernt (Review D8/H6):
+    der Einsatz wurde beim Einlösen sofort abgezogen, erstattet wurde vorher
+    aber nur im expliziten Verweigern-Pfad – der stille Wegwurf hier war
+    reiner Punkteverlust für den Sklaven. Mit `bot` wird er kurz informiert."""
     profil = await qdrant.get_user_profile("sklave") or {}
     aktive = _aktive(profil)
     if not aktive:
         return 0
 
     jetzt = datetime.now(timezone.utc).isoformat()
+    sieben_tage_alt = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     behalten = []
+    erstattung = 0
+    erstattete_namen: list[str] = []
     for p in aktive:
         # Verbraucht? Weg.
         if p.get("verbraucht"):
@@ -122,16 +131,35 @@ async def cleanup() -> int:
         # Abgelaufen? Weg.
         if p.get("gueltig_bis") and p["gueltig_bis"] < jetzt:
             continue
-        # Verweigert + älter als 7 Tage? Weg (sonst sammelt sich Müll).
+        # Unentschieden + älter als 7 Tage? Weg, aber Einsatz zurück.
         if not p.get("domina_bestaetigt"):
             eingeloest = p.get("eingeloest_am", "")
-            sieben_tage_alt = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
             if eingeloest and eingeloest < sieben_tage_alt:
+                from bot.handlers.privileg import _privileg_by_id  # lazy (Zyklus)
+                privileg_def = _privileg_by_id(p.get("privileg_id", ""))
+                kosten = privileg_def["kosten"] if privileg_def else 0
+                erstattung += kosten
+                erstattete_namen.append(p.get("name", "?"))
                 continue
         behalten.append(p)
 
     entfernt = len(aktive) - len(behalten)
     if entfernt > 0:
-        await qdrant.patch_profile_fields("sklave", {"aktive_privilegien": behalten})
-        logger.info("Privileg-Cleanup: %d Einträge entfernt.", entfernt)
+        patch = {"aktive_privilegien": behalten}
+        if erstattung:
+            patch["punkte"] = profil.get("punkte", 0) + erstattung
+        await qdrant.patch_profile_fields("sklave", patch)
+        logger.info("Privileg-Cleanup: %d Einträge entfernt, %d Punkte erstattet.",
+                    entfernt, erstattung)
+    if erstattung and bot is not None:
+        from bot.services import telegram_helper  # lazy
+        from bot.messages import t
+        try:
+            await telegram_helper.send_sklave(
+                bot,
+                t("PRIVILEG_VERFALLEN_ERSTATTET",
+                  namen=", ".join(erstattete_namen), kosten=erstattung),
+            )
+        except Exception:
+            logger.exception("Privileg-Erstattungs-Hinweis an Sklaven fehlgeschlagen")
     return entfernt

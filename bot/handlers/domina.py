@@ -458,6 +458,24 @@ async def handle_kette_aufgaben(
                 logger.error("Fehler beim Senden der ersten Ketten-Aufgabe: %s", e)
 
     else:
+        # Auch Glieder 2..n durchs Sicherheits-Gate (Review D8/H1): vorher lief
+        # nur die ERSTE Ketten-Aufgabe durch den Limits-Check – nachgetippte
+        # Glieder waren der einzige ungeprüfte Weg zum Sklaven. kette_profile
+        # enthält nur das Domina-Profil, darum lädt verletzungen() beide
+        # Profile selbst (None-Defaults).
+        from bot.services import limits_check
+        treffer = await limits_check.verletzungen(text)
+        if treffer:
+            _quellen = sorted({tr["quelle"] for tr in treffer})
+            logger.warning(
+                "Ketten-Glied verletzt %d Grenze(n) [%s] – nicht in Kette uebernommen.",
+                len(treffer), ", ".join(_quellen),
+            )
+            await telegram_helper.reply_markdown_safe(
+                update.message,
+                t("DOMINA_AUFGABE_GRENZEN", treffer=limits_check.format_verletzungen(treffer)),
+            )
+            return
         kette_liste = s.get("kette_aufgaben_liste", [])
         kette_liste.append(text)
         s["kette_aufgaben_liste"] = kette_liste

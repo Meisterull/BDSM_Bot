@@ -392,6 +392,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if mode == "privileg_wahl":
             await privileg.handle(update, context)
             return
+        if mode == "frei_aufgabe_vorschlag":
+            await privileg.handle_frei_aufgabe(update, context)
+            return
         if mode == "quiz_antwort":
             await quiz.handle_antwort(update, context)
             return

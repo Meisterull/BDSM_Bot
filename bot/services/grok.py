@@ -100,10 +100,14 @@ async def _post_chat(url: str, headers: dict, payload: dict) -> str:
     """Ein OpenAI-kompatibler Chat-Completion-Aufruf, gibt den Antwort-Text zurück."""
     resp = await _client.post(url, headers=headers, json=payload)
     resp.raise_for_status()
-    # `content` kann bei Refusal/leerem Completion `null` sein → nie None
-    # zurückgeben, sonst crashen .strip()-Callsites und der Limit-Check
-    # (_normalisiere(None)). Leerer String ist überall sauber behandelt.
-    return resp.json()["choices"][0]["message"]["content"] or ""
+    # `content` kann bei Refusal/leerem Completion `null`/leer sein. Das ist wie
+    # ein Fehler zu behandeln (ValueError → Retry+Fallback-Kaskade in chat()):
+    # ein stilles "" würde sonst an reply_text("") crashen bzw. Antworten
+    # verschlucken – im schlimmsten Fall NACH einem Status-Update (gefuehl.py).
+    content = resp.json()["choices"][0]["message"]["content"]
+    if not content or not content.strip():
+        raise ValueError("LLM lieferte leere Antwort (Refusal/leeres Completion)")
+    return content
 
 
 async def _try_fallback(payload: dict, model: str) -> str | None:

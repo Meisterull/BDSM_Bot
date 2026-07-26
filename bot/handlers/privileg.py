@@ -89,13 +89,23 @@ def _privileg_by_id(pid: str) -> dict | None:
 
 
 async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/privileg – zeigt Katalog mit Inline-Buttons für den Sklaven."""
+    """/privileg – zeigt Katalog mit Inline-Buttons für den Sklaven.
+    Ist eine bestätigte Frei-Aufgabe offen, führt der Befehl stattdessen zurück
+    in die Vorschlags-Eingabe (Wiedereinstieg, falls der Mode verloren ging)."""
     chat_id = str(update.effective_chat.id)
     if chat_id != paare.sub_chat_id():
         return
 
     profil = await qdrant.get_user_profile("sklave") or {}
     aktuelle_punkte = profil.get("punkte", 0)
+
+    if any(
+        privileg_effekte._ist_aktiv(p) and p.get("wirkung") == "naechste_selbst_waehlen"
+        for p in profil.get("aktive_privilegien", []) or []
+    ):
+        state.set_mode(chat_id, "frei_aufgabe_vorschlag")
+        await update.message.reply_text(t("PRIVILEG_FREI_AUFGABE_PROMPT"), parse_mode="Markdown")
+        return
 
     katalog = "\n\n".join(
         f"*{p['name']}* – {p['kosten']} P\n_{p['beschreibung']}_"
@@ -338,6 +348,53 @@ async def _entscheidung_anwenden(context, aktiv_id: str, bestaetigt: bool, komme
         system = system.replace("Seine Punkte hat er zurück. ", "")
         fallback = t("FALLBACK_PRIVILEG_VERWEIGERT", name=eintrag["name"], kosten=0).split(" Deine ")[0]
 
+
+async def handle_frei_aufgabe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sklave schlägt nach bestätigter Frei-Aufgabe seine nächste Aufgabe vor
+    (Review D8/H7 – die Wirkung `naechste_selbst_waehlen` hatte vorher keinen
+    Consumer). Limits-Check, dann wird die Aufgabe direkt erteilt – die Domina
+    hat das Privileg ja explizit bestätigt – und sie wird informiert."""
+    chat_id = str(update.effective_chat.id)
+    text = update.message.text.strip()
+
+    if text.lower() in ("abbrechen", "/abbrechen", "stop", "stopp"):
+        # Privileg bleibt aktiv – Wiedereinstieg über /privileg.
+        state.set_mode(chat_id, "chat")
+        await update.message.reply_text(t("COMMON_ABGEBROCHEN"))
+        return
+
+    from bot.services import limits_check, kategorie_logik
+    treffer = await limits_check.verletzungen(text, sprecher="sub")
+    if treffer:
+        # Mode bleibt offen – er kann direkt neu formulieren.
+        await telegram_helper.reply_markdown_safe(
+            update.message,
+            t("PRIVILEG_FREI_AUFGABE_GRENZEN", treffer=limits_check.format_verletzungen(treffer)),
+        )
+        return
+
+    domina_profil = await qdrant.get_user_profile("domina") or {}
+    level = domina_profil.get("aktuelles_level", 1)
+    kategorie = await kategorie_logik.klassifiziere(text)
+    await qdrant.erstelle_task(text, kategorie, level, quelle="frei_aufgabe")
+    # Verbrauch erst NACH erfolgreicher Task-Anlage (Muster verbrauche_wirkung).
+    # Bewusst KEIN set_followup_task (wie /wuerfel): das Followup läuft über
+    # follow_up_datum, sonst würde seine nächste Chat-Nachricht verschluckt.
+    await privileg_effekte.verbrauche_wirkung("naechste_selbst_waehlen")
+    state.set_mode(chat_id, "chat")
+
+    await update.message.reply_text(
+        t("PRIVILEG_FREI_AUFGABE_ERSTELLT"), parse_mode="Markdown"
+    )
+    try:
+        await telegram_helper.send_domina(
+            context.bot,
+            t("PRIVILEG_FREI_AUFGABE_AN_DOMINA", aufgabe=text),
+            parse_mode="Markdown",
+        )
+    except Exception:
+        logger.exception("Frei-Aufgabe: Domina-Info fehlgeschlagen")
+
     try:
         meldung_sklave = await grok.simple(prompt, system=system)
     except Exception as e:
@@ -346,3 +403,15 @@ async def _entscheidung_anwenden(context, aktiv_id: str, bestaetigt: bool, komme
     if erstattet:
         meldung_sklave += t("PRIVILEG_PUNKTE_ZURUECK", kosten=kosten)
     await telegram_helper.send_sklave(context.bot, meldung_sklave)
+
+    # Frei-Aufgabe (Review D8/H7): nach Bestätigung darf der Sklave seine
+    # nächste Aufgabe selbst vorschlagen. Mode nur setzen, wenn er frei ist –
+    # sonst Wiedereinstieg über /privileg (siehe show()).
+    if (bestaetigt and eintrag_frisch is not None
+            and eintrag_frisch.get("wirkung") == "naechste_selbst_waehlen"):
+        sklave_chat = paare.sub_chat_id()
+        if state.get_mode(sklave_chat) in ("chat", None):
+            state.set_mode(sklave_chat, "frei_aufgabe_vorschlag")
+        await telegram_helper.send_sklave(
+            context.bot, t("PRIVILEG_FREI_AUFGABE_PROMPT"), parse_mode="Markdown"
+        )

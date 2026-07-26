@@ -373,12 +373,15 @@ MESSAGES = {
     "AUFGABEN_LOESCHEN_TITEL": "📋 *Offene Aufgaben:*\n",
     "AUFGABEN_LOESCHEN_FUSS": (
         "\nSchreibe die *Nummer* und dann:\n"
-        "`p` = pausieren  |  `x` = löschen\n"
+        "`p` = pausieren  |  `x` = löschen  |  `s` = ganze Serie/Kette stoppen\n"
         "Beispiel: `1 p` oder `2 x`\n"
         "\nOder /abbrechen"
     ),
     "AUFGABEN_GELOESCHT": "🗑 Aufgabe gelöscht.",
-    "AUFGABEN_UNGUELTIG": "Ungültige Eingabe. Beispiel: `1 p` (pausieren) oder `1 x` (löschen)\nOder /abbrechen",
+    "AUFGABEN_UNGUELTIG": "Ungültige Eingabe. Beispiel: `1 p` (pausieren), `1 x` (löschen) oder `1 s` (Serie/Kette stoppen)\nOder /abbrechen",
+    "AUFGABEN_KEINE_SERIE": "Diese Aufgabe gehört zu keiner Serie/Kette. Nutze `x` zum Löschen.",
+    "AUFGABEN_SERIE_STOPP_BESTAETIGUNG": "⚠️ Ganze Serie/Kette wirklich stoppen?\n\n_{aufgabe}_\n\n🔄 *{anzahl}* Glied(er) werden verworfen.\n\nAntworte mit `ja` oder `nein`",
+    "AUFGABEN_SERIE_GESTOPPT": "🗑 Serie/Kette gestoppt – {anzahl} Glied(er) verworfen.",
     "AUFGABEN_LISTE_VERALTET": "⚠️ Die Auswahlliste ist veraltet. Bitte starte /loeschen neu.",
     "AUFGABEN_BEREITS_MARKIERT": "⚠️ Diese Aufgabe wurde bereits als '{status}' markiert. Starte /loeschen neu.",
     "AUFGABEN_PAUSIERT": "⏸ Aufgabe pausiert.",
@@ -535,6 +538,27 @@ MESSAGES = {
     "PRIVILEG_ENTSCHEIDUNG_GESPEICHERT": "✅ Entscheidung gespeichert.",
     "PRIVILEG_NICHT_GEFUNDEN": "⚠️ Privileg nicht mehr gefunden.",
     "PRIVILEG_PUNKTE_ZURUECK": "\n_(Punkte zurück: {kosten})_",
+    "PRIVILEG_VERFALLEN_ERSTATTET": (
+        "⌛ Deine Einlösung ist verfallen (keine Entscheidung deiner Herrin): {namen}.\n"
+        "_(Punkte zurück: {kosten})_"
+    ),
+    "PRIVILEG_FREI_AUFGABE_PROMPT": (
+        "🎁 *Frei-Aufgabe:* Du darfst deine nächste Aufgabe selbst vorschlagen.\n"
+        "Schreib sie mir jetzt in einer Nachricht – oder /abbrechen "
+        "(das Privileg bleibt dann offen, Wiedereinstieg über /privileg)."
+    ),
+    "PRIVILEG_FREI_AUFGABE_GRENZEN": (
+        "🚫 Dein Vorschlag verletzt gesetzte Grenzen:\n{treffer}\n\n"
+        "Formuliere ihn neu – oder /abbrechen."
+    ),
+    "PRIVILEG_FREI_AUFGABE_ERSTELLT": (
+        "✅ Deine Frei-Aufgabe ist erteilt. Sie zählt wie jede andere Aufgabe – "
+        "ich frage zur gewohnten Zeit nach."
+    ),
+    "PRIVILEG_FREI_AUFGABE_AN_DOMINA": (
+        "🎁 *Frei-Aufgabe eingelöst:* Er hat sich seine nächste Aufgabe selbst gewählt:\n\n"
+        "_{aufgabe}_"
+    ),
     # Persona-Fallbacks bei LLM-Ausfall (Stimme der Herrin)
     "FALLBACK_PRIVILEG_GEWAEHRT": "Gewährt: {name}.",
     "FALLBACK_PRIVILEG_VERWEIGERT": "Nicht diesmal – {name} gewähre ich dir nicht. Deine {kosten} Punkte hast du zurück.",
@@ -940,6 +964,11 @@ MESSAGES = {
     "KETTE_FEHLSCHLAG_FRAGE": (
         "🔗 *Kette: Glied {pos}/{gesamt} wurde nicht erledigt.*\n\n"
         "Nächstes Glied wäre:\n_{naechste}_\n\n"
+        "Soll die Kette weiterlaufen oder abgebrochen werden?"
+    ),
+    "KETTE_HAENGT_FRAGE": (
+        "🔗 *Kette hängt: Glied {pos}/{gesamt} wartet, aber nichts ist mehr in Arbeit.*\n\n"
+        "Das wartende Glied:\n_{naechste}_\n\n"
         "Soll die Kette weiterlaufen oder abgebrochen werden?"
     ),
     "BUTTON_KETTE_WEITER": "▶️ Weiterführen",
