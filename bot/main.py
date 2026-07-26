@@ -881,12 +881,20 @@ def entferne_zeit_jobs(paar_id: str) -> None:
             job.remove()
 
 
+async def post_shutdown(application: Application) -> None:
+    """Letzten State-Stand synchron rausschreiben (Review D8/M14): der
+    Persist-Debounce (2 s call_later) feuert nach dem Stop nie mehr – ohne
+    Flush gingen die letzten Sekunden message_history bei jedem Deploy verloren."""
+    state._persist(immediate=True)
+
+
 def main() -> None:
     config.validate()  # Fail-fast: Pflicht-Env-Vars prüfen, bevor irgendwas startet
     app = (
         ApplicationBuilder()
         .token(config.TELEGRAM_BOT_TOKEN)
         .post_init(post_init)
+        .post_shutdown(post_shutdown)
         .concurrent_updates(_paar_update_prozessor())
         .build()
     )

@@ -113,21 +113,26 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _vorschlags_quote() -> tuple[int, int]:
-    """Zählt übernommene vs abgelehnte Tiny-Tasks."""
+    """Zählt übernommene vs abgelehnte Tiny-Tasks – als count-Queries statt
+    200er-Scroll (Review D8/M4: exakt statt ungeordneter Teilmenge, und ohne
+    Payload-Transfer)."""
     try:
         from qdrant_client import models as qm
         from bot.services.qdrant import client
-        results, _ = await qdrant.run_io(client.scroll,
-            collection_name="knowledge_base",
-            scroll_filter=qm.Filter(must=[
-                qm.FieldCondition(key="user_id", match=qm.MatchValue(value=qdrant.mandanten_key("domina"))),
-                qm.FieldCondition(key="typ", match=qm.MatchValue(value="tiny_task")),
-            ]),
-            limit=200, with_payload=True, with_vectors=False,
-        )
-        uebernommen = sum(1 for r in results if r.payload.get("status") == "uebernommen")
-        abgelehnt = sum(1 for r in results if r.payload.get("status") == "abgelehnt")
-        return uebernommen, abgelehnt
+
+        async def _count(status: str) -> int:
+            res = await qdrant.run_io(client.count,
+                collection_name="knowledge_base",
+                count_filter=qm.Filter(must=[
+                    qm.FieldCondition(key="user_id", match=qm.MatchValue(value=qdrant.mandanten_key("domina"))),
+                    qm.FieldCondition(key="typ", match=qm.MatchValue(value="tiny_task")),
+                    qm.FieldCondition(key="status", match=qm.MatchValue(value=status)),
+                ]),
+                exact=True,
+            )
+            return res.count
+
+        return await _count("uebernommen"), await _count("abgelehnt")
     except Exception as e:
         logger.warning("Vorschlags-Quote-Berechnung fehlgeschlagen: %s", e)
         return 0, 0

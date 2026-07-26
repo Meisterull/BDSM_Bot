@@ -487,7 +487,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Konversation persistieren, damit die Herrin in zukünftigen Sessions Kontinuität zeigen kann.
     # Nur wenn der Sklave inhaltlich etwas gesagt hat (kein 'ja'/'ok' o.ä.) – sonst bläht das die DB auf.
-    if len(text) > 10 and query_vector is not None:
+    # Bewusst OHNE query_vector-Gate (Review D8/M12): save_conversation embeddet
+    # selbst – ein Embedder-Schluckauf beim Kontext-Laden oben darf nicht still
+    # den kompletten Austausch aus dem Langzeit-Gedächtnis kosten.
+    if len(text) > 10:
         try:
             session_id = f"sklave_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
             # Zusammenfassung nur fürs Embedding/Preview; voller Wortlaut s.u. in den Feldern.

@@ -35,13 +35,9 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(t("ZIELE_WARTE"))
     erledigte = await qdrant.get_completed_task_count("sklave")
 
-    # Letzte erledigte Aufgaben für Kontext laden
-    letzte_tasks = await qdrant.get_tasks_by_status(["erledigt"])
-    letzte_tasks_sorted = sorted(
-        letzte_tasks,
-        key=lambda t: t.get("erteilt_am", ""),
-        reverse=True
-    )[:5]
+    # Letzte erledigte Aufgaben für Kontext laden – serverseitig sortiert
+    # (Review D8/M4: sonst ab >100 Tasks willkürliche Teilmenge)
+    letzte_tasks_sorted = await qdrant.get_tasks_by_status(["erledigt"], limit=5, sort_by_datum=True)
     aufgaben_str = "\n".join(
         f"- {t.get('aufgabe', '')} (Gefühl: {t.get('gefuehl', 'unbekannt')})"
         for t in letzte_tasks_sorted

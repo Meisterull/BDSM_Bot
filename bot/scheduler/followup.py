@@ -500,8 +500,12 @@ async def _letzte_domina_aktivitaet() -> datetime | None:
     """Jüngster Zeitpunkt aus: neueste erteilte Aufgabe + neueste Domina-Conversation.
     Basis der Lücken-Erkennung (kein Treffer = nie etwas → None)."""
     stempel = []
+    # Inkl. Zwischenzustände gefragt/gefuehl_pending (Review D8/M9): ein gestern
+    # erteilter Task, der gerade auf die Sklaven-Antwort wartet, ist Aktivität –
+    # ohne ihn kam der Lücken-Vorschlag trotz frischer Aufgabe.
     tasks = await qdrant.get_tasks_by_status(
-        ["offen", "erledigt", "nicht_erledigt", "serie_wartend", "kette_wartend", "pausiert", "geplant"],
+        ["offen", "gefragt", "gefuehl_pending", "erledigt", "nicht_erledigt",
+         "serie_wartend", "kette_wartend", "pausiert", "geplant"],
         limit=1, sort_by_datum=True,
     )
     if tasks:
@@ -567,6 +571,12 @@ async def luecken_zustellung_job(bot: Bot) -> None:
         except Exception:
             logger.exception("aufgabe_an_sklaven (Zustellung) fehlgeschlagen – Rohtext")
             anweisung = task.get("aufgabe", "")
+        # Re-Check NACH dem LLM-Await (Review D8/M8, TOCTOU wie _process_serie_tasks):
+        # ein im LLM-Fenster gesetztes Safeword/ein gestarteter Flow darf die
+        # Aufgabe nicht mehr erhalten – nächster 15-Min-Lauf holt sie nach.
+        if state.is_paused() or state.get_mode(paare.sub_chat_id()) not in ("chat", None):
+            logger.info("Zustellung nach Generierung verworfen – Pause/Mode im LLM-Fenster geändert.")
+            break
         # Erst Status flippen (verhindert Doppel-Zustellung beim nächsten Lauf), dann
         # senden – mit Rollback bei Sendefehler, sonst gilt eine nie zugestellte
         # Aufgabe als offen und das Followup fragt danach (Trace 06.07., Lücke 5).
@@ -671,6 +681,11 @@ async def _process_serie_tasks(bot: Bot) -> None:
                 qm.FieldCondition(key="status", match=qm.MatchValue(value="serie_wartend")),
                 qm.FieldCondition(key="follow_up_datum", range=qm.DatetimeRange(lte=now_iso)),
             ]),
+            # Aufsteigend nach Fälligkeit (Review D8/M11): sind nach Downtime
+            # mehrere Serien-Tage fällig, wird sonst pro Lauf ein willkürlicher
+            # aktiviert – Tag 3 könnte vor Tag 2 kommen, obwohl Serien als
+            # aufbauender Bogen generiert werden.
+            order_by=qm.OrderBy(key="follow_up_datum", direction="asc"),
             limit=50, with_payload=True, with_vectors=False,
         )
         tasks = [r.payload for r in results]

@@ -189,11 +189,14 @@ async def _streak_penalty_bei_negativ() -> None:
 async def _sende_bericht_an_domina(context, task_id: str, aufgabe: str, gefuehl: str) -> None:
     """Bericht über die erledigte Aufgabe an die Domina – mit den letzten
     Gefühlen als Vergleichskontext."""
-    erledigt_tasks = await qdrant.get_tasks_by_status(["erledigt"])
-    erledigt_mit_gefuehl = sorted(
-        [t for t in erledigt_tasks if t.get("gefuehl") and t.get("qdrant_point_id") != task_id],
-        key=lambda x: x.get("erteilt_am", ""), reverse=True,
-    )
+    # Serverseitig sortiert + kleines Limit (Review D8/M4): ohne sort_by_datum
+    # liefert der Scroll ab >100 erledigten Tasks eine willkürliche Teilmenge –
+    # die "letzten Gefühle" als Vergleichskontext wären dann falsch.
+    erledigt_tasks = await qdrant.get_tasks_by_status(["erledigt"], limit=20, sort_by_datum=True)
+    erledigt_mit_gefuehl = [
+        t for t in erledigt_tasks
+        if t.get("gefuehl") and t.get("qdrant_point_id") != task_id
+    ]
     vorherige_gefuehle = [t.get("gefuehl", "") for t in erledigt_mit_gefuehl[:3] if t.get("gefuehl")]
 
     prompt = fp.bericht_erledigt(aufgabe, gefuehl, vorherige_gefuehle=vorherige_gefuehle)

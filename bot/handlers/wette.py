@@ -41,8 +41,12 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             t("WETTE_SCHON_AKTIV", einsatz=wette["einsatz"]), parse_mode="Markdown")
         return
 
-    offene = await qdrant.get_tasks_by_status(["offen", "gefragt"], limit=1)
-    if not offene:
+    # Blitzaufgaben zählen nicht (Review D8/M10): sie sind aus der Wett-Auflösung
+    # in punkte.task_erledigt/task_nicht_erledigt bewusst ausgenommen – besteht
+    # das "offen" nur aus einem Blitz, hinge der Einsatz sonst fest, bis
+    # irgendwann ein regulärer Task ausgeht.
+    offene = await qdrant.get_tasks_by_status(["offen", "gefragt"], limit=20)
+    if not any(task.get("quelle") != "blitz" for task in offene):
         await update.message.reply_text(t("WETTE_KEINE_AUFGABE"))
         return
 

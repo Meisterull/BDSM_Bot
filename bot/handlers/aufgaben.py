@@ -30,7 +30,10 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE,
         s.pop("aufgaben_kategorie_filter", None)
     aktive_kategorie = s.get("aufgaben_kategorie_filter", None)
 
-    tasks = await qdrant.get_tasks_by_status(["erledigt"])
+    # sort_by_datum (Review D8/M4): Limit 100 bleibt als Headroom für den
+    # Kategorie-Filter, aber serverseitig sortiert sind es ab >100 Tasks
+    # wenigstens die NEUESTEN 100 statt einer willkürlichen Teilmenge.
+    tasks = await qdrant.get_tasks_by_status(["erledigt"], sort_by_datum=True)
     if not tasks:
         await update.message.reply_text(t("AUFGABEN_KEINE_ERLEDIGT"))
         return
@@ -217,7 +220,12 @@ async def handle_loeschen(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     aufgabe_text = (task_check or {}).get("aufgabe", "?")
 
     if aktion == "p":
-        await qdrant.update_task(point_id, {"status": "pausiert"})
+        # status_vor_pause="pausiert" (Review D8/M7): safeword._resume stellt
+        # alle pausierten Tasks auf status_vor_pause zurück – für die MANUELL
+        # geparkte Aufgabe heißt das idempotent "bleibt pausiert", statt dass
+        # jeder Safeword-Zyklus sie wieder auf "offen" zieht.
+        await qdrant.update_task(point_id, {"status": "pausiert",
+                                            "status_vor_pause": "pausiert"})
         state.set_mode(chat_id, "chat")
         s.pop("loeschen_tasks", None)
         await update.message.reply_text(t("AUFGABEN_PAUSIERT"))

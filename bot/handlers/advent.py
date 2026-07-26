@@ -48,6 +48,9 @@ async def _aktueller() -> dict | None:
         collection_name="progress",
         scroll_filter=qm.Filter(must=[
             qm.FieldCondition(key="typ", match=qm.MatchValue(value="adventskalender")),
+            # Mandanten-Filter (Review D8/M3): sonst öffnet Paar 1 bei ≥2
+            # Paaren die Türchen des anderen Paares im falschen Chat.
+            qm.FieldCondition(key="user_id", match=qm.MatchValue(value=qdrant.mandanten_key("domina"))),
         ]),
         limit=10, with_payload=True, with_vectors=False,
     )

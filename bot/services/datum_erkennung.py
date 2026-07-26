@@ -115,15 +115,20 @@ def finde_termin(text: str) -> tuple[date, str] | None:
 _DAUER_RE = re.compile(r"\b(\d{1,3})\s*(tage?n?|wochen?|days?|weeks?)\b", re.IGNORECASE)
 
 
-def _datum_aus_match(m: re.Match, basis: date) -> date | None:
+def _datum_aus_match(m: re.Match, basis: date, toleranz_tage: int = 0) -> date | None:
     """DD.MM.[YYYY]-Match → date; ohne Jahr das nächste Vorkommen ab `basis`
-    (Jahreswechsel '28.12.–03.01.' löst sich über basis=von auf)."""
+    (Jahreswechsel '28.12.–03.01.' löst sich über basis=von auf).
+
+    `toleranz_tage`: so weit darf das Datum VOR `basis` liegen, ohne ins
+    Folgejahr zu rollen (Review D8/M2: wer mitten in der Abwesenheit
+    '/abwesend 20.07.-02.08.' setzt, meint das laufende Jahr – vorher landete
+    der Zeitraum komplett im nächsten Jahr und der Prompt-Hinweis blieb aus)."""
     tag, monat, jahr = int(m.group(1)), int(m.group(2)), m.group(3)
     try:
         if jahr:
             return date(int(jahr), monat, tag)
         kandidat = date(basis.year, monat, tag)
-        if kandidat < basis:
+        if kandidat < basis - timedelta(days=toleranz_tage):
             kandidat = date(basis.year + 1, monat, tag)
         return kandidat
     except ValueError:
@@ -143,7 +148,11 @@ def finde_zeitraum(text: str) -> tuple[date, date] | None:
 
     daten: list[date] = []
     for m in _DATUM_RE.finditer(text):
-        d = _datum_aus_match(m, daten[0] if daten else heute)
+        # Nur das ERSTE Datum bekommt das Vergangenheits-Toleranzfenster
+        # (laufende Abwesenheit); das zweite hängt via basis=von am ersten,
+        # damit '28.12.–03.01.' weiter über den Jahreswechsel auflöst.
+        d = _datum_aus_match(m, daten[0] if daten else heute,
+                             toleranz_tage=0 if daten else 60)
         if d is not None:
             daten.append(d)
         if len(daten) == 2:
@@ -161,7 +170,11 @@ def finde_zeitraum(text: str) -> tuple[date, date] | None:
     if len(daten) == 1:
         von = daten[0] if daten[0] >= heute else heute
         if dauer_tage:
-            return von, von + timedelta(days=dauer_tage)
+            # Dauer am GENANNTEN Start ankern ('ab 20.07. 2 Wochen' mitten in
+            # der Abwesenheit endet am 03.08., nicht heute+14). Schon komplett
+            # abgelaufene Zeiträume sind keine Abwesenheit mehr.
+            bis = daten[0] + timedelta(days=dauer_tage)
+            return (von, bis) if bis >= von else None
         if daten[0] > heute:
             return heute, daten[0]
         return None

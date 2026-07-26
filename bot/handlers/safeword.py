@@ -41,8 +41,9 @@ async def _pause_all(bot: Bot) -> None:
     stoppt nie die anderen."""
     # serie_wartend/kette_wartend mitpausieren – sonst aktiviert _process_serie_tasks
     # bzw. die Ketten-Freischaltung sie während der Safeword-Pause weiter.
+    # (reaktion_pending entfernt, Review D8: war nie ein Task-Status, nur ein Mode.)
     pausierbare_status = [
-        "offen", "gefragt", "gefuehl_pending", "reaktion_pending",
+        "offen", "gefragt", "gefuehl_pending",
         "serie_wartend", "kette_wartend",
     ]
     tasks = await qdrant.get_tasks_by_status(pausierbare_status)
@@ -75,12 +76,17 @@ async def _pause_all(bot: Bot) -> None:
 
 
 async def _resume(bot: Bot) -> None:
-    """Pause DES PAARES aufheben, dessen pausierte Tasks zurücksetzen."""
+    """Pause DES PAARES aufheben, dessen pausierte Tasks zurücksetzen.
+
+    Manuell geparkte Aufgaben (/loeschen … p) tragen status_vor_pause="pausiert"
+    und bleiben dadurch geparkt (Review D8/M7) – nur Safeword-pausierte kehren
+    in ihren echten Vorher-Status zurück."""
     for task in await qdrant.get_tasks_by_status(["pausiert"]):
         point_id = task.get("qdrant_point_id")
         if point_id:
             vorher = task.get("status_vor_pause") or "offen"
-            await qdrant.update_task(point_id, {"status": vorher})
+            if vorher != "pausiert":
+                await qdrant.update_task(point_id, {"status": vorher})
 
     paar = paare.paar_im_kontext()
     state.set_paused(False)

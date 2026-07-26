@@ -182,6 +182,12 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not task:
         await query.message.reply_text(t("KETTE_NICHT_VORHANDEN"))
         return
+    # Doppel-Tap-Guard (Review D8/M6, wie callback_fehlschlag): ein verspäteter
+    # zweiter Tap darf ein bereits entschiedenes/erledigtes Glied nicht wieder
+    # auf "offen" setzen und erneut senden (sonst doppelte Punkte möglich).
+    if task.get("status") != "kette_wartend":
+        await query.message.reply_text(t("KETTE_BEREITS_ENTSCHIEDEN"))
+        return
 
     if action == "approve":
         neuer_text = task.get("kette_anpass_vorschlag") or task.get("aufgabe", "")

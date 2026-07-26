@@ -279,11 +279,14 @@ async def _get_aktiver_arc() -> dict | None:
     if not arc_id:
         return None
 
-    results, _ = await qdrant.run_io(client.scroll, 
+    results, _ = await qdrant.run_io(client.scroll,
         collection_name="progress",
         scroll_filter=qm.Filter(must=[
             qm.FieldCondition(key="typ", match=qm.MatchValue(value="arc")),
             qm.FieldCondition(key="arc_id", match=qm.MatchValue(value=arc_id)),
+            # Defense-in-Depth (Review D8/M3): arc_id ist eine profil-referenzierte
+            # UUID, der Mandanten-Filter schützt zusätzlich wie überall sonst.
+            qm.FieldCondition(key="user_id", match=qm.MatchValue(value=qdrant.mandanten_key("domina"))),
         ]),
         limit=1, with_payload=True, with_vectors=False,
     )

@@ -288,20 +288,141 @@ async def test_kette_fangnetz():
         _sched.telegram_helper.send_domina = orig_send
 
 
+# ==========================================================================
+# MITTEL-Fixes (M1–M15)
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# M2 – finde_zeitraum: laufende Abwesenheit bleibt im aktuellen Jahr
+# --------------------------------------------------------------------------
+
+def test_zeitraum_laufende_abwesenheit():
+    from datetime import date
+    from bot.services import datum_erkennung as dt
+
+    orig = dt._heute
+    dt._heute = lambda: date(2026, 7, 26)
+    try:
+        assert dt.finde_zeitraum("vom 20.07. bis 02.08.") == (date(2026, 7, 20), date(2026, 8, 2)), \
+            "Regression M2: laufender Zeitraum sprang ins Folgejahr"
+        assert dt.finde_zeitraum("vom 01.08. bis 10.08.") == (date(2026, 8, 1), date(2026, 8, 10))
+        assert dt.finde_zeitraum("vom 28.12. bis 03.01.") == (date(2026, 12, 28), date(2027, 1, 3)), \
+            "Jahreswechsel-Zeitraum muss weiter über basis=von auflösen"
+        # Dauer ankert am genannten Start, von clampt auf heute
+        assert dt.finde_zeitraum("ab 20.07. 2 Wochen") == (date(2026, 7, 26), date(2026, 8, 3))
+    finally:
+        dt._heute = orig
+
+
+# --------------------------------------------------------------------------
+# M5 – apply_profile_patch: zwei list_add aufs selbe Feld akkumulieren
+# --------------------------------------------------------------------------
+
+async def test_profile_patch_doppeltes_list_add():
+    from bot.services import qdrant as _q
+
+    captured = {}
+
+    async def fake_patch(user_id, fields):
+        captured.update(fields)
+
+    orig_get, orig_patch = _q.get_user_profile, _q.patch_profile_fields
+    _q.get_user_profile = _aw(lambda uid: {"user_id": "sklave", "vorlieben": ["Alt"]})
+    _q.patch_profile_fields = fake_patch
+    try:
+        bericht = await _q.apply_profile_patch("sklave", {"changes": [
+            {"feld": "vorlieben", "operation": "list_add", "wert": "Neu1"},
+            {"feld": "vorlieben", "operation": "list_add", "wert": "Neu2"},
+        ]})
+        assert captured.get("vorlieben") == ["Alt", "Neu1", "Neu2"], \
+            f"Regression M5: zweites list_add verwarf das erste ({captured.get('vorlieben')})"
+        assert len(bericht["angewandt"]) == 2
+    finally:
+        _q.get_user_profile, _q.patch_profile_fields = orig_get, orig_patch
+
+
+# --------------------------------------------------------------------------
+# M13 – Profil-Neuanlage: deterministische Punkt-ID (idempotent bei Race)
+# --------------------------------------------------------------------------
+
+async def test_profil_neuanlage_deterministische_id():
+    from bot.services import qdrant as _q
+
+    ids = []
+
+    def fake_scroll(**kwargs):
+        return [], None
+
+    def fake_upsert(collection_name=None, points=None, **kwargs):
+        ids.append(str(points[0].id))
+
+    orig_client, orig_emb = _q.client, _q.emb.get_embedding
+    _q.client = MagicMock()
+    _q.client.scroll = fake_scroll
+    _q.client.upsert = fake_upsert
+    _q.emb.get_embedding = AsyncMock(return_value=[0.0] * 8)
+    try:
+        await _q.upsert_user_profile("sklave", {"rolle": "sklave"})
+        await _q.upsert_user_profile("sklave", {"rolle": "sklave"})
+        assert ids[0] == ids[1], \
+            "Regression M13: parallele Erstanlagen erzeugen verschiedene Punkt-IDs (Duplikat-Profil)"
+    finally:
+        _q.client, _q.emb.get_embedding = orig_client, orig_emb
+
+
+# --------------------------------------------------------------------------
+# M7 – Safeword-Resume lässt manuell geparkte Aufgaben in Ruhe
+# --------------------------------------------------------------------------
+
+async def test_resume_ueberspringt_manuelle_pause():
+    from bot.handlers import safeword as _sw
+
+    updates = []
+
+    async def fake_update_task(task_id, fields):
+        updates.append((task_id, fields))
+
+    tasks = [
+        {"qdrant_point_id": "t1", "status": "pausiert", "status_vor_pause": "offen"},
+        {"qdrant_point_id": "t2", "status": "pausiert", "status_vor_pause": "pausiert"},  # manuell
+    ]
+    orig_gts, orig_ut = _sw.qdrant.get_tasks_by_status, _sw.qdrant.update_task
+    orig_dom, orig_skl = _sw.telegram_helper.send_domina, _sw.telegram_helper.send_sklave
+    _sw.qdrant.get_tasks_by_status = _aw(lambda status, **k: list(tasks))
+    _sw.qdrant.update_task = fake_update_task
+    _sw.telegram_helper.send_domina = AsyncMock()
+    _sw.telegram_helper.send_sklave = AsyncMock()
+    _state._state.clear()
+    try:
+        await _sw._resume(MagicMock())
+        beruehrt = {tid for tid, _ in updates}
+        assert beruehrt == {"t1"}, \
+            f"Regression M7: Resume fasste manuell geparkte Aufgabe an ({beruehrt})"
+    finally:
+        _sw.qdrant.get_tasks_by_status, _sw.qdrant.update_task = orig_gts, orig_ut
+        _sw.telegram_helper.send_domina, _sw.telegram_helper.send_sklave = orig_dom, orig_skl
+        _state._state.clear()
+
+
 # --------------------------------------------------------------------------
 
 def main() -> None:
     test_loeschbare_status_liste()
+    test_zeitraum_laufende_abwesenheit()
     for coro in (
         test_post_chat_leere_antwort_raist,
         test_kette_glied_limits_check,
         test_reaktion_flippt_status_nicht,
         test_cleanup_erstattet_unentschiedene,
         test_kette_fangnetz,
+        test_profile_patch_doppeltes_list_add,
+        test_profil_neuanlage_deterministische_id,
+        test_resume_ueberspringt_manuelle_pause,
     ):
         asyncio.run(coro())
         print(f"✅ {coro.__name__}")
     print("✅ test_loeschbare_status_liste")
+    print("✅ test_zeitraum_laufende_abwesenheit")
     print("✅ Alle Review-D8-Tests bestanden")
 
 

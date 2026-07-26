@@ -60,6 +60,10 @@ async def _geplante() -> list[dict]:
         scroll_filter=qm.Filter(must=[
             qm.FieldCondition(key="typ", match=qm.MatchValue(value="event_arc_plan")),
             qm.FieldCondition(key="status", match=qm.MatchValue(value="geplant")),
+            # Mandanten-Filter (Review D8/M3): ohne ihn sähe bei ≥2 Paaren
+            # jedes Paar ALLE Pläne und _save_plan würde Fremd-Pläne beim
+            # Re-Save auf den falschen Mandanten umschreiben.
+            qm.FieldCondition(key="user_id", match=qm.MatchValue(value=qdrant.mandanten_key("domina"))),
         ]),
         limit=20, with_payload=True, with_vectors=False,
     )

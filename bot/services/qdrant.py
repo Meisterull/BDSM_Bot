@@ -196,7 +196,13 @@ async def upsert_user_profile(user_id: str, data: dict) -> str:
         with_payload=False,
         with_vectors=False,
     )
-    point_id = str(results[0].id) if results else str(uuid.uuid4())
+    # Neuanlage mit DETERMINISTISCHER Punkt-ID (Review D8/M13): Scheduler-Jobs
+    # laufen nicht unter dem Paar-Lock – legen Job und Handler ein noch fehlendes
+    # Profil parallel an, kollidieren beide Upserts jetzt idempotent auf derselben
+    # ID statt zwei Punkte mit gleichem user_id zu erzeugen (get_user_profile
+    # limit=1 lieferte danach zufällig einen von beiden).
+    point_id = (str(results[0].id) if results
+                else str(uuid.uuid5(uuid.NAMESPACE_URL, f"user_profile:{mandanten_key(user_id)}")))
 
     # Nur semantisch relevante Felder embedden — verhindert nutzlose Vektoren aus Zahlen/Listen
     embed_data = {k: v for k, v in data.items() if k in _PROFILE_EMBED_FIELDS and v}
@@ -1440,7 +1446,9 @@ async def append_profile_limits(user_id: str, feld: str, werte: list[str]) -> li
         point_id = str(results[0].id)
         payload = results[0].payload or {}
     else:
-        point_id = str(uuid.uuid4())
+        # Deterministische ID wie upsert_user_profile (Review D8/M13) – parallele
+        # Erstanlagen kollidieren idempotent statt Duplikate zu erzeugen.
+        point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"user_profile:{mandanten_key(user_id)}"))
         payload = {"user_id": mandanten_key(user_id)}
 
     bestand = payload.get(feld) or []
@@ -1610,7 +1618,10 @@ async def apply_profile_patch(profile_user: str, patch: dict) -> dict:
                 else:
                     bericht["ignoriert"].append(f"{feld}: '{alt_neu['alt']}' nicht präzisierbar")
         elif op == "list_add" and feld in erlaubt["list_add"]:
-            bestand = profil.get(feld) or []
+            # Basis inkl. bereits in DIESEM Patch angesammelter Werte
+            # (Review D8/M5): sonst verwirft ein zweites list_add aufs selbe
+            # Feld das erste – der Bericht meldete trotzdem beide als angewandt.
+            bestand = geaendert.get(feld, profil.get(feld) or [])
             if not isinstance(bestand, list):
                 bestand = []
             if isinstance(wert, str):

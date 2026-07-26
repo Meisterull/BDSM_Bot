@@ -251,6 +251,8 @@ async def _callback_setzt(action: str, erwartet: str):
     kette_adaptiv.qdrant.get_task = _aw(lambda tid: {
         "qdrant_point_id": "t2", "aufgabe": "ALT", "kette_anpass_vorschlag": "NEU",
         "kette_position": 2, "kette_gesamt": 3,
+        # Der Doppel-Tap-Guard (Review D8/M6) lässt nur noch wartende Glieder zu.
+        "status": "kette_wartend",
     })
     kette_adaptiv.qdrant.update_task = _aw(lambda tid, fields: cap.update(fields))
     # kette_adaptiv.state IST das bot.state-Modul – Patch ohne Restore würde
@@ -271,6 +273,18 @@ async def _callback_setzt(action: str, erwartet: str):
 async def test_adaptive_kette_callbacks():
     await _callback_setzt("approve", "NEU")  # Anpassung übernehmen
     await _callback_setzt("keep", "ALT")     # Original behalten
+
+    # Doppel-Tap-Guard (Review D8/M6): bereits entschiedenes Glied (status !=
+    # kette_wartend) darf NICHT wieder auf offen gesetzt und erneut gesendet werden.
+    cap = {}
+    kette_adaptiv.qdrant.get_task = _aw(lambda tid: {
+        "qdrant_point_id": "t2", "aufgabe": "ALT", "status": "erledigt",
+    })
+    kette_adaptiv.qdrant.update_task = _aw(lambda tid, fields: cap.update(fields))
+    kette_adaptiv.telegram_helper.send_sklave = AsyncMock()
+    await kette_adaptiv.callback(_fake_callback("ketteanpass:approve:t2"), MagicMock())
+    assert not cap, f"Doppel-Tap setzte entschiedenes Glied zurück: {cap}"
+    assert kette_adaptiv.telegram_helper.send_sklave.await_count == 0
 
 
 def test_serie_variationen_parse():

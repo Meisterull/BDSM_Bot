@@ -119,8 +119,9 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         kontext = f"Letztes Training ({letzte.get('datum', '')[:10]}): {letzte.get('typ', '')} – {letzte.get('zusammenfassung', '')[:100]}"
 
     # Letzte erledigte Tasks laden
-    erledigt = await qdrant.get_tasks_by_status(["erledigt"])
-    erledigt_sorted = sorted(erledigt, key=lambda x: x.get("erteilt_am", ""), reverse=True)
+    # Serverseitig sortiert (Review D8/M4): sonst ab >100 erledigten Tasks
+    # eine willkürliche Teilmenge statt der neuesten.
+    erledigt_sorted = await qdrant.get_tasks_by_status(["erledigt"], limit=5, sort_by_datum=True)
     letzte_tasks = [task.get("aufgabe", "") for task in erledigt_sorted[:3] if task.get("aufgabe")]
 
     # Deterministischer Typ-Wechsel – letzten Typ aus Verlauf ermitteln
@@ -230,8 +231,9 @@ async def daily_training(bot: Bot) -> None:
         return
 
     # Letzte erledigte Tasks laden
-    erledigt = await qdrant.get_tasks_by_status(["erledigt"])
-    erledigt_sorted = sorted(erledigt, key=lambda x: x.get("erteilt_am", ""), reverse=True)
+    # Serverseitig sortiert (Review D8/M4): sonst ab >100 erledigten Tasks
+    # eine willkürliche Teilmenge statt der neuesten.
+    erledigt_sorted = await qdrant.get_tasks_by_status(["erledigt"], limit=5, sort_by_datum=True)
     letzte_tasks = [task.get("aufgabe", "") for task in erledigt_sorted[:3] if task.get("aufgabe")]
 
     # Täglich alternierend zwischen Challenge und Reflexion

@@ -25,12 +25,12 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     level = domina_profile.get("aktuelles_level", 1)
     ziele = domina_profile.get("ziele", "nicht angegeben")
 
-    # Erledigte Aufgaben der letzten 4 Wochen
-    erledigte = await qdrant.get_tasks_by_status(["erledigt"])
-    erledigte_sorted = sorted(erledigte, key=lambda t: t.get("erteilt_am", ""), reverse=True)[:20]
+    # Erledigte Aufgaben der letzten 4 Wochen – serverseitig sortiert
+    # (Review D8/M4: sonst ab >100 Tasks willkürliche Teilmenge)
+    erledigte_sorted = await qdrant.get_tasks_by_status(["erledigt"], limit=20, sort_by_datum=True)
 
     # Nicht erledigte Aufgaben
-    nicht_erledigt = (await qdrant.get_tasks_by_status(["nicht_erledigt"]))[:10]
+    nicht_erledigt = await qdrant.get_tasks_by_status(["nicht_erledigt"], limit=10, sort_by_datum=True)
 
     # Fortschritt Einträge
     progress = await qdrant.get_progress_entries("domina", limit=10)

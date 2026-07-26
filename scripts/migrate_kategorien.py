@@ -42,9 +42,14 @@ _BUCKETS = ("positiv", "neutral", "negativ")
 
 def _req(method: str, path: str, body=None):
     data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"}
+    # api-key wie restore_qdrant.py (Review D8/M15): seit der Qdrant-Härtung
+    # 04.07.2026 endet sonst jeder Request – auch der Dry-Run – in 401.
+    api_key = os.getenv("QDRANT_API_KEY", "")
+    if api_key:
+        headers["api-key"] = api_key
     req = urllib.request.Request(
-        f"{QDRANT_URL}{path}", data=data, method=method,
-        headers={"Content-Type": "application/json"},
+        f"{QDRANT_URL}{path}", data=data, method=method, headers=headers,
     )
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read().decode())

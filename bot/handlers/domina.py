@@ -448,14 +448,27 @@ async def handle_kette_aufgaben(
 
         await update.message.reply_text(t("DOMINA_KETTE_ERSTELLT", gesamt=gesamt))
 
-        # Erste Aufgabe an Sklaven senden
+        # Erste Aufgabe an Sklaven senden. Mode erst NACH erfolgreichem Send
+        # (Review D8/M1): vorher stand set_followup_task VOR dem Grok-Call –
+        # schlug der fehl, steckte der Sklave im Followup-Mode für eine
+        # Aufgabe, die er nie gesehen hat. Bei LLM-Fehler Roh-Text senden
+        # (Muster gefuehl._kette_naechster_schritt).
         if first_task_id:
-            state.set_followup_task(sklave_chat, first_task_id)
             try:
                 anweisung = await grok.simple(fp.aufgabe_an_sklaven(kette_liste[0]), max_tokens=250)
+            except Exception as e:
+                logger.error("Ketten-Start: aufgabe_an_sklaven fehlgeschlagen, sende Roh-Text: %s", e)
+                anweisung = kette_liste[0]
+            try:
                 await telegram_helper.send_sklave(context.bot, anweisung, voice_text=anweisung)
             except Exception as e:
+                # Task steht auf "offen" mit follow_up_datum – der followup_job
+                # stellt die Frage nach, der Sklave bleibt im Chat-Mode.
                 logger.error("Fehler beim Senden der ersten Ketten-Aufgabe: %s", e)
+            else:
+                if not state.set_followup_task(sklave_chat, first_task_id):
+                    logger.warning("Ketten-Start %s gesendet, aber Followup-State blockiert – "
+                                   "Nachfrage kommt über den regulären Followup-Zyklus.", first_task_id)
 
     else:
         # Auch Glieder 2..n durchs Sicherheits-Gate (Review D8/H1): vorher lief

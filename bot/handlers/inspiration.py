@@ -322,14 +322,13 @@ async def _lade_letzte_aufgaben_kontext() -> list[str]:
             qm.FieldCondition(key="status", match=qm.MatchValue(value="abgelehnt")),
         ]),
         limit=5,
+        # Serverseitig sortieren (Review D8/M4): sonst liefert scroll ab >5
+        # abgelehnten Einträgen eine willkürliche statt der neuesten Teilmenge.
+        order_by=qm.OrderBy(key="erstellt_am", direction="desc"),
         with_payload=True,
         with_vectors=False,
     )
-    abgelehnte = sorted(
-        [r.payload for r in abgelehnte_results],
-        key=lambda x: x.get("erstellt_am", ""),
-        reverse=True,
-    )
+    abgelehnte = [r.payload for r in abgelehnte_results]
     letzte += [p.get("inhalt", "")[:80] for p in abgelehnte if p.get("inhalt")]
     return letzte
 
