@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot import state
 from bot.services import qdrant, telegram_helper, grok, synonyme
+from bot.services import sticker_reaktionen
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,8 @@ async def _bestaetigen(update, context, chat_id, task_id, strafe_id, s) -> None:
         logger.error("Fehler bei Bestrafungs-Reformulierung: %s", e)
         nachricht = bestrafung_text
 
+    # „Strafe folgt"-Sticker als Auftakt der Anordnung
+    await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.STRAFE)
     await telegram_helper.send_sklave(context.bot, nachricht)
     await update.message.reply_text(t("REAKTION_ANGEORDNET"))
 

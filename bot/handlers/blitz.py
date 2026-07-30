@@ -23,6 +23,7 @@ from telegram.ext import ContextTypes
 from bot import config
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, limits_check, kategorie_logik, punkte
+from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
 from bot.prompts import persona, coach_persona
 from bot.messages import t
@@ -112,6 +113,8 @@ async def sende_blitz(bot) -> bool:
 
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
         t("BUTTON_BLITZ_GESCHAFFT"), callback_data=f"blitz:fertig:{point_id}")]])
+    # Befehls-Sticker als Aufmerksamkeits-Auftakt der Überraschungs-Aufgabe
+    await sticker_reaktionen.sende_sklave(bot, sticker_reaktionen.BEFEHL)
     try:
         await telegram_helper.send_sklave(
             bot,
@@ -218,6 +221,8 @@ async def markiere_verpasst(bot, task: dict) -> None:
             nachricht = reaktion
     except Exception:
         logger.exception("Blitz-Spott fehlgeschlagen – nutze Fallback")
+    # Spott-Sticker passend zur genüsslich-spöttischen Reaktion
+    await sticker_reaktionen.sende_sklave(bot, sticker_reaktionen.SPOTT)
     await telegram_helper.send_sklave(bot, nachricht)
     try:
         await telegram_helper.send_domina(

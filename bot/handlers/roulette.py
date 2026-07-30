@@ -20,6 +20,7 @@ from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, limits_check
+from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
 from bot.prompts import persona, coach_persona
 from bot.messages import t
@@ -151,6 +152,8 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception:
             logger.exception("Gnade-Verkündung fehlgeschlagen – Fallback")
             meldung = ""
+        # Gnaden-Sticker vor der Verkündung
+        await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.GNADE)
         await telegram_helper.send_sklave(
             context.bot, meldung or t("ROULETTE_GNADE_FALLBACK"), voice_text=meldung or None)
         await query.message.reply_text(t("ROULETTE_GNADE_VERKUENDET"))
@@ -168,6 +171,8 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         logger.exception("aufgabe_an_sklaven (Roulette) fehlgeschlagen – Rohtext")
         anweisung = strafe
+    # Schicksals-Sticker: die Maschine hat entschieden
+    await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.SCHICKSAL)
     await telegram_helper.send_sklave(
         context.bot, t("ROULETTE_AN_SKLAVEN", anweisung=anweisung),
         parse_mode="Markdown", voice_text=anweisung)

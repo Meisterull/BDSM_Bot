@@ -15,6 +15,7 @@ from bot.services.qdrant import client
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, embeddings, privileg_effekte, limits_check, kategorie_logik, labels, zeiten
+from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
 from bot.prompts import coach_persona
 from bot.prompts import domina_coach
@@ -870,6 +871,8 @@ async def followup_job(bot: Bot) -> None:
                     logger.info("Follow-up nach Generierung verworfen – Pause/Mode im LLM-Fenster geändert.")
                     break
                 from bot.handlers import followup_response
+                # „Ich sehe alles"-Sticker gelegentlich vor der Kontroll-Frage
+                await sticker_reaktionen.sende_sklave(bot, sticker_reaktionen.AUGE, chance=0.35)
                 await bot.send_message(
                     chat_id=sklave_chat, text=frage,
                     reply_markup=followup_response.frage_buttons(point_id),

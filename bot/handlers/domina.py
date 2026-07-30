@@ -13,6 +13,7 @@ from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, embeddings, punkte, telegram_helper, kategorie_logik, synonyme
+from bot.services import sticker_reaktionen
 from bot.prompts import domina_coach, followup as fp
 from bot.handlers import onboarding
 from bot.messages import t
@@ -466,6 +467,8 @@ async def handle_kette_aufgaben(
             except Exception as e:
                 logger.error("Ketten-Start: aufgabe_an_sklaven fehlgeschlagen, sende Roh-Text: %s", e)
                 anweisung = kette_liste[0]
+            # Befehls-Sticker gelegentlich als Auftakt der Anweisung
+            await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.BEFEHL, chance=0.5)
             try:
                 await telegram_helper.send_sklave(context.bot, anweisung, voice_text=anweisung)
             except Exception as e:

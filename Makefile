@@ -10,6 +10,7 @@ test:
 	python3 tests/test_spass.py
 	python3 tests/test_paare.py
 	python3 tests/test_review_d8.py
+	python3 tests/test_sticker.py
 
 # Image bauen – nur wenn die Tests grün sind.
 build: test

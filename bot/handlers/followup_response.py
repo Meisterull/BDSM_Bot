@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, punkte, synonyme
+from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
 from bot.prompts import bestrafung as bp
 from bot.messages import t
@@ -126,7 +127,11 @@ async def _handle_no(
         verlorene_wette = await punkte.task_nicht_erledigt()
     except Exception as e:
         logger.error("Fehler bei Streak-Reset: %s", e)
+    spott_gesendet = False
     if verlorene_wette:
+        # Verlorene Wette: spöttisches Amüsement der Herrin
+        spott_gesendet = await sticker_reaktionen.sende_sklave(
+            context.bot, sticker_reaktionen.SPOTT)
         try:
             await message.reply_text(
                 t("WETTE_VERLOREN", einsatz=verlorene_wette), parse_mode="Markdown")
@@ -221,6 +226,10 @@ async def _handle_no(
     except Exception as e:
         logger.error("Fehler bei Reaktion-auf-Nicht-Erledigt: %s", e)
         reaktion = t("FALLBACK_NICHT_ERLEDIGT")
+    # Strenger Blick vor der Reaktion – außer der Spott-Sticker lief schon
+    # oben bei der verlorenen Wette (zwei Sticker im selben Flow wären zu viel).
+    if not spott_gesendet:
+        await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.STRENG)
     await message.reply_text(reaktion)
 
     # F12: Gescheitertes Ketten-Glied darf die Kette nicht stranden lassen –

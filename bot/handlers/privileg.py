@@ -16,6 +16,7 @@ from bot import config, state
 from bot.services import paare
 from bot.handlers import entscheidung_flow
 from bot.services import qdrant, telegram_helper, punkte, privileg_effekte
+from bot.services import sticker_reaktionen
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
@@ -348,6 +349,30 @@ async def _entscheidung_anwenden(context, aktiv_id: str, bestaetigt: bool, komme
         system = system.replace("Seine Punkte hat er zurück. ", "")
         fallback = t("FALLBACK_PRIVILEG_VERWEIGERT", name=eintrag["name"], kosten=0).split(" Deine ")[0]
 
+    try:
+        meldung_sklave = await grok.simple(prompt, system=system)
+    except Exception as e:
+        logger.error("Fehler bei Privileg-Entscheidungs-Nachricht: %s", e)
+        meldung_sklave = fallback
+    if erstattet:
+        meldung_sklave += t("PRIVILEG_PUNKTE_ZURUECK", kosten=kosten)
+    if bestaetigt:
+        # Gnaden-Sticker: die Herrin gewährt das Privileg
+        await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.GNADE)
+    await telegram_helper.send_sklave(context.bot, meldung_sklave)
+
+    # Frei-Aufgabe (Review D8/H7): nach Bestätigung darf der Sklave seine
+    # nächste Aufgabe selbst vorschlagen. Mode nur setzen, wenn er frei ist –
+    # sonst Wiedereinstieg über /privileg (siehe show()).
+    if (bestaetigt and eintrag_frisch is not None
+            and eintrag_frisch.get("wirkung") == "naechste_selbst_waehlen"):
+        sklave_chat = paare.sub_chat_id()
+        if state.get_mode(sklave_chat) in ("chat", None):
+            state.set_mode(sklave_chat, "frei_aufgabe_vorschlag")
+        await telegram_helper.send_sklave(
+            context.bot, t("PRIVILEG_FREI_AUFGABE_PROMPT"), parse_mode="Markdown"
+        )
+
 
 async def handle_frei_aufgabe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sklave schlägt nach bestätigter Frei-Aufgabe seine nächste Aufgabe vor
@@ -394,24 +419,3 @@ async def handle_frei_aufgabe(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     except Exception:
         logger.exception("Frei-Aufgabe: Domina-Info fehlgeschlagen")
-
-    try:
-        meldung_sklave = await grok.simple(prompt, system=system)
-    except Exception as e:
-        logger.error("Fehler bei Privileg-Entscheidungs-Nachricht: %s", e)
-        meldung_sklave = fallback
-    if erstattet:
-        meldung_sklave += t("PRIVILEG_PUNKTE_ZURUECK", kosten=kosten)
-    await telegram_helper.send_sklave(context.bot, meldung_sklave)
-
-    # Frei-Aufgabe (Review D8/H7): nach Bestätigung darf der Sklave seine
-    # nächste Aufgabe selbst vorschlagen. Mode nur setzen, wenn er frei ist –
-    # sonst Wiedereinstieg über /privileg (siehe show()).
-    if (bestaetigt and eintrag_frisch is not None
-            and eintrag_frisch.get("wirkung") == "naechste_selbst_waehlen"):
-        sklave_chat = paare.sub_chat_id()
-        if state.get_mode(sklave_chat) in ("chat", None):
-            state.set_mode(sklave_chat, "frei_aufgabe_vorschlag")
-        await telegram_helper.send_sklave(
-            context.bot, t("PRIVILEG_FREI_AUFGABE_PROMPT"), parse_mode="Markdown"
-        )

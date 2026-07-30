@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, punkte, kategorie_logik
+from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
 from bot.prompts import sklave as sp
 from bot.messages import t
@@ -45,6 +46,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         logger.error("Fehler bei Reaktion-auf-Gefühl: %s", e)
         reaktion = t("FALLBACK_GEFUEHL_REAKTION")
+    # Lob-Sticker vor der Text-Reaktion – chance-gedrosselt, sonst wirkt das
+    # tägliche Ritual schnell mechanisch.
+    await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.LOB, chance=0.5)
     await update.message.reply_text(reaktion)
 
     await _punkte_und_achievements(context, task, text)
@@ -320,6 +324,10 @@ async def _send_punkte_feedback(context, ergebnis: dict) -> None:
         msg += f"\n{breakdown}"
     if streak > 1:
         msg += t("GEFUEHL_STREAK_SUFFIX", streak=streak)
+    # Gewonnene Wette = Glücksspiel-Moment → Schicksals-Sticker zum Breakdown
+    # (Erkennung übers 🎰 im Bonus-Label aus punkte.py – wortlaut-unabhängig)
+    if any("🎰" in name for name, _ in boni):
+        await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.SCHICKSAL)
     await telegram_helper.send_sklave(context.bot, msg, parse_mode="Markdown")
 
     # Neue Abzeichen – Domina fragen ob sie es dem Sklaven mitteilen möchte

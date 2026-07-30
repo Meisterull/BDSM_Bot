@@ -16,6 +16,7 @@ from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, limits_check, kategorie_logik
+from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
 from bot.messages import t
 
@@ -170,6 +171,8 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         logger.error("aufgabe_an_sklaven fehlgeschlagen, sende Roh-Text: %s", e)
         anweisung = aufgabe_text
+    # Schicksals-Sticker: der Würfel hat entschieden
+    await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.SCHICKSAL)
     await telegram_helper.send_sklave(context.bot, t("WUERFEL_BEFEHL_PREFIX", anweisung=anweisung),
                                       voice_text=anweisung)
     await query.message.reply_text(

@@ -184,6 +184,11 @@ BACKUP_SNAPSHOTS = os.getenv("BACKUP_SNAPSHOTS", "true").lower() == "true"
 # State-Persistenz (message_history + Pause-Flag über Neustart). Muss gemountetes Volume sein.
 STATE_FILE = os.getenv("STATE_FILE", "/app/data/state.json")
 
+# Reaktions-Sticker der Herrin 🎭: Mapping Tag → Telegram-file_id, erstellt via
+# scripts/sticker_upload.py (Set-Generierung s. sticker-studio-Notebook).
+# Fehlt die Datei, ist das Feature schlicht aus – kein Flag nötig.
+REAKTIONS_STICKER_FILE = os.getenv("REAKTIONS_STICKER_FILE", "/app/data/reaktions_sticker.json")
+
 # Logging: komplette Textdatei (rotierend) + optionaler HTTP-Port zur Live-Analyse.
 LOG_FILE = os.getenv("LOG_FILE", "/app/data/bot.log")
 LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", "5000000"))   # 5 MB pro Datei
