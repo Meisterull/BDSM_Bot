@@ -20,6 +20,7 @@ Perspektive der Bausteine: "du" = die dominante Rolle (das LLM spielt sie),
 _DOM_FORMEN = {
     "frau": {
         "label": "Herrin",           # die Rolle als Wort
+        "label_gen": "der Herrin",   # "Grenzen der Herrin"
         "anrede": "deine Herrin",    # wie der Sub sie/ihn nennt
         "nom": "sie", "dat": "ihr", "akk": "sie", "poss": "ihre",
         "real": "Domina",            # die reale dominante Person (Coach-Texte)
@@ -29,6 +30,7 @@ _DOM_FORMEN = {
     },
     "mann": {
         "label": "Herr",
+        "label_gen": "des Herrn",
         "anrede": "dein Herr",
         "nom": "er", "dat": "ihm", "akk": "ihn", "poss": "seine",
         "real": "Dom",

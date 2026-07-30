@@ -478,11 +478,13 @@ async def save_conversation(user_id: str, session_id: str, data: dict) -> str:
     text = data.get("zusammenfassung", "")
     vector = await emb.get_embedding(text)
 
+    # Pflichtfelder NACH **data (Hermes-Review C4, Muster save_strafe): ein
+    # Caller-data mit user_id-Feld darf den Mandanten-Key nie überschreiben.
     payload = {
+        **data,
         "user_id": mandanten_key(user_id),
         "session_id": session_id,
         "datum": datetime.now(timezone.utc).isoformat(),
-        **data,
     }
     await _aio(client.upsert,
         collection_name="conversations",
@@ -978,9 +980,9 @@ async def save_progress(user_id: str, data: dict) -> str:
     vector = await emb.get_embedding(text)
 
     payload = {
+        **data,
         "user_id": mandanten_key(user_id),
         "datum": datetime.now(timezone.utc).isoformat(),
-        **data,
     }
     await _aio(client.upsert,
         collection_name="progress",
@@ -1052,9 +1054,9 @@ async def save_training(user_id: str, data: dict) -> str:
     vector = await emb.get_embedding(text)
 
     payload = {
+        **data,
         "user_id": mandanten_key(user_id),
         "datum": datetime.now(timezone.utc).isoformat(),
-        **data,
     }
     await _aio(client.upsert,
         collection_name="training",

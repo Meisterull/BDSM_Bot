@@ -71,7 +71,7 @@ services:
   # OLLAMA_URL in .env auf ein bestehendes Ollama zeigen lassen. Nach dem
   # ersten Start das Embedding-Modell pullen (siehe Erststart oben).
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.32.1
     container_name: bot-ollama
     profiles: ["ollama"]
     restart: always

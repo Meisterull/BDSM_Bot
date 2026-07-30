@@ -41,7 +41,9 @@ async def _wissens_kontext() -> str:
         teile.append(f"- Dossier über sie:\n{dossier[:1200]}")
     try:
         regeln = await qdrant.get_active_coach_regeln("domina", limit=15)
-        regel_texte = [r.get("regel", "") for r in regeln if r.get("regel")]
+        # Feld heißt "text" (qdrant.save_coach_regel) – "regel" war immer leer
+        # (Hermes-Review H11: Regeln fehlten dadurch still im Quiz).
+        regel_texte = [r.get("text", "") for r in regeln if r.get("text")]
         if regel_texte:
             teile.append("- Ihre verbindlichen Regeln:\n" + "\n".join(f"  • {r}" for r in regel_texte))
     except Exception:

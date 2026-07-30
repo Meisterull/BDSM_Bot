@@ -44,7 +44,9 @@ async def get_embedding(text: str) -> list[float]:
 
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
-            if status >= 500:
+            # 429 mit-retryen (Hermes-Review C3): lokales Ollama sendet es zwar
+            # praktisch nie, aber ein vorgeschalteter Proxy könnte.
+            if status == 429 or status >= 500:
                 last_exc = e
                 if attempt < _MAX_RETRIES - 1:  # nach dem letzten Versuch nicht mehr schlafen
                     delay = min(_BASE_DELAY * (2 ** attempt), _MAX_DELAY)
@@ -57,7 +59,9 @@ async def get_embedding(text: str) -> list[float]:
                 logger.error("Ollama HTTP Fehler %s (kein Retry): %s", status, e)
                 raise
 
-        except (httpx.ConnectError, httpx.ReadError, httpx.TimeoutException) as e:
+        except httpx.TransportError as e:
+            # Supertyp statt Einzel-Klassen (Hermes-Review H5): deckt auch
+            # RemoteProtocolError/WriteError ab – grok.py macht es genauso.
             last_exc = e
             if attempt < _MAX_RETRIES - 1:  # nach dem letzten Versuch nicht mehr schlafen
                 delay = min(_BASE_DELAY * (2 ** attempt), _MAX_DELAY)

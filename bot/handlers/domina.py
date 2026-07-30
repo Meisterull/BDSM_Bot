@@ -529,14 +529,20 @@ async def _save_conversation(text: str, response: str) -> None:
     saetze = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
     wichtige_punkte = saetze[:2] if saetze else []
 
-    await qdrant.save_conversation("domina", session_id, {
-        "zusammenfassung": zusammenfassung,
-        "wichtige_punkte": wichtige_punkte,
-        "themen": themen,
-        "thema": themen[0] if themen else "allgemein",  # Kompatibilität
-        "domina_nachricht": text,      # vollständig speichern (kein Abschneiden)
-        "coach_antwort": response,     # vollständig speichern (kein Abschneiden)
-    })
+    # Best-effort wie im Sklave-Pfad (Hermes-Review H1): die Antwort ist längst
+    # gesendet – ein Qdrant-/Embedding-Fehler hier darf dem Nutzer kein
+    # irreführendes "Fehler aufgetreten" mehr anzeigen.
+    try:
+        await qdrant.save_conversation("domina", session_id, {
+            "zusammenfassung": zusammenfassung,
+            "wichtige_punkte": wichtige_punkte,
+            "themen": themen,
+            "thema": themen[0] if themen else "allgemein",  # Kompatibilität
+            "domina_nachricht": text,      # vollständig speichern (kein Abschneiden)
+            "coach_antwort": response,     # vollständig speichern (kein Abschneiden)
+        })
+    except Exception as e:
+        logger.error("Fehler beim Speichern der Domina-Konversation: %s", e)
 
 
 def _detect_themen(text: str) -> list[str]:

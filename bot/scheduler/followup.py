@@ -1272,6 +1272,13 @@ def _conv_cache() -> dict:
     return _CONV_CACHES.setdefault(paare.aktueller_kontext(), {"ts": 0.0, "entries": []})
 
 
+def vergiss_paar(paar_id: str) -> None:
+    """Cache-Eintrag eines gelöschten Paares entfernen (Hermes-Review H9) –
+    sonst bleiben bis zu 300 intime Konversations-Payloads bis zum Neustart
+    im Prozess-Speicher."""
+    _CONV_CACHES.pop(paar_id, None)
+
+
 async def _domina_conversations(start_iso: str, end_iso: str, limit: int,
                                 frisch: bool = False) -> list[dict]:
     import time as _time

@@ -72,7 +72,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 | Bot framework | python-telegram-bot 21 |
 | LLM | xAI Grok (configurable, optional fallback endpoint) |
 | Vector DB / memory | Qdrant (semantic + recency hybrid retrieval) |
-| Embeddings | Ollama — `nomic-embed-text` (768 dim) |
+| Embeddings | Ollama — `jina-embeddings-v2-base-de` (768 dim, German-trained; configurable) |
 | Scheduler | APScheduler |
 | Deployment | Docker / docker-compose |
 

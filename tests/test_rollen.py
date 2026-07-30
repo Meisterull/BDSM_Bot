@@ -115,6 +115,45 @@ def test_persona_prompt_nutzt_rollen():
         assert "Ihr Name ist Alexa" in p
 
 
+def test_sklave_prompt_pronomen():
+    """Hermes-Review C7 (30.07.2026): sklave.get/get_kurz hardcodeten männliche
+    Pronomen. Default (Herrin/Sklave) muss wortidentisch zum Bestand bleiben,
+    F-Sub bekommt durchgängig weibliche Formen."""
+    from bot.prompts import sklave
+
+    kwargs = dict(
+        hard_limits=["X"], vorlieben=["Y"], offene_aufgaben="- A", offene_anzahl=1,
+        domina_grenzen=["Z"], dossier="Testcharakteristik",
+        letzte_gefuehle=["gut"], entdeckte_wuensche=["W"],
+        persoenlichkeit_tags=["neugierig"],
+    )
+    with _rollen("", "", bot_name="", sklave_anrede=""):
+        p = sklave.get(**kwargs)
+        for erwartet in ("Seine Hard Limits", "Grenzen der Herrin",
+                         "Vorlieben des Sklaven", "WAS DU ÜBER IHN WEISST",
+                         "ihn kennst", "empfand er", "von ihm",
+                         "nicht ihm vorlesen", "Wenn seine Nachricht"):
+            assert erwartet in p, f"Default-Wortlaut fehlt: {erwartet}"
+        k = sklave.get_kurz(["X"], ["Z"])
+        assert "Seine Hard Limits" in k and "Grenzen der Herrin" in k
+
+    with _rollen("frau", "frau", bot_name="", sklave_anrede=""):
+        p = sklave.get(**kwargs)
+        for erwartet in ("Ihre Hard Limits", "Vorlieben der Sklavin",
+                         "WAS DU ÜBER SIE WEISST", "empfand sie", "von ihr",
+                         "nicht ihr vorlesen", "Wenn ihre Nachricht"):
+            assert erwartet in p, f"F-Sub-Wortlaut fehlt: {erwartet}"
+        # Nur Builder-Formulierungen prüfen – Preset-Texte (presets/*.md, z.B.
+        # "von ihm" in standard.md) sind ein eigenes Migrationsthema.
+        for falsch in ("Seine Hard Limits", "ÜBER IHN", "empfand er",
+                       "des Sklaven", "seine Nachricht"):
+            assert falsch not in p, f"Männliche Form bei F-Sub: {falsch}"
+
+    with _rollen("mann", "mann", bot_name="", sklave_anrede=""):
+        k = sklave.get_kurz(["X"], ["Z"])
+        assert "Grenzen des Herrn" in k and "Seine Hard Limits" in k
+
+
 def _run():
     test_default_ist_bestandsverhalten()
     test_unbekannte_werte_fallen_auf_default()
@@ -122,6 +161,7 @@ def _run():
     test_frau_frau_keine_sperma_quelle()
     test_mann_mann_beide_quellen()
     test_persona_prompt_nutzt_rollen()
+    test_sklave_prompt_pronomen()
     print("✅ Alle Rollen-Tests bestanden")
 
 

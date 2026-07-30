@@ -11,6 +11,9 @@ test:
 	python3 tests/test_paare.py
 	python3 tests/test_review_d8.py
 	python3 tests/test_sticker.py
+	python3 tests/test_abwesenheit.py
+	python3 tests/test_datum_erkennung.py
+	python3 tests/test_lokal_llm.py
 
 # Image bauen – nur wenn die Tests grün sind.
 build: test
