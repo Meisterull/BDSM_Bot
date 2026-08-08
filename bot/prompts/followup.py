@@ -379,15 +379,24 @@ def _aufgaben_kontext(
     # prominent als "VERBOTEN" zu listen ankert das Modell genau auf diese Themen.
     abwechslung_str = ""
     if letzte_aufgaben:
-        labels = "\n".join(f"  • {a[:60]}" for a in letzte_aufgaben)
+        # [:95] statt [:60]: die Einträge tragen jetzt einen "vor N Tagen:"-Präfix,
+        # der sonst vom Kurzlabel-Cut abgeht.
+        labels = "\n".join(f"  • {a[:95]}" for a in letzte_aufgaben)
         abwechslung_str = (
-            f"\nABWECHSLUNG (strikt): Die letzten Aufgaben drehten sich um:\n"
+            f"\nABWECHSLUNG (strikt): Die letzten Aufgaben (mit Zeitabstand) drehten sich um:\n"
             f"{labels}\n"
             f"Wähle für heute ein klar ANDERES Thema/Feld – nicht nur eine andere "
-            f"Handlung im selben Bereich. Wenn die letzten Vorschläge z. B. alle "
-            f"anal/penetrativ waren, geh heute bewusst in ein anderes Cluster "
+            f"Handlung im selben Bereich. Lagen die letzten Vorschläge alle im "
+            f"selben Cluster, geh heute bewusst in ein anderes "
             f"(Oral, Impact, Anbetung, Demütigung, Dienst, Orgasmus-Kontrolle …). "
             f"Keine Variation oder Umformulierung der genannten.\n"
+            f"ZEITBEZÜGE: Zeitwörter IN den Aufgabentexten oben ('heute Abend' …) "
+            f"beziehen sich auf deren damaligen Tag, nicht auf heute. Erfinde in "
+            f"deiner Nachricht KEINE eigenen Zeitbezüge ('gestern', 'die letzten "
+            f"Tage') – wenn du dich auf Früheres beziehst, nutze die angegebenen "
+            f"Zeitabstände. Die Abgrenzung von früheren Aufgaben ist deine interne "
+            f"Auswahl-Logik: erwähne in der Nachricht NICHT, wovon du dich absetzt "
+            f"oder was es heute alles nicht gibt.\n"
         )
     kategorie_str = ""
     if gewaehlte_kategorien:

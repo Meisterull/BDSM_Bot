@@ -8,6 +8,7 @@ __pycache__/
 .DS_Store
 
 # Daten & Logs (nie ins Repo – intime Inhalte!)
+sticker/
 qdrant_data/
 qdrant_snapshots/
 backups/

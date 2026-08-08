@@ -4,7 +4,7 @@ Zeiten-Helper – Validierung und Normalisierung von Zeitfenster-Eingaben
 (Blitzaufgaben senden nur in erlaubten Zeitfenstern).
 """
 import re
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 # Eingaben, die explizit "keine Zeitfenster" bedeuten
 _VERNEINUNGEN = {
@@ -17,6 +17,33 @@ _ZEITFENSTER_RE = re.compile(
     r"^(\d{1,2})[:.](\d{2})\s*(?:uhr)?\s*[-–]\s*(\d{1,2})[:.](\d{2})\s*(?:uhr)?$",
     re.IGNORECASE,
 )
+
+
+def alter_label(datum_iso: str) -> str:
+    """Deterministisches Zeit-Label ('heute'/'gestern'/'vor N Tagen') für
+    Kontext-Listen in Generator-Prompts. Ohne Label datieren die Modelle die
+    Einträge selbst – und erfinden dabei Zeitbezüge ('gestern' über eine
+    mehrere Tage alte Aufgabe, Live-Befund 08.08.).
+    Kalendertage in lokaler Zeit statt timedelta.days: die Sekunden-Kante
+    einer Differenz knapp unter N*24h würde sonst einen Tag verschlucken."""
+    try:
+        d = datetime.fromisoformat(datum_iso)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        tage = (datetime.now().astimezone().date() - d.astimezone().date()).days
+    except (ValueError, TypeError):
+        return ""
+    if tage <= 0:
+        return "heute"
+    if tage == 1:
+        return "gestern"
+    return f"vor {tage} Tagen"
+
+
+def mit_alter_label(text: str, datum_iso: str) -> str:
+    """'vor 4 Tagen: <text>' – lässt den Text unverändert, wenn kein Datum parsebar."""
+    label = alter_label(datum_iso)
+    return f"{label}: {text}" if label else text
 
 
 def parse_kinderfreie_zeiten(text: str) -> list[str] | None:

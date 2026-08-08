@@ -113,8 +113,14 @@ async def _ist_ablehnungsgrund(tiny_task_inhalt: str, text: str) -> bool:
 async def frage_stellen(bot, tiny_task_payload: dict) -> None:
     """Wird vom Scheduler aufgerufen – fragt die Domina nach dem Grund."""
     point_id = tiny_task_payload.get("qdrant_point_id")
-    inhalt = tiny_task_payload.get("inhalt", "")
+    # LLM-Text landet im Template INNERHALB von _…_ → Marker vorher neutralisieren,
+    # sonst bricht fast jeder Vorschlag das Markdown der ganzen Rückfrage.
+    inhalt = telegram_helper.md_einbett_sicher(tiny_task_payload.get("inhalt", ""))
     kategorien = tiny_task_payload.get("kategorien", [tiny_task_payload.get("kategorie", "?")])
+
+    # Kategorie-Slugs tragen Underscores (Ruiniertes_Orgasmen) und stehen im
+    # Template in _…_ – ohne Ersetzung kippt die Marker-Parität fast täglich.
+    kategorien_anzeige = ", ".join(kategorien).replace("_", " ")
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(t("BUTTON_UEBERNOMMEN"), callback_data=f"tinyfb:uebernommen:{point_id}")],
@@ -122,7 +128,7 @@ async def frage_stellen(bot, tiny_task_payload: dict) -> None:
     ])
     await telegram_helper.send_domina(
         bot,
-        t("TINYFB_FRAGE", kategorien=", ".join(kategorien), inhalt=inhalt),
+        t("TINYFB_FRAGE", kategorien=kategorien_anzeige, inhalt=inhalt),
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
@@ -210,7 +216,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await domina.handle(update, context)
             return
         await qdrant.mark_tiny_task_status(point_id, "abgelehnt", grund=text)
-        antwort = t("TINYFB_NOTIERT", grund=text[:80])
+        # grund steht im Template ebenfalls in _…_ → Marker neutralisieren
+        antwort = t("TINYFB_NOTIERT", grund=telegram_helper.md_einbett_sicher(text[:80]))
         # Getrenntes Domina-Präferenz-Signal: sie mochte diese Kategorien-Richtung nicht.
         await kategorie_logik.record_domina_praeferenz(tt_kategorien, "abgelehnt")
         # Ebene 2: implizit lernen – Grok schlaegt eine generalisierte Regel vor.
@@ -223,6 +230,5 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state.set_mode(chat_id, "chat")
     s.pop("tiny_task_feedback_id", None)
 
-    from bot.services import telegram_helper
     await telegram_helper.reply_markdown_safe(update.message, antwort)
     logger.info("Tiny-Task-Feedback gespeichert (point_id=%s)", point_id)

@@ -54,6 +54,16 @@ def strip_md(text: str) -> str:
     return text
 
 
+def md_einbett_sicher(text: str) -> str:
+    """Macht LLM-/Nutzer-Freitext sicher für die Einbettung IN ein Markdown-
+    Template (z.B. _{inhalt}_ in TINYFB_FRAGE): gepaarte Marker werden Klartext
+    (strip_md), übrig bleibende einzelne Marker entfernt. Ein einzelnes
+    '*'/'_'/'['/'`' im eingebetteten Freitext bricht sonst das UMGEBENDE
+    Template-Markup – die 21:30-Rückfrage fiel dadurch fast täglich in den
+    strip_md-Fallback und verlor ihre komplette Formatierung (Log 02.–07.08.)."""
+    return re.sub(r"[*_`\[\]]", "", strip_md(text or ""))
+
+
 async def _send_with_md_fallback(bot: Bot, chat_id: str, text: str, parse_mode: str | None,
                                  reply_markup=None) -> None:
     """Sendet die Nachricht, mit Fallback auf strip_md bei Markdown-Parse-Fehlern.

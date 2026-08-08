@@ -13,7 +13,7 @@ from qdrant_client import models as qm
 
 from bot import config, state
 from bot.services import paare
-from bot.services import qdrant, grok, embeddings as emb, synonyme, kategorie_logik, telegram_helper
+from bot.services import qdrant, grok, embeddings as emb, synonyme, kategorie_logik, telegram_helper, zeiten
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
@@ -316,7 +316,12 @@ async def _lade_letzte_aufgaben_kontext() -> list[str]:
     tasks = await qdrant.get_tasks_by_status(
         ["erledigt", "offen", "nicht_erledigt"], limit=5, sort_by_datum=True
     )
-    letzte = [t.get("aufgabe", "")[:80] for t in tasks if t.get("aufgabe")]
+    # Mit Zeitabstand – undatierte Listen verleiten das Modell zu erfundenen
+    # Zeitbezügen ("gestern" über 4 Tage alte Aufgaben), s. zeiten.alter_label.
+    letzte = [
+        zeiten.mit_alter_label(t.get("aufgabe", "")[:80], t.get("erteilt_am", ""))
+        for t in tasks if t.get("aufgabe")
+    ]
 
     abgelehnte_results, _ = await qdrant.run_io(
         qdrant.client.scroll,
@@ -334,7 +339,10 @@ async def _lade_letzte_aufgaben_kontext() -> list[str]:
         with_vectors=False,
     )
     abgelehnte = [r.payload for r in abgelehnte_results]
-    letzte += [p.get("inhalt", "")[:80] for p in abgelehnte if p.get("inhalt")]
+    letzte += [
+        zeiten.mit_alter_label(p.get("inhalt", "")[:80], p.get("erstellt_am", ""))
+        for p in abgelehnte if p.get("inhalt")
+    ]
     return letzte
 
 

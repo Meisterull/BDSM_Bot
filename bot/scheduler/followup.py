@@ -322,7 +322,13 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     alle_tasks = await qdrant.get_tasks_by_status(
         ["erledigt", "offen", "nicht_erledigt"], sort_by_datum=True
     )
-    letzte_aufgaben = [t.get("aufgabe", "")[:80] for t in alle_tasks[:5] if t.get("aufgabe")]
+    # Mit Zeitabstand ("vor 4 Tagen: …"): eine undatierte "letzte Aufgaben"-Liste
+    # datiert das Modell selbst und erfindet Zeitbezüge – "gestern" über eine
+    # mehrere Tage alte Aufgabe (Live-Befund 08.08.).
+    letzte_aufgaben = [
+        zeiten.mit_alter_label(t.get("aufgabe", "")[:80], t.get("erteilt_am", ""))
+        for t in alle_tasks[:5] if t.get("aufgabe")
+    ]
 
     # Letzte TinyTask-Vorschläge + Kategorien in einem Qdrant-Request laden.
     # Volltexte nur für die deterministischen Wiederholungs-Detektoren unten –

@@ -5,8 +5,9 @@ Reaktions-Sticker-Set beim Bot anlegen und das Tag→file_id-Mapping schreiben.
 Aufruf (auf dem Host, braucht nur `requests`):
     python3 scripts/sticker_upload.py <ordner-mit-stickern> [--neu]
 
-Der Ordner enthält pro Reaktion EINE Datei <tag>.webp (statisch, 512px,
-≤512 KB) oder <tag>.webm (Video: VP9, ≤3 s, ≤256 KB) – Tags siehe MANIFEST.
+Der Ordner enthält pro Reaktion EINE Datei <tag>.png oder <tag>.webp
+(statisch, 512px, ≤512 KB) oder <tag>.webm (Video: VP9, ≤3 s, ≤256 KB) –
+Tags siehe MANIFEST.
 Erstellt das Set "<SET_BASISNAME>_by_<botname>" (Owner = SKLAVE_CHAT_ID aus
 der .env, ein Bot-Set braucht einen menschlichen Besitzer) und schreibt
 data/reaktions_sticker.json, das der Bot zur Laufzeit liest (mtime-Reload,
@@ -39,6 +40,11 @@ MANIFEST = {
     "gnade": "✨",        # Privileg gewährt, Roulette-Gnade
     "augenrollen": "🙄",  # Nachverhandeln (noch unverdrahtet)
     "schicksal": "🎲",    # Würfel, Roulette, gewonnene Wette
+    # Kategorie-Sticker (im Set, ohne Auto-Trigger – manuell/zukünftig nutzbar)
+    "creampiecleanup": "🍨",
+    "facesitting": "🪑",
+    "straponanal": "🍑",
+    "straponblowjob": "🍆",
 }
 SET_BASISNAME = "herrin_reaktionen"
 SET_TITEL = "Reaktionen der Herrin"
@@ -82,18 +88,18 @@ def main() -> None:
     ordner = Path(args.ordner)
     dateien: dict[str, Path] = {}
     for tag in MANIFEST:
-        for endung in (".webp", ".webm"):
+        for endung in (".png", ".webp", ".webm"):
             p = ordner / f"{tag}{endung}"
             if p.exists():
                 dateien[tag] = p
                 break
-    unbekannt = [p.name for p in ordner.glob("*.web[pm]")
+    unbekannt = [p.name for p in list(ordner.glob("*.web[pm]")) + list(ordner.glob("*.png"))
                  if p.stem not in MANIFEST]
     if unbekannt:
         print(f"⚠ Ignoriert (kein Manifest-Tag): {', '.join(sorted(unbekannt))}")
     if not dateien:
         raise SystemExit(f"Keine passenden Sticker-Dateien in {ordner} gefunden "
-                         f"(erwartet: {', '.join(MANIFEST)} als .webp/.webm)")
+                         f"(erwartet: {', '.join(MANIFEST)} als .png/.webp/.webm)")
 
     for tag, p in dateien.items():
         limit = 256_000 if p.suffix == ".webm" else 512_000
