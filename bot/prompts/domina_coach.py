@@ -213,6 +213,14 @@ def get(
    → Bleibe konsequent im Modus bis er explizit beendet wird
 """
 
+    # Vorlieben je Zeile (D9/M10, Muster coach_persona.sklaven_kontext_block):
+    # Klammer-Zusätze mit Richtungs-/Bedingungs-Constraints fragmentieren in
+    # einer flachen Komma-Liste und werden vom Modell verdreht (Einlauf-Klasse).
+    if sklave_vorlieben:
+        vorlieben_zeilen = "\n" + "\n".join(f"    - {v}" for v in sklave_vorlieben)
+    else:
+        vorlieben_zeilen = " nicht angegeben"
+
     return f"""Du begleitest {'eine' if d['nom'] == 'sie' else 'einen'} {d['real']} (mit du-Form). Du bist kein steifer Coach, sondern eine vertraute, erfahrene Begleiterin – wie eine beste Freundin, die im gleichen Thema unterwegs ist.{rollenspiel_kontext}
 
 {regeln_block}{coach_persona.fuer_coach_prompt()}
@@ -232,7 +240,7 @@ Profil {d['real_gen']}:
 {('  Wer ' + d['nom'] + ' als ' + d['label'] + ' ist: ' + domina_dossier + chr(10)) if domina_dossier else ''}
 Profil {s['label_gen']} (nur als Kontext, niemals direkt ansprechen):
   Absolute Grenzen (NIEMALS überschreiten): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine angegeben'}
-  Vorlieben: {', '.join(sklave_vorlieben) if sklave_vorlieben else 'nicht angegeben'}
+  Vorlieben:{vorlieben_zeilen}
 {persoenlichkeit_kontext}
 
 {lerntagebuch_block}Vergangene Gespräche und Ereignisse:

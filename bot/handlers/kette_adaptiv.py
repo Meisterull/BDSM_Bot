@@ -143,8 +143,10 @@ async def callback_fehlschlag(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if action == "weiter":
         aufgabe_text = task.get("aufgabe", "")
+        # Send zuerst, Followup-Mode danach (D9/M2, Muster D8/M1): bei
+        # Send-Fehler bleibt der Sklave sonst im Followup für ein nie
+        # zugestelltes Glied. Das 'offen'-Glied fängt der followup_job ein.
         await qdrant.update_task(task_id, {"status": "offen"})
-        state.set_followup_task(paare.sub_chat_id(), task_id)
         try:
             anweisung = await grok.simple(fp.aufgabe_an_sklaven(aufgabe_text), max_tokens=250)
         except Exception as e:
@@ -155,6 +157,9 @@ async def callback_fehlschlag(update: Update, context: ContextTypes.DEFAULT_TYPE
             t("KETTE_FREIGESCHALTET", pos=pos, gesamt=gesamt, anweisung=anweisung),
             voice_text=anweisung,
         )
+        if not state.set_followup_task(paare.sub_chat_id(), task_id):
+            logger.warning("Ketten-Glied %s zugestellt, Followup-Mode nicht gesetzt "
+                           "(aktiver Mode) – followup_job fragt nach.", task_id)
         await query.message.reply_text(t("KETTE_WEITER_BESTAETIGT", pos=pos, gesamt=gesamt))
         return
 
@@ -194,12 +199,13 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:  # keep
         neuer_text = task.get("aufgabe", "")
 
+    # Send zuerst, Followup-Mode danach (D9/M2, Muster D8/M1) – das
+    # 'offen'-Glied ohne gestellte Frage fängt der followup_job ein.
     await qdrant.update_task(task_id, {
         "aufgabe": neuer_text,
         "status": "offen",
         "kette_anpass_vorschlag": None,
     })
-    state.set_followup_task(paare.sub_chat_id(), task_id)
 
     pos = task.get("kette_position", "?")
     gesamt = task.get("kette_gesamt", "?")
@@ -213,6 +219,9 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         t("KETTE_FREIGESCHALTET", pos=pos, gesamt=gesamt, anweisung=anweisung),
         voice_text=anweisung,
     )
+    if not state.set_followup_task(paare.sub_chat_id(), task_id):
+        logger.warning("Ketten-Glied %s zugestellt, Followup-Mode nicht gesetzt "
+                       "(aktiver Mode) – followup_job fragt nach.", task_id)
 
     label = "Angepasste" if action == "approve" else "Originale"
     await query.message.reply_text(t("KETTE_GESENDET", label=label))

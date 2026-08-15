@@ -120,6 +120,12 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("Manuelle Followup-Frage fehlgeschlagen, nutze Fallback: %s", e)
         frage = t("FALLBACK_FOLLOWUP_FRAGE", aufgabe=aufgabe)
 
+    # Frage zuerst ZUSTELLEN, Status/Mode danach (D9/M2, Muster D8/M1): bei
+    # Send-Fehler bleibt sonst ein 'gefragt'-Task ohne gestellte Frage und der
+    # Sklave hängt im Followup-Mode. Buttons bleiben dann stehen → Re-Tap möglich.
+    await query.edit_message_reply_markup(reply_markup=None)
+    await query.message.reply_text(frage, reply_markup=followup_response.frage_buttons(point_id))
+
     # Status/State wie beim Auto-Job: 'gefragt' verhindert eine zweite (automatische)
     # Frage am nächsten Morgen; followup_task_id ermöglicht zusätzlich den ja/nein-Text-Pfad.
     await qdrant.update_task(point_id, {"status": "gefragt"})
@@ -129,6 +135,3 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     s = state.get(chat_id)
     s["followup_task_id"] = point_id
     state.set_mode(chat_id, "followup")
-
-    await query.edit_message_reply_markup(reply_markup=None)
-    await query.message.reply_text(frage, reply_markup=followup_response.frage_buttons(point_id))

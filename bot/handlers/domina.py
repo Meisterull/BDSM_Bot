@@ -46,7 +46,14 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Keyword Aufgabe erkennen
     is_task, task_text = grok.extract_keyword_task(text)
 
-    query_vector = await embeddings.get_embedding(text)
+    # Embedding best-effort (D9/M11, Muster sklave._erinnerung): ein
+    # Ollama-Ausfall darf den Coach-Chat nicht töten – ohne Vektor läuft der
+    # Gesprächs-Kontext Recency-only weiter, Grok antwortet trotzdem.
+    try:
+        query_vector = await embeddings.get_embedding(text)
+    except Exception as e:
+        logger.warning("Embedding fehlgeschlagen – Coach-Kontext ohne Semantik-Arm: %s", e)
+        query_vector = None
     system = await _baue_system_prompt(chat_id, profile, sklave_profile, level, query_vector)
 
     response = await _chat_antwort(update, context, chat_id, system, text)
@@ -94,7 +101,7 @@ async def _baue_system_prompt(
     profile: dict,
     sklave_profile: dict,
     level: int,
-    query_vector: list[float],
+    query_vector: list[float] | None,
 ) -> str:
     """Lädt allen Chat-Kontext (Konversation, Lerntagebuch, Coach-Regeln, Rollenspiel,
     Vertrauen, Stimmung, entdeckte Wünsche) und baut den System-Prompt des Coachs."""

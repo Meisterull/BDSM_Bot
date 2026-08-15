@@ -42,9 +42,16 @@ STALE_TINYFB_SECONDS = int(os.getenv("STALE_TINYFB_SECONDS", "43200"))  # 12 Std
 # Fenster: reagiert sie, endet der Mode sofort; vergisst sie es, läuft er ab und
 # die Jobs laufen wieder. 3h decken den Abend, ohne den Rest-Tageszyklus zu opfern.
 STALE_REAKTION_SECONDS = int(os.getenv("STALE_REAKTION_SECONDS", "10800"))  # 3 Std
+# Aktives Rollenspiel ist kein kurzlebiger UI-Flow, sondern ein über Tage
+# laufender Chat-Modus: der 30-Minuten-Default killte Mode + szenario_*-Keys
+# mitten im Szenario (Regression D9/M1 des D6-"Flow-Leichen"-Fixes). Das Fenster
+# zählt ab der LETZTEN Rollenspiel-Nachricht (touch_mode in main.py) – ein
+# eingeschlafenes Spiel verfällt also 3 Tage nach der letzten Aktivität.
+STALE_ROLLENSPIEL_SECONDS = int(os.getenv("STALE_ROLLENSPIEL_SECONDS", str(3 * 86400)))  # 3 Tage
 _MODE_MAX_AGE = {"stimmung": STALE_STIMMUNG_SECONDS,
                  "tiny_task_feedback": STALE_TINYFB_SECONDS,
-                 "reaktion_pending": STALE_REAKTION_SECONDS}
+                 "reaktion_pending": STALE_REAKTION_SECONDS,
+                 "rollenspiel_aktiv": STALE_ROLLENSPIEL_SECONDS}
 # Wartezustände, die durch Qdrant/Recovery gedeckt sind – nie auto-verfallen lassen.
 # "pausiert" MUSS hier stehen: sonst setzt clear_if_stale die Safeword-Pause nach
 # STALE_MODE_SECONDS auf "chat" zurück und der Bot reagiert trotz Safeword wieder.
@@ -103,6 +110,15 @@ def set_mode(chat_id: str, mode: str) -> None:
     s = get(chat_id)
     s["mode"] = mode
     s["mode_since"] = None if mode == "chat" else time.time()
+
+
+def touch_mode(chat_id: str) -> None:
+    """Frischt mode_since eines aktiven Nicht-Chat-Modes auf. Für langlaufende
+    Modi (rollenspiel_aktiv): das Stale-Fenster zählt ab der letzten gerouteten
+    Nachricht, nicht ab dem Start (D9/M1)."""
+    s = get(chat_id)
+    if s.get("mode", "chat") != "chat":
+        s["mode_since"] = time.time()
 
 
 def clear_if_stale(chat_id: str, max_age: int | None = None) -> bool:
@@ -182,8 +198,11 @@ def set_followup_task(chat_id: str, task_id: str) -> bool:
     setzen (sonst Status-Drift: Task 'gefragt', Frage nie gestellt)."""
     s = get(chat_id)
     current_mode = s.get("mode", "chat")
-    # Race condition fix: don't overwrite active modes
-    blocked_modes = {"gefuehl", "reaktion_pending", "aufgabe_bestaetigung", "serie_wahl", "aufgabe_bewertung", "followup"}
+    # Race condition fix: don't overwrite active modes. stimmung/quiz_antwort
+    # (D9/M2): ein Ketten-Approve im Antwortfenster überschrieb sonst den
+    # Sklaven-Mode und die Stimmungs-/Quiz-Antwort lief in die Followup-Schleife.
+    blocked_modes = {"gefuehl", "reaktion_pending", "aufgabe_bestaetigung", "serie_wahl",
+                     "aufgabe_bewertung", "followup", "stimmung", "quiz_antwort"}
     if current_mode in blocked_modes:
         logger.warning("Skipping set_followup_task – user in mode %s", current_mode)
         return False

@@ -145,6 +145,14 @@ def get(
             + "\n".join(f"- {f}" for f in offene_faeden)
         )
 
+    # Vorlieben je Zeile (D9/M10, Muster coach_persona.sklaven_kontext_block):
+    # Klammer-Zusätze mit Richtungs-/Bedingungs-Constraints fragmentieren in
+    # einer flachen Komma-Liste und werden vom Modell verdreht (Einlauf-Klasse).
+    if vorlieben:
+        vorlieben_zeilen = "\n" + "\n".join(f"- {v}" for v in vorlieben)
+    else:
+        vorlieben_zeilen = " keine angegeben"
+
     return f"""Du sprichst direkt mit {s["label_dat"]} – aus der Ich-Form {rollen.dom_poss_aus_sub_sicht()}.
 
 {_zeit_zeile()}
@@ -155,7 +163,7 @@ GRENZEN – beide gelten gleich absolut, du überschreitest sie NIEMALS:
 - {s["poss"].capitalize()}e Hard Limits: {', '.join(hard_limits) if hard_limits else 'keine angegeben'}
 - Persönliche Grenzen {d["label_gen"]} (deine eigenen): {', '.join(domina_grenzen) if domina_grenzen else 'keine angegeben'}
 
-Vorlieben {s["label_gen"]} (als Kontext, nicht direkt benennen): {', '.join(vorlieben) if vorlieben else 'keine angegeben'}{wissen_block}{dossier_block}{faeden_block}
+Vorlieben {s["label_gen"]} (als Kontext, nicht direkt benennen; genannte Richtungen/Rollen NIEMALS umkehren):{vorlieben_zeilen}{wissen_block}{dossier_block}{faeden_block}
 
 Aktuell offene/gefragte Aufgaben ({offene_anzahl} insgesamt):
 {offene_aufgaben}

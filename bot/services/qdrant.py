@@ -547,7 +547,7 @@ def _diversify_by_thema(entries: list[dict], k: int) -> list[dict]:
     return out
 
 
-async def get_hybrid_conversation_context(user_id: str, query_vector: list[float], limit: int = 12,
+async def get_hybrid_conversation_context(user_id: str, query_vector: list[float] | None, limit: int = 12,
                                            felder: list[str] | None = None) -> list[dict]:
     """Kombiniert neueste + semantisch ähnliche Einträge, ohne Duplikate.
 
@@ -574,10 +574,15 @@ async def get_hybrid_conversation_context(user_id: str, query_vector: list[float
         )
         return [r.payload for r in results]
 
-    semantic, recent = await asyncio.gather(
-        get_conversation_context(user_id, query_vector, limit=8, felder=felder),
-        _recent(),
-    )
+    if query_vector is None:
+        # Embedding-Ausfall (D9/M11): Recency-Arm allein statt gar kein Kontext –
+        # der Chat muss auch ohne Ollama antworten können.
+        semantic, recent = [], await _recent()
+    else:
+        semantic, recent = await asyncio.gather(
+            get_conversation_context(user_id, query_vector, limit=8, felder=felder),
+            _recent(),
+        )
     recent_ids = {e.get("session_id") for e in recent}
 
     # 3 neueste fix für Kontinuität.
@@ -741,11 +746,17 @@ async def get_level_score(user_id: str) -> dict:
 
 
 async def get_nicht_erledigt_streak(user_id: str) -> int:
-    """Zählt wie viele der letzten Tasks in Folge nicht erledigt wurden."""
+    """Zählt wie viele der letzten ENTSCHIEDENEN Tasks in Folge nicht erledigt
+    wurden. Nur erledigt/nicht_erledigt zählen (D9/M6): Warte-/Verwaltungsstatus
+    (kette_wartend/serie_wartend/geplant/geloescht/offen/gefragt …) sind keine
+    Evidenz in beide Richtungen – ohne den Filter brach z. B. ein frisch
+    gestarteter Ketten-Stapel (Glieder 2..n kette_wartend, gleicher erteilt_am)
+    die Zählung und die Eskalations-Tonlage feuerte nie."""
     results, _ = await _aio(client.scroll,
         collection_name="tasks",
         scroll_filter=qm.Filter(must=[
             qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id))),
+            qm.FieldCondition(key="status", match=qm.MatchAny(any=["erledigt", "nicht_erledigt"])),
         ]),
         limit=10, order_by=qm.OrderBy(key="erteilt_am", direction="desc"),
         with_payload=True, with_vectors=False,

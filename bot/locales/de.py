@@ -898,6 +898,10 @@ MESSAGES = {
         "⚠️ Kategorie *{kategorie}* ist auf der Dislike-Liste deines Sklaven. "
         "Aufgabe übersprungen."
     ),
+    "RESURFACE_GRENZEN": (
+        "⚠️ Die alte Aufgabe verstößt gegen eure AKTUELLEN Grenzen ({treffer}). "
+        "Aufgabe übersprungen."
+    ),
     "RESURFACE_PREFIX": "🕰 *Eine bewährte Aufgabe für dich:*\n\n{anweisung}",
     "RESURFACE_ERTEILT": "✅ Aufgabe erneut erteilt (Kategorie: {kategorie})",
 

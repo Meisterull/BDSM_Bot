@@ -219,6 +219,7 @@ async def daily_training(bot: Bot) -> None:
         return
 
     domina_chat = paare.dom_chat_id()
+    state.clear_if_stale(domina_chat)  # liegengebliebenen UI-Flow nicht ewig blockieren lassen
     s = state.get(domina_chat)
 
     # Nicht senden wenn gerade ein anderer State aktiv
@@ -244,15 +245,22 @@ async def daily_training(bot: Bot) -> None:
     try:
         uebung = await _generiere_uebung(domina_profile, training_typ, letzte_tasks=letzte_tasks)
 
-        # State setzen
-        s["training_typ"] = training_typ
-        s["training_uebung"] = uebung
-        state.set_mode(domina_chat, "training_antwort")
+        # Re-Check NACH dem LLM-Await (TOCTOU, D9/M9): im 10-30s-Reasoning-
+        # Fenster kann ein Safeword oder ein neuer Flow gekommen sein.
+        if state.is_paused() or s.get("mode", "chat") != "chat":
+            logger.info("Training nach Generierung verworfen – Pause/Mode geändert.")
+            return
 
         await bot.send_message(
             chat_id=domina_chat,
             text=t("TRAINING_TAEGLICH", typ=training_typ.capitalize(), uebung=uebung),
         )
+        # Mode/State erst NACH erfolgreichem Send (D9/M9, Muster stimmung):
+        # ein Sendefehler ließe die Domina sonst im Geister-Mode
+        # 'training_antwort' für eine nie gesehene Übung hängen.
+        s["training_typ"] = training_typ
+        s["training_uebung"] = uebung
+        state.set_mode(domina_chat, "training_antwort")
         logger.info("Tägliches Training gesendet: %s", training_typ)
     except Exception as e:
         logger.error("Fehler beim täglichen Training: %s", e)

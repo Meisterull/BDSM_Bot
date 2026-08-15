@@ -3,6 +3,7 @@ Reaktion Handler.
 Verarbeitet die Antwort der Domina nach Nicht-Erledigung einer Aufgabe.
 """
 import logging
+import re
 from datetime import datetime, timezone
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -31,11 +32,17 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     strafe_id = s.get("strafe_id")
 
-    # Bestrafungs-Bestätigung: Ja/Nein-Flow
+    # Bestrafungs-Bestätigung: Ja/Nein-Flow. Token-Matching aufs ERSTE Wort
+    # (D9/M3): „ja bitte"/„ja mach das" ist eine Bestätigung – exaktes Matching
+    # schickte das sonst als Freitext-Alternative (Strafe „abgelehnt" + „ja
+    # bitte" reformuliert an den Sklaven, das Gegenteil der Absicht). Bewusst
+    # NICHT synonyme.ja_nein: dessen „erledigt/geschafft"-Heuristik würde einen
+    # Alternativ-Text wie „zeig mir, was du geschafft hast" als Ja lesen.
     if strafe_id:
-        if text_lower in _JA:
+        erstes = re.split(r"[\s,.!:;–—-]+", text_lower, 1)[0]
+        if erstes in _JA:
             await _bestaetigen(update, context, chat_id, task_id, strafe_id, s)
-        elif text_lower in _NEIN:
+        elif erstes in _NEIN:
             state.set_mode(chat_id, "reaktion_alternativ")
             await update.message.reply_text(t("REAKTION_ALTERNATIV_FRAGE"))
         else:

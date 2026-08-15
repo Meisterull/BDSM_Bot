@@ -85,6 +85,14 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = str(update.effective_chat.id)
     text = update.message.text.strip()
 
+    # Getipptes "abbrechen" nicht als EIGENE Kategorie anlegen (D9/M4) –
+    # das überschrieb wunsch_kategorien mit ["abbrechen"] und spiegelte den
+    # Eintrag in vorlieben/eigene_kategorien (Muster wunsch.py).
+    if text.lower() in ("abbrechen", "/abbrechen"):
+        state.set_mode(chat_id, "chat")
+        await update.message.reply_text(t("COMMON_ABGEBROCHEN"))
+        return
+
     profile = await qdrant.get_user_profile("sklave") or {}
     neue_eigene: list[str] = []
 

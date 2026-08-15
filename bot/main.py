@@ -346,6 +346,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await rollenspiel.handle(update, context)
             return
         if mode == "rollenspiel_aktiv":
+            # Stale-Fenster ab der LETZTEN Nachricht statt ab Szenario-Start –
+            # sonst stirbt ein bespieltes Rollenspiel nach 30 Min (D9/M1).
+            state.touch_mode(chat_id)
             await domina.handle(update, context)
             return
         if mode == "wunsch_entscheidung":

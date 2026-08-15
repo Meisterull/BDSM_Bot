@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 
 from bot import config, state
 from bot.services import paare
-from bot.services import qdrant, grok, telegram_helper, kategorie_logik
+from bot.services import qdrant, grok, telegram_helper, kategorie_logik, limits_check
 from bot.prompts import followup as fp
 from bot.messages import t
 
@@ -53,6 +53,24 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     dislike_kategorien = kategorie_logik.dislike_kategorien(sklave_profil)
     if kategorie in dislike_kategorien:
         await telegram_helper.reply_markdown_safe(query.message, t("RESURFACE_DISLIKE", kategorie=kategorie_logik.anzeige_name(kategorie)))
+        state.get(paare.dom_chat_id()).pop("resurface_task_id", None)
+        return
+
+    # Limits-Check gegen die AKTUELLEN Grenzen (D9/M5): seit der
+    # Original-Erteilung können Hard Limits/Grenzen dazugekommen sein –
+    # der Monate alte Text darf nicht ungeprüft wieder raus (Muster wuerfel).
+    domina_profil = await qdrant.get_user_profile("domina") or {}
+    treffer = await limits_check.verletzungen(
+        aufgabe,
+        sklave_profil.get("hard_limits", []) or [],
+        domina_profil.get("grenzen", []) or [],
+    )
+    if treffer:
+        _quellen = sorted({tr["quelle"] for tr in treffer})
+        logger.warning("Resurface-Aufgabe verletzt %d Grenze(n) [%s] – übersprungen.",
+                       len(treffer), ", ".join(_quellen))
+        await query.message.reply_text(
+            t("RESURFACE_GRENZEN", treffer=limits_check.format_verletzungen(treffer)))
         state.get(paare.dom_chat_id()).pop("resurface_task_id", None)
         return
 

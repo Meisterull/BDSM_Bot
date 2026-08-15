@@ -149,11 +149,15 @@ async def _kette_naechster_schritt(context, task: dict, gefuehl: str, aktuelle_s
                 context.bot, naechster, gefuehl, aktuelle_stimmung
             )
         if not vorschlag_gesendet:
-            await qdrant.update_task(naechster_id, {"status": "offen"})
-            state.set_followup_task(paare.sub_chat_id(), naechster_id)
             pos = naechster.get("kette_position", "?")
             gesamt = naechster.get("kette_gesamt", "?")
             naechste_aufgabe = naechster.get("aufgabe", "")
+            # Status-Flip vor dem Send ist ok (ein 'offen'-Glied ohne gestellte
+            # Frage fängt der followup_job ein). Den Followup-MODE aber erst
+            # NACH erfolgreichem Send setzen (D9/M2, Muster D8/M1) – sonst
+            # steckt der Sklave bei Send-Fehler im Followup für ein Glied, das
+            # er nie gesehen hat.
+            await qdrant.update_task(naechster_id, {"status": "offen"})
             try:
                 anweisung = await grok.simple(fp.aufgabe_an_sklaven(naechste_aufgabe), max_tokens=250)
             except Exception as e:
@@ -164,6 +168,9 @@ async def _kette_naechster_schritt(context, task: dict, gefuehl: str, aktuelle_s
                 t("KETTE_FREIGESCHALTET", pos=pos, gesamt=gesamt, anweisung=anweisung),
                 voice_text=anweisung,
             )
+            if not state.set_followup_task(paare.sub_chat_id(), naechster_id):
+                logger.warning("Ketten-Glied %s zugestellt, Followup-Mode nicht gesetzt "
+                               "(aktiver Mode) – followup_job fragt nach.", naechster_id)
     except Exception as e:
         logger.error("Fehler beim Freischalten des nächsten Ketten-Tasks: %s", e)
 

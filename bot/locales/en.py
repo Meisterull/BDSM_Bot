@@ -900,6 +900,10 @@ MESSAGES = {
         "⚠️ Category *{kategorie}* is on your slave's dislike list. "
         "Task skipped."
     ),
+    "RESURFACE_GRENZEN": (
+        "⚠️ The old task violates your CURRENT limits ({treffer}). "
+        "Task skipped."
+    ),
     "RESURFACE_PREFIX": "🕰 *A tried-and-true task for you:*\n\n{anweisung}",
     "RESURFACE_ERTEILT": "✅ Task issued again (category: {kategorie})",
 

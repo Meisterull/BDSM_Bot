@@ -21,7 +21,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from zoneinfo import ZoneInfo
 
-from bot import config
+from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, limits_check, kategorie_logik, embeddings
 from bot.prompts import followup as fp
@@ -139,6 +139,16 @@ async def oeffne_tuerchen(bot) -> None:
     if plan.get("letzte_tuer", 0) >= tuer:
         return  # heute schon geöffnet
 
+    # Safeword-Guard (D9/M8): während der Pause weder generieren noch zustellen.
+    # letzte_tuer bleibt unberührt – hält die Pause bis zum nächsten 08:00-Lauf,
+    # entfällt das Türchen (bewusst: Safeword gewinnt gegen den Kalender).
+    # Ein aktiver Sklaven-UI-Flow blockt dagegen NICHT: der Job läuft nur 1×
+    # täglich, das Türchen setzt keinen Mode – reines Interleaving (akzeptierte
+    # Klasse), ein Skip würde das Türchen dagegen komplett verschlucken.
+    if state.is_paused():
+        logger.info("Advent-Türchen %d übersprungen – System per Safeword pausiert.", tuer)
+        return
+
     sklave_profile = await qdrant.get_user_profile("sklave") or {}
     domina_profile = await qdrant.get_user_profile("domina") or {}
     sk_hl = sklave_profile.get("hard_limits", []) or []
@@ -178,6 +188,12 @@ async def oeffne_tuerchen(bot) -> None:
     except Exception:
         logger.exception("aufgabe_an_sklaven (Advent) fehlgeschlagen – Rohtext")
         anweisung = text
+
+    # TOCTOU-Re-Check nach den LLM-Awaits (D9/M8): Safeword im
+    # Generierungs-Fenster → nichts anlegen, nichts senden.
+    if state.is_paused():
+        logger.info("Advent-Türchen %d nach Generierung verworfen – Safeword im LLM-Fenster.", tuer)
+        return
 
     # Task-Anlage direkt vor dem Send, mit Rollback bei Sendefehler – ein nie
     # zugestelltes Türchen darf kein Followup triggern (Trace 06.07., Lücke 5).

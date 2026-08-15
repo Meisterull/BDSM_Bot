@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from bot import config
+from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, limits_check, kategorie_logik, punkte
 from bot.services import sticker_reaktionen
@@ -100,6 +100,13 @@ async def sende_blitz(bot) -> bool:
     except Exception:
         logger.exception("aufgabe_an_sklaven (Blitz) fehlgeschlagen – Rohtext")
         anweisung = text
+
+    # TOCTOU-Re-Check nach den LLM-Awaits (D9/M7, Muster _nach_llm_verworfen):
+    # im 10-60s-Generierungs-Fenster kann ein Safeword oder ein Sklaven-Flow
+    # gekommen sein – dann weder Task anlegen noch senden.
+    if state.is_paused() or state.get_mode(paare.sub_chat_id()) not in ("chat", None):
+        logger.info("Blitz nach Generierung verworfen – Pause/Mode im LLM-Fenster geändert.")
+        return False
 
     # Task erst unmittelbar vor dem Send anlegen (Countdown startet dann auch
     # erst jetzt); der Button braucht die point_id, deshalb geht es nicht ganz
@@ -221,9 +228,18 @@ async def markiere_verpasst(bot, task: dict) -> None:
             nachricht = reaktion
     except Exception:
         logger.exception("Blitz-Spott fehlgeschlagen – nutze Fallback")
-    # Spott-Sticker passend zur genüsslich-spöttischen Reaktion
-    await sticker_reaktionen.sende_sklave(bot, sticker_reaktionen.SPOTT)
-    await telegram_helper.send_sklave(bot, nachricht)
+    # Re-Check nach dem LLM-Await (D9/M7): Status ist korrekt gesetzt, aber in
+    # der Safeword-Pause geht gar nichts raus; bei aktivem Sklaven-Flow entfällt
+    # nur der Spott (die Domina-Info unten darf trotzdem).
+    if state.is_paused():
+        logger.info("Blitz-Verpasst-Meldungen übersprungen – Safeword-Pause.")
+        return
+    if state.get_mode(paare.sub_chat_id()) not in ("chat", None):
+        logger.info("Blitz-Verpasst-Spott übersprungen – Sklave in aktivem Flow.")
+    else:
+        # Spott-Sticker passend zur genüsslich-spöttischen Reaktion
+        await sticker_reaktionen.sende_sklave(bot, sticker_reaktionen.SPOTT)
+        await telegram_helper.send_sklave(bot, nachricht)
     try:
         await telegram_helper.send_domina(
             bot, t("BLITZ_VERPASST_DOMINA", aufgabe=task.get("aufgabe", "")))

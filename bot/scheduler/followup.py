@@ -909,22 +909,21 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
     domina_chat = paare.dom_chat_id()
     s = state.get(domina_chat)
 
-    # Kein Vorschlag wenn Rollenspiel bereits aktiv. Aber: ein nie per
-    # /rollenspielende beendetes Szenario bleibt ewig im State liegen (der
-    # Stale-Reset räumt nur den Mode, nicht die Flow-Keys) und würde JEDEN
-    # Fr/Sa-Vorschlag für immer still unterdrücken (Trace 06.07.). Älter als
-    # 3 Tage (oder Bestand ohne Zeitstempel) → auto-beenden und vorschlagen.
+    # Kein Vorschlag, wenn ein Rollenspiel wirklich LEBT (Mode aktiv und nicht
+    # stale; das Fenster zählt seit D9/M1 ab der letzten Nachricht, 3 Tage –
+    # s. state.STALE_ROLLENSPIEL_SECONDS). Ein eingeschlafenes Spiel wird hier
+    # sauber beendet + gemeldet; verwaiste szenario_*-Keys ohne lebenden Mode
+    # (Alt-Bestand/Kanten) ebenso – sonst unterdrücken sie jeden Fr/Sa-Vorschlag
+    # für immer still (Trace 06.07.).
     if s.get("szenario_name"):
-        import time as _time
-        seit = s.get("szenario_seit")
-        if seit and (_time.time() - seit) < 3 * 86400:
+        verwaist_name = s.get("szenario_name", "")
+        stale = state.clear_if_stale(domina_chat)  # räumt Mode + szenario_*-Keys
+        if not stale and state.get_mode(domina_chat) == "rollenspiel_aktiv":
             logger.info("Rollenspiel bereits aktiv – kein Vorschlag.")
             return
         from bot.handlers.rollenspiel import _clear_rollenspiel_state
-        verwaist_name = s.get("szenario_name", "")
         _clear_rollenspiel_state(s)
-        logger.info("Verwaistes Rollenspiel '%s' auto-beendet (seit: %s).",
-                    verwaist_name, "unbekannt" if not seit else f"{(_time.time() - seit) / 86400:.1f} Tagen")
+        logger.info("Eingeschlafenes/verwaistes Rollenspiel '%s' auto-beendet.", verwaist_name)
         try:
             await telegram_helper.send_domina(bot, t("ROLLENSPIEL_AUTO_BEENDET", name=verwaist_name))
         except Exception:

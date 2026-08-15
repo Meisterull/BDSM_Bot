@@ -29,10 +29,14 @@ def bestrafungsvorschlag(
         )
     vorlieben_str = ""
     if sklave_vorlieben:
+        # Je Zeile statt komma-verkettet (D9/M10): Richtungs-/Bedingungs-Zusätze
+        # in Klammern fragmentieren sonst und werden vom Modell verdreht.
         vorlieben_str = (
             f"\nVorlieben {s['label_gen']} (als Hebel nutzbar – Entzug einer Vorliebe, "
-            f"oder eine Aufgabe die {s['poss']}e Vorliebe in einen Service umkehrt):\n"
-            f"{', '.join(sklave_vorlieben)}\n"
+            f"oder eine Aufgabe die {s['poss']}e Vorliebe in einen Service umkehrt; "
+            f"in der Vorliebe genannte Richtungen/Rollen NIEMALS umkehren):\n"
+            + "\n".join(f"- {v}" for v in sklave_vorlieben)
+            + "\n"
         )
     reaktionen_str = ""
     if kategorie_reaktionen:
