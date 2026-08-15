@@ -511,6 +511,27 @@ def test_prompt_abschluesse_und_div6():
 
 
 # --------------------------------------------------------------------------
+# A1 – Wochenend-Prompt ohne innere Widersprüche
+# --------------------------------------------------------------------------
+
+def test_wochenend_prompt_widersprueche():
+    from bot.prompts import followup as _fp
+    basis = dict(erfahrungsstand="Anfänger", level=1, interessen=[],
+                 sklave_vorlieben=[], sklave_hard_limits=[],
+                 mehrstufig_bremse=True, schwierigkeit="niedrig")
+    _s1, ausf = _fp.ausfuehrlicher_task_vorschlag(**basis)
+    # Bremse abgeschwächt statt hartem Verbot (kollidierte mit "darf 2-3 Phasen")
+    assert "KEIN nummeriertes Stufen-Format" not in ausf
+    assert "andere Dramaturgie" in ausf
+    # Komplexität "niedrig" widerspricht nicht mehr "mehrschichtig"
+    assert "gilt je Schritt" in ausf
+    # Tiny behält das harte Stufen-Verbot
+    _s2, tiny = _fp.tiny_task_vorschlag(**basis)
+    assert "KEIN nummeriertes Stufen-Format" in tiny
+    assert "gilt je Schritt" not in tiny
+
+
+# --------------------------------------------------------------------------
 # N1/N2 – Wunsch-Callbacks
 # --------------------------------------------------------------------------
 
@@ -686,6 +707,8 @@ def main():
     print("✅ test_prompt_abschluesse_und_div6")
     test_kat_to_cmd_sonderzeichen()
     print("✅ test_kat_to_cmd_sonderzeichen")
+    test_wochenend_prompt_widersprueche()
+    print("✅ test_wochenend_prompt_widersprueche")
     test_state_json_0600()
     print("✅ test_state_json_0600")
     test_log_rotation_0600()

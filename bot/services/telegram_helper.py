@@ -131,12 +131,6 @@ async def voice_an(bot: Bot, chat_id, text: str) -> bool:
         return False
 
 
-async def voice_an_sklaven(bot: Bot, text: str) -> bool:
-    """Kontext-Wrapper: Voice an die Sub-Seite des Paares im aktiven Paar-Kontext."""
-    from bot.services import paare
-    return await voice_an(bot, paare.paar_im_kontext().sub_chat_id, text)
-
-
 async def reply_markdown_safe(message, text: str, reply_markup=None) -> None:
     """Sendet via message.reply_text mit parse_mode='Markdown'. Bei Parse-Fehler
     fallback auf Plain-Text mit strip_md (reply_markup bleibt erhalten).

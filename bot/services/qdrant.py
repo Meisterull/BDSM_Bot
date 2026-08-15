@@ -581,9 +581,10 @@ async def get_hybrid_conversation_context(user_id: str, query_vector: list[float
         )
         return [r.payload for r in results]
 
-    if query_vector is None:
-        # Embedding-Ausfall (D9/M11): Recency-Arm allein statt gar kein Kontext –
-        # der Chat muss auch ohne Ollama antworten können.
+    if query_vector is None or limit <= 3:
+        # query_vector None: Embedding-Ausfall (D9/M11) – Recency-Arm allein
+        # statt gar kein Kontext. limit<=3 (D9/A3): kopf=3 füllt das Budget
+        # komplett, der semantische Arm würde eh verworfen – Query sparen.
         semantic, recent = [], await _recent()
     else:
         semantic, recent = await asyncio.gather(
@@ -669,25 +670,29 @@ async def get_lernkurve_daten(user_id: str) -> dict:
         qm.FieldCondition(key="status", match=qm.MatchValue(value="erledigt")),
         qm.FieldCondition(key="erteilt_am", range=qm.DatetimeRange(gte=zwei_wochen_ago)),
     ])
-    tasks, _ = await _aio(client.scroll,
-        collection_name="tasks",
-        scroll_filter=erledigt_filter,
-        # order_by: bei >50 Treffern die NEUESTEN Details statt willkürlicher Teilmenge
-        limit=50, order_by=qm.OrderBy(key="erteilt_am", direction="desc"),
-        with_payload=True, with_vectors=False,
-    )
-    # Zählung serverseitig – len(tasks) wäre bei >50 erledigten Tasks zu niedrig
-    erledigt_result = await _aio(client.count,
-        collection_name="tasks",
-        count_filter=erledigt_filter,
-    )
-    nicht_erledigt_result = await _aio(client.count,
-        collection_name="tasks",
-        count_filter=qm.Filter(must=[
-            qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id))),
-            qm.FieldCondition(key="status", match=qm.MatchValue(value="nicht_erledigt")),
-            qm.FieldCondition(key="erteilt_am", range=qm.DatetimeRange(gte=zwei_wochen_ago)),
-        ]),
+    import asyncio
+    # Scroll + beide Counts parallel (D9/A2). Zählung serverseitig –
+    # len(tasks) wäre bei >50 erledigten Tasks zu niedrig.
+    (tasks, _), erledigt_result, nicht_erledigt_result = await asyncio.gather(
+        _aio(client.scroll,
+            collection_name="tasks",
+            scroll_filter=erledigt_filter,
+            # order_by: bei >50 Treffern die NEUESTEN Details statt willkürlicher Teilmenge
+            limit=50, order_by=qm.OrderBy(key="erteilt_am", direction="desc"),
+            with_payload=True, with_vectors=False,
+        ),
+        _aio(client.count,
+            collection_name="tasks",
+            count_filter=erledigt_filter,
+        ),
+        _aio(client.count,
+            collection_name="tasks",
+            count_filter=qm.Filter(must=[
+                qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id))),
+                qm.FieldCondition(key="status", match=qm.MatchValue(value="nicht_erledigt")),
+                qm.FieldCondition(key="erteilt_am", range=qm.DatetimeRange(gte=zwei_wochen_ago)),
+            ]),
+        ),
     )
 
     task_payloads = [r.payload for r in tasks]
@@ -820,7 +825,7 @@ async def get_recent_task_kategorien(user_id: str, limit: int = 5) -> list[str]:
         ]),
         limit=20,
         order_by=qm.OrderBy(key="erteilt_am", direction="desc"),
-        with_payload=True,
+        with_payload=["kategorie"],  # nur das gebrauchte Feld (D9/A3)
         with_vectors=False,
     )
     payloads = [r.payload for r in results]
@@ -1053,7 +1058,10 @@ async def get_completed_kategorien_set(user_id: str) -> set[str]:
                 qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id))),
                 qm.FieldCondition(key="status", match=qm.MatchValue(value="erledigt")),
             ]),
-            limit=500, offset=offset, with_payload=True, with_vectors=False,
+            # Nur das eine gebrauchte Feld transferieren (D9/A3): der Pfad läuft
+            # bei jeder Task-Erledigung – Voll-Payloads (komplette Aufgabentexte)
+            # waren reiner Ballast.
+            limit=500, offset=offset, with_payload=["kategorie"], with_vectors=False,
         )
         kategorien.update(
             r.payload.get("kategorie", "allgemein") for r in results if r.payload.get("kategorie")
@@ -1170,21 +1178,6 @@ async def get_wunsch(point_id: str) -> Optional[dict]:
     return results[0].payload if results else None
 
 
-async def get_wuensche(user_id: str, status: Optional[str] = None) -> list[dict]:
-    must = [qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id)))]
-    if status is not None:
-        must.append(qm.FieldCondition(key="status", match=qm.MatchValue(value=status)))
-    results, _ = await _aio(client.scroll,
-        collection_name="wuensche",
-        scroll_filter=qm.Filter(must=must),
-        limit=50,
-        order_by=qm.OrderBy(key="datum", direction="desc"),
-        with_payload=True,
-        with_vectors=False,
-    )
-    return [r.payload for r in results]
-
-
 # ---------------------------------------------------------------------------
 # geheimnisse
 # ---------------------------------------------------------------------------
@@ -1202,7 +1195,9 @@ async def save_geheimnis(data: dict, user_id: str = "domina") -> str:
         points=[qm.PointStruct(
             id=point_id,
             vector={"text": vector},
-            payload={"user_id": mandanten_key(user_id), **data, "qdrant_point_id": point_id},
+            # Pflichtfelder NACH **data (D9/A4, Hermes-C4-Muster): ein Caller-data
+            # mit user_id-Feld darf den Mandanten-Key nicht überschreiben.
+            payload={**data, "user_id": mandanten_key(user_id), "qdrant_point_id": point_id},
         )],
     )
     return point_id
@@ -1366,8 +1361,9 @@ async def get_vertrauens_score(user_id: str) -> dict:
         )
         return result.count
 
-    erledigt = await _count("erledigt")
-    nicht_erledigt = await _count("nicht_erledigt")
+    import asyncio
+    erledigt, nicht_erledigt = await asyncio.gather(  # parallel (D9/A2)
+        _count("erledigt"), _count("nicht_erledigt"))
 
     gesamt = erledigt + nicht_erledigt
     if gesamt == 0:
@@ -1399,9 +1395,12 @@ async def get_vertrauens_score(user_id: str) -> dict:
 
 # ---------------------------------------------------------------------------
 # coach_regeln – Lern-Speicher für den Coach
-# typ:    "regel" (verbindlich) | "notiz" (lockerer Hinweis)
+# typ:    "regel" (verbindlich) | "notiz" (lockerer Hinweis) | "profil_update" (Patch-Träger)
 # status: "aktiv" (im Prompt) | "pending" (wartet auf User-Bestaetigung) | "verworfen"
-# quelle: "manuell" | "abgeleitet_ablehnung" | "abgeleitet_bewertung" | "abgeleitet_reflexion"
+# quelle: "manuell" | "chat_praeferenz" (Präferenz-Detektor, live dominierend)
+#         | "auto_profil_pflege" (2-Wochen-Job) | "abgeleitet_ablehnung"
+#         | "abgeleitet_bewertung" | "abgeleitet_reflexion"
+#         (D9/A4: Enum um die live dominierenden Werte ergänzt)
 # ---------------------------------------------------------------------------
 
 async def save_coach_regel(
@@ -1429,9 +1428,12 @@ async def save_coach_regel(
         "text": text,
         "kontext": kontext,
         "erstellt_am": datetime.now(timezone.utc).isoformat(),
-        "bestaetigt_am": datetime.now(timezone.utc).isoformat() if status == "aktiv" else None,
         "qdrant_point_id": point_id,
     }
+    # Nur bei direkt-aktiven Einträgen setzen (D9/A4): das frühere Literal-None
+    # für pending/verworfen war das A1-Anti-Muster (None-Defaults im Payload).
+    if status == "aktiv":
+        payload["bestaetigt_am"] = datetime.now(timezone.utc).isoformat()
     if profile_user:
         payload["profile_user"] = profile_user
     if profile_patch:

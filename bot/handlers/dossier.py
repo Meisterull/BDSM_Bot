@@ -152,10 +152,14 @@ async def wunsch_kontext_hinweis(wuensche: list | None = None) -> str:
         if not wuensche:
             return ""
         liste = "; ".join(wuensche[:6])
+        # Rollen-Formen statt Hardcoding (D9/A4): "der Sklave"/"er" stimmte nur
+        # für die F/M-Konstellation (render_baseline-Kontrakt).
+        from bot.prompts import rollen
+        s = rollen.sub()
         return (
-            f"Wünsche, die der Sklave mal angedeutet hat: {liste}.\n"
+            f"Wünsche, die {s['label_nom']} mal angedeutet hat: {liste}.\n"
             f"Erwähne EINEN davon NUR, wenn er thematisch WIRKLICH zum aktuellen Thema passt – "
-            f"dann beiläufig (z.B. 'vielleicht wünscht er sich ja mal …'). Im Zweifel oder wenn "
+            f"dann beiläufig (z.B. 'vielleicht wünscht {s['nom']} sich ja mal …'). Im Zweifel oder wenn "
             f"nichts passt: gar nicht erwähnen, nicht erzwingen."
         )
     except Exception:
@@ -330,13 +334,18 @@ async def erfasse_wunsch_aus_chat(text: str) -> str | None:
         return None
 
     from bot.prompts import followup as fp
+    from bot.prompts import rollen
+    _s, _d = rollen.sub(), rollen.dom()
+    _von_dom = f"von {'der' if _d['nom'] == 'sie' else 'dem'} {_d['label']}"
+    # Rollen-Formen statt F/M-Hardcoding (D9/A4).
     system = (
-        "Hat der Sklave in dieser Nachricht einen WUNSCH oder etwas geäußert, das er gern "
-        "ausprobieren würde? Wenn ja, gib es als EINEN kurzen Stichpunkt zurück (max. 12 Wörter, "
-        "aus seiner Perspektive, z.B. 'würde gern mal X ausprobieren'). Hat die Praktik eine "
-        "RICHTUNG (wer gibt, wer empfängt), benenne sie ausdrücklich mit ('ihren …', 'von der "
-        "Herrin', 'eigenen …') statt sie wegzulassen – die Richtung entscheidet über Limits. "
-        "Wenn nein oder unklar, antworte NUR mit KEINE. Kein Markdown, keine Anführungszeichen."
+        f"Hat {_s['label_nom']} in dieser Nachricht einen WUNSCH oder etwas geäußert, das "
+        f"{_s['nom']} gern ausprobieren würde? Wenn ja, gib es als EINEN kurzen Stichpunkt "
+        f"zurück (max. 12 Wörter, aus {_s['poss']}r Perspektive, z.B. 'würde gern mal X "
+        f"ausprobieren'). Hat die Praktik eine RICHTUNG (wer gibt, wer empfängt), benenne "
+        f"sie ausdrücklich mit ('{_d['poss']}n …', '{_von_dom}', 'eigenen …') statt sie "
+        f"wegzulassen – die Richtung entscheidet über Limits. "
+        f"Wenn nein oder unklar, antworte NUR mit KEINE. Kein Markdown, keine Anführungszeichen."
     )
     try:
         w = grok.clean_text(await grok.simple(

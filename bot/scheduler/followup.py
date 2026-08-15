@@ -1021,7 +1021,13 @@ async def followup_job(bot: Bot) -> None:
                 # get_open_followup_tasks (filtert nur status=offen) den Task bei
                 # einem Sendefehler nie wieder ab.
                 await qdrant.update_task(point_id, {"status": "gefragt"})
-                state.set_followup_task(sklave_chat, point_id)
+                # Returnwert beachten (D9/A4, wie der Serie-Pfad): False heißt,
+                # ein Flow kam zwischen Re-Check und Set – der Task steht auf
+                # 'gefragt', die Chat-Recovery fängt ihn bei seiner nächsten
+                # Nachricht ein; das Warn-Log macht den Fall sichtbar.
+                if not state.set_followup_task(sklave_chat, point_id):
+                    logger.warning("Follow-up %s gesendet, Mode nicht gesetzt (aktiver Flow) "
+                                   "– Chat-Recovery übernimmt.", point_id)
                 logger.info("Follow-up gesendet für Task: %s", point_id)
             except Exception as e:
                 logger.exception("Fehler beim Follow-up für Task %s", point_id)

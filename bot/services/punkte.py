@@ -81,7 +81,21 @@ async def task_erledigt(task: dict | None = None, gefuehl_text: str = "") -> dic
     `gefuehl_text` (der Gefühlsbericht) fließt nur in die geheimen Abzeichen ein.
     """
     task = task or {}
-    profil = await qdrant.get_user_profile("sklave") or {}
+    kat = task.get("kategorie")
+
+    async def _kat_haeufigkeit() -> int:
+        return await qdrant.get_completed_count_by_kategorie("sklave", kat) if kat else 0
+
+    # Unabhängige Loads parallel statt 4-5 seriell (D9/A2) – dieser Pfad läuft
+    # bei JEDER Task-Erledigung unter dem Paar-Lock.
+    import asyncio
+    profil, tasks_gesamt, kategorien_erledigt, kat_haeufigkeit = await asyncio.gather(
+        qdrant.get_user_profile("sklave"),
+        qdrant.get_completed_task_count("sklave"),
+        qdrant.get_completed_kategorien_set("sklave"),
+        _kat_haeufigkeit(),
+    )
+    profil = profil or {}
 
     punkte = profil.get("punkte", 0)
     # Streak: +1 pro Kalendertag, nicht pro Task – aber nur bei lückenloser Folge.
@@ -97,8 +111,6 @@ async def task_erledigt(task: dict | None = None, gefuehl_text: str = "") -> dic
     else:
         streak = 1  # Lücke (oder allererster Tag) → Streak neu beginnen
     streak_max = max(profil.get("streak_max", 0), streak)
-    tasks_gesamt = await qdrant.get_completed_task_count("sklave")
-    kategorien_erledigt = await qdrant.get_completed_kategorien_set("sklave")
 
     # Punkte-Berechnung mit Bonus-Breakdown
     boni: list[tuple[str, int]] = [("Basis", PUNKTE_PRO_TASK)]
@@ -111,11 +123,8 @@ async def task_erledigt(task: dict | None = None, gefuehl_text: str = "") -> dic
     if task.get("arc_id"):
         boni.append(("Storyline 📖", ARC_BONUS))
     # Vielfalt: Kategorie wurde inkl. dieses Tasks ≤ 2x erledigt
-    kat = task.get("kategorie")
-    if kat:
-        haeufigkeit = await qdrant.get_completed_count_by_kategorie("sklave", kat)
-        if haeufigkeit <= 2:
-            boni.append((f"Selten ({kat}) 🎨", VIELFALT_BONUS))
+    if kat and kat_haeufigkeit <= 2:
+        boni.append((f"Selten ({kat}) 🎨", VIELFALT_BONUS))
     # Wochenende
     wochentag = jetzt.weekday()
     if wochentag in (5, 6):  # Sa, So

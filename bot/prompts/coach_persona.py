@@ -29,7 +29,8 @@ def _chat_format() -> str:
 # Aufgaben-Komplexität: eine Zeile für die JETZT gültige Stufe – statt alle drei
 # Stufen aufzulisten (war 3× dupliziert: domina_coach + tiny/ausfuehrlich).
 _SCHWIERIGKEIT_LABELS = {
-    "niedrig": "einfache, kurze Aufgaben (5-10 Min.)",
+    # 5-15 statt 5-10 (D9/A1): deckungsgleich mit dem Tiny-Rahmen im System-Prompt.
+    "niedrig": "einfache, kurze Aufgaben (5-15 Min.)",
     "normal": "Standard-Aufgaben (15-30 Min.)",
     "hoch": "komplexe, mehrstufige Aufgaben (30-60 Min.)",
 }

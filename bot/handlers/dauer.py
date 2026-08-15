@@ -101,8 +101,13 @@ async def pruefe_laufende(bot) -> None:
     from zoneinfo import ZoneInfo
     from bot.services import zeiten
 
-    offene = [task for task in await qdrant.get_tasks_by_status(["offen"], limit=50)
-              if task.get("quelle") == "dauer" and task.get("dauer_bis")]
+    # count-Vorprüfung + serverseitiger quelle-Filter (D9/A3, Muster blitz/N5):
+    # der Job läuft alle 15 Min (96×/Tag) – vorher wurden JEDES Mal alle
+    # offenen Tasks mit vollem Payload geladen und clientseitig gefiltert.
+    if not await qdrant.count_tasks_by_status(["offen"], quelle="dauer"):
+        return
+    offene = [task for task in await qdrant.get_tasks_by_status(["offen"], limit=50, quelle="dauer")
+              if task.get("dauer_bis")]
     if not offene:
         return
 

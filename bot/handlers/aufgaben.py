@@ -179,7 +179,7 @@ async def handle_loeschen(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             else:
                 await qdrant.update_task(point_id, {"status": "geloescht"})
                 await update.message.reply_text(t("AUFGABEN_GELOESCHT"))
-        elif text in ("nein", "n"):
+        elif text in synonyme.NEIN:  # D9/A4: inkl. EN-"no" (synonyme.JA wird daneben schon genutzt)
             s.pop("loeschen_bestaetigung_id", None)
             s.pop("loeschen_serie_stopp", None)
             await update.message.reply_text(t("COMMON_ABGEBROCHEN_AUFGABE_BLEIBT"))

@@ -163,8 +163,18 @@ async def callback_bestaetigen(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     _, entscheidung, point_id = parts
 
+    # Doppel-Tap-/Stale-Guard (D9/A4, Muster D8/M6): nur einen noch PENDING-
+    # Eintrag entscheiden – ein zweiter Tap wendete den Profil-Patch sonst
+    # erneut an (limit_refine!) und stapelte Erfolgs-Meldungen.
+    eintrag = await qdrant.get_coach_regel(point_id) or {}
+    if eintrag.get("status", "pending") != "pending":
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
     if entscheidung == "ja":
-        eintrag = await qdrant.get_coach_regel(point_id) or {}
         await qdrant.set_coach_regel_status(point_id, "aktiv")
 
         nachricht_suffix = t("COACHREGELN_UEBERNOMMEN")

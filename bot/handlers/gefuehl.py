@@ -11,6 +11,9 @@ from bot.prompts import followup as fp
 from bot.prompts import sklave as sp
 from bot.messages import t
 
+# Referenzen auf Hintergrund-Tasks (D9/A2, Muster sklave._BG_TASKS).
+_BG_TASKS: set = set()
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,22 +82,41 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if aktuelle_stimmung in ("langweilig", "überfordert", "abgelehnt"):
         await _streak_penalty_bei_negativ()
 
-    await _sende_bericht_an_domina(context, task_id, aufgabe, text)
+    # Der komplette Domina-Nachlauf (Bericht + Coach-Feedback + Teaser +
+    # Bewertungs-Frage = bis zu 3 LLM-Calls, teils reasoning) als EIN
+    # sequenzieller Hintergrund-Task (D9/A2, Muster D8/N1): er hielt sonst den
+    # Paar-Lock 10-30 s, obwohl der Sklave seine Reaktion längst hat. EIN Task
+    # statt vier, damit die Nachrichten-Reihenfolge für die Domina erhalten
+    # bleibt; jeder Schritt mit eigenem Fangnetz.
+    async def _domina_nachlauf() -> None:
+        try:
+            await _sende_bericht_an_domina(context, task_id, aufgabe, text)
+        except Exception:
+            logger.exception("Bericht an Domina fehlgeschlagen")
+        try:
+            await _send_coach_feedback(context, aufgabe, text, level, erledigte)
+        except Exception:
+            logger.exception("Coach-Feedback fehlgeschlagen")
+        try:
+            await _check_level_teaser(context, profile=domina_profile, level=level)
+        except Exception:
+            logger.exception("Level-Teaser fehlgeschlagen")
+        # Domina zur Bewertung auffordern – Daten immer setzen, aber einen aktiven
+        # Domina-Flow nicht kapern: Bewertungs-Mode nur setzen, wenn sie frei ist.
+        try:
+            domina_chat = paare.dom_chat_id()
+            domina_state = state.get(domina_chat)
+            domina_state["bewertung_task_id"] = task_id
+            if state.get_mode(domina_chat) in ("chat", None):
+                state.set_mode(domina_chat, "aufgabe_bewertung")
+            await telegram_helper.send_domina(context.bot, t("GEFUEHL_BEWERTUNG_FRAGE"))
+        except Exception:
+            logger.exception("Bewertungs-Frage fehlgeschlagen")
 
-    # Coach-Feedback + Lernpfad an Domina
-    await _send_coach_feedback(context, aufgabe, text, level, erledigte)
-
-    # Level-Up Teaser wenn nah am nächsten Level
-    await _check_level_teaser(context, profile=domina_profile, level=level)
-
-    # Domina zur Bewertung auffordern – Daten immer setzen, aber einen aktiven
-    # Domina-Flow nicht kapern: Bewertungs-Mode nur setzen, wenn sie frei ist.
-    domina_chat = paare.dom_chat_id()
-    domina_state = state.get(domina_chat)
-    domina_state["bewertung_task_id"] = task_id
-    if state.get_mode(domina_chat) in ("chat", None):
-        state.set_mode(domina_chat, "aufgabe_bewertung")
-    await telegram_helper.send_domina(context.bot, t("GEFUEHL_BEWERTUNG_FRAGE"))
+    import asyncio as _asyncio
+    _bg = _asyncio.create_task(_domina_nachlauf())
+    _BG_TASKS.add(_bg)
+    _bg.add_done_callback(_BG_TASKS.discard)
 
 
 async def _speichere_fortschritt(aufgabe: str, gefuehl: str) -> tuple[dict, int, int]:

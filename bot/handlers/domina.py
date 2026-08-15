@@ -20,6 +20,10 @@ from bot.messages import t
 
 logger = logging.getLogger(__name__)
 
+# Referenzen auf Hintergrund-Tasks (D9/A2, Muster sklave._BG_TASKS) – sonst
+# kann der GC einen laufenden Task einsammeln.
+_BG_TASKS: set = set()
+
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = str(update.effective_chat.id)
@@ -38,22 +42,30 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _handle_aufgabe_bestaetigung(update, context, chat_id, text)
         return
 
-    # Profile laden
-    profile = await qdrant.get_user_profile("domina") or {}
-    sklave_profile = await qdrant.get_user_profile("sklave") or {}
+    # Embedding best-effort (D9/M11, Muster sklave._erinnerung): ein
+    # Ollama-Ausfall darf den Coach-Chat nicht töten – ohne Vektor läuft der
+    # Gesprächs-Kontext Recency-only weiter, Grok antwortet trotzdem.
+    async def _embed_best_effort() -> list[float] | None:
+        try:
+            return await embeddings.get_embedding(text)
+        except Exception as e:
+            logger.warning("Embedding fehlgeschlagen – Coach-Kontext ohne Semantik-Arm: %s", e)
+            return None
+
+    # Profile + Embedding parallel statt 3 seriell (D9/A2) – lief unter dem Paar-Lock.
+    import asyncio
+    profile, sklave_profile, query_vector = await asyncio.gather(
+        qdrant.get_user_profile("domina"),
+        qdrant.get_user_profile("sklave"),
+        _embed_best_effort(),
+    )
+    profile = profile or {}
+    sklave_profile = sklave_profile or {}
     level = profile.get("aktuelles_level", 1)
 
     # Keyword Aufgabe erkennen
     is_task, task_text = grok.extract_keyword_task(text)
 
-    # Embedding best-effort (D9/M11, Muster sklave._erinnerung): ein
-    # Ollama-Ausfall darf den Coach-Chat nicht töten – ohne Vektor läuft der
-    # Gesprächs-Kontext Recency-only weiter, Grok antwortet trotzdem.
-    try:
-        query_vector = await embeddings.get_embedding(text)
-    except Exception as e:
-        logger.warning("Embedding fehlgeschlagen – Coach-Kontext ohne Semantik-Arm: %s", e)
-        query_vector = None
     system = await _baue_system_prompt(chat_id, profile, sklave_profile, level, query_vector)
 
     response = await _chat_antwort(update, context, chat_id, system, text)
@@ -67,6 +79,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Antwort senden (ohne [AUFGABE: ...] Tag) – Markdown mit Fallback,
     # weil der Coach Bold/Listen nutzen darf.
     clean_response = response.split("[AUFGABE:")[0].strip() if is_task else response
+    # Abgeschnittenes Tag-Fragment strippen (D9/A4): kappt max_tokens die
+    # Antwort MITTEN im Tag, erkennt extract_task (verlangt ']') nichts und
+    # das rohe "[AUFGABE: …"-Fragment stünde wörtlich in der Coach-Nachricht.
+    if not is_task:
+        clean_response = re.sub(r"\[AUFGABE:[^\]]*$", "", clean_response).rstrip()
     if clean_response:
         await telegram_helper.reply_markdown_safe(update.message, clean_response)
 
@@ -87,13 +104,21 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _save_conversation(text, response)
 
     # Vorlieben / No-Gos der Domina aus dem Gespräch erkennen und als ✅/🗑-Vorschlag
-    # fürs eigene Profil anbieten. Bewusst ganz am Ende des Nicht-Task-Pfads:
-    # best-effort, gated, verzögert weder Antwort noch Aufgaben-Dialog.
-    try:
-        from bot.services import praeferenz_detektor
-        await praeferenz_detektor.erkenne_und_schlage_vor(context.bot, "domina", text)
-    except Exception as e:
-        logger.error("Präferenz-Detektor (Domina) fehlgeschlagen: %s", e)
+    # fürs eigene Profil anbieten. Als Hintergrund-Task (D9/A2, Muster D8/N1 im
+    # Sklave-Pfad): der Grok-Call hielt sonst den Paar-Lock 10-30 s für die
+    # NÄCHSTE Nachricht beider Partner.
+    import asyncio as _asyncio
+
+    async def _detektor_bg() -> None:
+        try:
+            from bot.services import praeferenz_detektor
+            await praeferenz_detektor.erkenne_und_schlage_vor(context.bot, "domina", text)
+        except Exception as e:
+            logger.error("Präferenz-Detektor (Domina) fehlgeschlagen: %s", e)
+
+    _bg = _asyncio.create_task(_detektor_bg())
+    _BG_TASKS.add(_bg)
+    _bg.add_done_callback(_BG_TASKS.discard)
 
 
 async def _baue_system_prompt(

@@ -60,7 +60,9 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # unbemerkt eine neue Wette platzieren.
     nonce = uuid.uuid4().hex[:8]
     state.get(chat_id)["wette_nonce"] = nonce
-    buttons = [[InlineKeyboardButton(f"🎰 {e} Punkte", callback_data=f"wette:setzen:{e}:{nonce}")
+    # Locale-Key statt Hardcoding (D9/A4) – EN-Betrieb zeigte deutsche Buttons.
+    buttons = [[InlineKeyboardButton(t("BUTTON_WETTE_EINSATZ", punkte=e),
+                                     callback_data=f"wette:setzen:{e}:{nonce}")
                 for e in moeglich]]
     await update.message.reply_text(
         t("WETTE_ANGEBOT", punkte=punkte), parse_mode="Markdown",

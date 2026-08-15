@@ -143,10 +143,12 @@ def run_backup_sync() -> dict:
 
 
 async def run_backup() -> dict:
-    """Async-Wrapper für den Scheduler-Job. Läuft über qdrant.run_io (den einen
-    IO-Worker) statt einem eigenen to_thread – sonst nutzen Backup-Thread und
-    qdrant-Worker denselben, nicht nebenläufig gedachten Client gleichzeitig.
-    Der Backup-Job läuft zu einer ruhigen Tageszeit, das kurze Serialisieren ist ok."""
+    """Async-Wrapper für den Scheduler-Job. Läuft über qdrant.run_io (den
+    gemeinsamen Worker-Pool, seit Multiuser Schritt 7 mehrere Worker) statt
+    einem eigenen to_thread: so bleibt jede Nutzung des geteilten Clients in
+    dem Pool, für den seine (httpx-)Thread-Nutzung ausgelegt ist, und der
+    Event-Loop wird nicht blockiert. (Kommentar D9/A4 korrigiert – die alte
+    „der EINE IO-Worker serialisiert"-Begründung galt nur vor dem Pool.)"""
     from bot.services import qdrant
     return await qdrant.run_io(run_backup_sync)
 

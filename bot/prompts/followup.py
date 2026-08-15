@@ -327,6 +327,7 @@ def _aufgaben_kontext(
     verbrauchte_anfaenge: list = None,
     verbrauchte_abschluesse: list = None,
     mehrstufig_bremse: bool = False,
+    ausfuehrlich: bool = False,
     letzte_inspirationen: list = None,
     gewaehlte_kategorien: list = None,
     cross_kategorie: str = None,
@@ -379,11 +380,22 @@ def _aufgaben_kontext(
             + "\n".join(f"  • {a}" for a in verbrauchte_abschluesse) + "\n"
         )
     if mehrstufig_bremse:
-        anfaenge_str += (
-            "\nSTRUKTUR-BREMSE: Deine letzten Vorschläge waren mehrstufige "
-            "Phasen/Stufen-Programme. Heute KEIN nummeriertes Stufen-Format – "
-            "formuliere den Vorschlag als EINE zusammenhängende Idee.\n"
-        )
+        if ausfuehrlich:
+            # D9/A1: der Wochenend-Auftrag erlaubt explizit 2-3 Phasen – ein
+            # hartes "KEIN Stufen-Format" wären zwei Absolutanweisungen
+            # gegeneinander. Abschwächen statt verbieten.
+            anfaenge_str += (
+                "\nSTRUKTUR-BREMSE: Deine letzten Vorschläge waren mehrstufige "
+                "Phasen/Stufen-Programme. Wenn du heute Phasen nutzt, baue sie "
+                "ANDERS auf – kein 'Phase 1/2/3'-Nummernschema, andere Dramaturgie "
+                "als zuletzt (z. B. ein durchgehendes Szenario mit Wendepunkt).\n"
+            )
+        else:
+            anfaenge_str += (
+                "\nSTRUKTUR-BREMSE: Deine letzten Vorschläge waren mehrstufige "
+                "Phasen/Stufen-Programme. Heute KEIN nummeriertes Stufen-Format – "
+                "formuliere den Vorschlag als EINE zusammenhängende Idee.\n"
+            )
     # Positiv formuliert + auf Kurzlabels eingedampft: vollständige Aufgabentexte
     # prominent als "VERBOTEN" zu listen ankert das Modell genau auf diese Themen.
     abwechslung_str = ""
@@ -480,6 +492,15 @@ def _aufgaben_kontext(
     vertrauens_str = f"\n{vertrauens_kontext}" if vertrauens_kontext else ""
     from bot.prompts import coach_persona
     schwierigkeit_str = "\n" + coach_persona.schwierigkeit_zeile(schwierigkeit) + "\n"
+    if ausfuehrlich:
+        # D9/A1: "niedrig → kurze Aufgaben" widersprach dem Wochenend-Auftrag
+        # "anspruchsvoll, mehrschichtig" im selben Prompt (live gerendert 15.08.).
+        schwierigkeit_str = (
+            "\n" + coach_persona.schwierigkeit_zeile(schwierigkeit)
+            + " – gilt je Schritt: der Wochenend-Vorschlag darf trotzdem "
+            "mehrschichtig und insgesamt länger sein, solange jeder einzelne "
+            "Schritt dieser Komplexität entspricht.\n"
+        )
     kat_level_str = ""
     if kategorie_level_hinweis:
         kat_level_str = (
@@ -628,4 +649,4 @@ Der Vorschlag soll:
 
 Formuliere die Nachricht direkt an {d['real_akk']} (du-Form). Maximal {config.AUSFUEHRLICH_WORTLIMIT} Wörter.
 KEIN [AUFGABE: ...] Tag – das ist nur ein Vorschlag, keine automatische Aufgabe."""
-    return system, _aufgaben_kontext(**kwargs)
+    return system, _aufgaben_kontext(ausfuehrlich=True, **kwargs)

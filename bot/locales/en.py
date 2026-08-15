@@ -391,6 +391,7 @@ MESSAGES = {
 
     # --- Privilegien ----------------------------------------------------------------
     # --- Bet (double or nothing) -----------------------------------------------
+    "BUTTON_WETTE_EINSATZ": "🎰 {punkte} points",
     "WETTE_ANGEBOT": (
         "🎰 *Double or nothing*\n\n"
         "You have *{punkte} points*. Place a bet that you will complete your "
