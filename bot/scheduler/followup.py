@@ -1528,7 +1528,9 @@ Hoch bewertete Aufgaben (Indizien fuer Sklaven-Vorlieben):
         try:
             parsed = grok.parse_json(antwort)
         except json.JSONDecodeError as e:
-            logger.error("Profil-Pflege: JSON-Parse-Fehler – %s | Antwort: %s", e, antwort[:300])
+            # Rohantwort nur auf DEBUG – generierte intime Inhalte (D9/S8).
+            logger.error("Profil-Pflege: JSON-Parse-Fehler – %s (Antwort: %d Zeichen)", e, len(antwort or ""))
+            logger.debug("Profil-Pflege-Rohantwort: %s", antwort[:300])
             return {"status": "fehler", "vorschlaege": 0, "zeitraum": zeitraum,
                     "info": f"Grok-Antwort nicht parsebar: {e}"}
 

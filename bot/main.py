@@ -2,6 +2,8 @@
 BDSM Coach Bot – Entry Point
 """
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 
 from telegram import Update
 from telegram.ext import (
@@ -40,10 +42,20 @@ from bot.scheduler.followup import (
 from bot.handlers.profil import abbrechen_command
 from bot.messages import t
 
+
+class _Private0600FileHandler(RotatingFileHandler):
+    """Erzeugt die Logdatei IMMER mit 0600 – auch nach doRollover() (D9/S3).
+    Der einmalige chmod beim Start deckte nur die erste Datei ab; jede Rotation
+    legte die neue bot.log mit umask-Default (0644, world-readable) an."""
+
+    def _open(self):
+        flags = os.O_WRONLY | os.O_CREAT | (os.O_TRUNC if "w" in self.mode else os.O_APPEND)
+        fd = os.open(self.baseFilename, flags, 0o600)
+        return os.fdopen(fd, self.mode, encoding=self.encoding)
+
+
 def _setup_logging() -> None:
     """Console (INFO) + rotierende Logdatei (DEBUG) – komplettes Logging zur Analyse."""
-    import os
-    from logging.handlers import RotatingFileHandler
     fmt = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
@@ -53,7 +65,7 @@ def _setup_logging() -> None:
     handlers = [console]
     try:
         os.makedirs(os.path.dirname(config.LOG_FILE) or ".", exist_ok=True)
-        fileh = RotatingFileHandler(
+        fileh = _Private0600FileHandler(
             config.LOG_FILE, maxBytes=config.LOG_MAX_BYTES,
             backupCount=config.LOG_BACKUP_COUNT, encoding="utf-8",
         )
@@ -130,14 +142,73 @@ async def log_incoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception:
         logger.exception("log_incoming fehlgeschlagen")
 
-async def pause_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Zentraler Safeword-Pause-Guard (group=-1, VOR allen Handlern).
+# D9/S1: Rollen-Karte der Callback-Präfixe (spezifischere Präfixe zuerst).
+# Telegram validiert callback_data nicht – ein modifizierter Client kann
+# beliebige Daten an den Bot schicken, und die Privileg-IDs sind statisch
+# ratbar (pause_tag, easy_mode, …). Fremde Chats werden im Gate hart gestoppt,
+# paar-intern muss die Rolle des Drückers zum Button-Typ passen.
+_CALLBACK_ROLLEN = (
+    ("privileg:einloesen:", paare.ROLLE_SUB),   # Sklave löst ein …
+    ("privileg:",           paare.ROLLE_DOM),   # … die Domina entscheidet
+    ("wunsch:",             paare.ROLLE_DOM),
+    ("tinyfb:",             paare.ROLLE_DOM),
+    ("wuerfel:",            paare.ROLLE_DOM),
+    ("roulette:",           paare.ROLLE_DOM),
+    ("luecke:",             paare.ROLLE_DOM),
+    ("resurface:",          paare.ROLLE_DOM),
+    ("coachregel:",         paare.ROLLE_DOM),
+    ("ketteanpass:",        paare.ROLLE_DOM),
+    ("kettefail:",          paare.ROLLE_DOM),
+    ("wochenplan:",         paare.ROLLE_DOM),
+    ("wette:",              paare.ROLLE_SUB),
+    ("blitz:",              paare.ROLLE_SUB),
+    ("followup:",           paare.ROLLE_SUB),
+    ("meinetask:",          paare.ROLLE_SUB),
+    ("wunschdel:",          paare.ROLLE_SUB),
+)
 
-    Blockiert während der Pause Commands, Inline-Button-Callbacks und Medien –
+
+async def _callback_gate(update: Update) -> None:
+    """Autorisiert JEDE callback_query (D9/S1): Chat muss zu einem Paar gehören,
+    Rolle muss zum Button-Präfix passen. Verstoß → still verwerfen (nur
+    query.answer, kein Inhalt) + ApplicationHandlerStop. Unbekannte Präfixe
+    laufen durch (Paar-Zugehörigkeit ist dann trotzdem geprüft)."""
+    q = update.callback_query
+    data = q.data if isinstance(q.data, str) else ""
+    prefix_log = data.split(":", 1)[0]
+    chat_id = str(update.effective_chat.id) if update.effective_chat else ""
+    ctx = paare.resolve(chat_id)
+    if ctx is None:
+        logger.warning("Callback '%s:…' aus nicht autorisiertem Chat verworfen.", prefix_log)
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        raise ApplicationHandlerStop
+    rolle = ctx[1]
+    for prefix, erlaubt in _CALLBACK_ROLLEN:
+        if data.startswith(prefix):
+            if rolle != erlaubt:
+                logger.warning("Callback '%s:…' von falscher Rolle (%s) verworfen.", prefix_log, rolle)
+                try:
+                    await q.answer()
+                except Exception:
+                    pass
+                raise ApplicationHandlerStop
+            break
+
+
+async def pause_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Zentraler Guard (group=-1, VOR allen Handlern): erst die
+    Callback-Autorisierung (D9/S1, läuft IMMER), dann der Safeword-Pause-Teil.
+
+    Die Pause blockiert Commands, Inline-Button-Callbacks und Medien –
     sonst könnten z.B. liegengebliebene Würfel-/Wochenplan-Buttons trotz Pause
     neue Aufgaben an den Sklaven senden. Normale Text-Nachrichten laufen durch,
     damit safeword.check_and_handle das RESUME-Wort verarbeiten und den
     Pausen-Hinweis senden kann."""
+    if update.callback_query is not None:
+        await _callback_gate(update)
     if not state.is_paused():
         return
     msg = update.effective_message

@@ -40,10 +40,23 @@ if [ ! -s "$BLOCKLISTE" ]; then
     echo "❌ $BLOCKLISTE fehlt oder ist leer (private Muster, eine Regex pro Zeile) – Abbruch." >&2
     exit 1
 fi
-if grep -rniE '192\.168\.' "$TMP" || grep -rniE -f "$BLOCKLISTE" "$TMP"; then
-    echo "❌ Private Spuren im Export gefunden (siehe oben) – Abbruch." >&2
-    exit 1
-fi
+# RC explizit auswerten (D9/S7): Treffer (0) UND grep-Fehler (2, z.B. kaputte
+# Regex in der Blockliste) brechen ab – nur "kein Treffer" (1) lässt durch.
+# Vorher war RC 2 in der if-Bedingung "false" und der Export lief ohne
+# wirksames Muster-Gate weiter (set -e greift in Bedingungen nicht).
+pruefe_gate() {
+    local rc=0
+    grep -rniE "$@" "$TMP" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo "❌ Private Spuren im Export gefunden (siehe oben) – Abbruch." >&2
+        exit 1
+    elif [ "$rc" -ne 1 ]; then
+        echo "❌ grep-Fehler (RC $rc) im Muster-Gate – Abbruch (.export_blockliste prüfen)." >&2
+        exit 1
+    fi
+}
+pruefe_gate '192\.168\.'
+pruefe_gate -f "$BLOCKLISTE"
 
 # --- Sanity-Gate 2: ECHTE Secret-Werte aus der .env dürfen nirgends stehen --
 # (Token, API-Keys, Chat-IDs, Log-Zugänge – als Fixed-Strings gegrept)

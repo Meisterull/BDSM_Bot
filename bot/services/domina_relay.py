@@ -67,5 +67,7 @@ async def pruefe_und_leite_weiter(bot: Bot, sklave_text: str) -> bool:
         logger.exception("Domina-Hinweis konnte nicht zugestellt werden")
         return False
 
-    logger.info("Domina-Hinweis weitergeleitet: %s", antwort[:120])
+    # Inhalt nur auf DEBUG (0600-Logdatei) – Docker-INFO-Logs sind breiter lesbar (D9/S8).
+    logger.info("Domina-Hinweis weitergeleitet (%d Zeichen).", len(antwort))
+    logger.debug("Domina-Hinweis-Inhalt: %s", antwort[:120])
     return True

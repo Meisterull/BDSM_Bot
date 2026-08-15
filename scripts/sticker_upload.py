@@ -64,8 +64,13 @@ def env_lesen() -> dict:
 
 
 def api(token: str, methode: str, daten: dict | None = None, dateien: dict | None = None) -> dict:
-    r = requests.post(f"https://api.telegram.org/bot{token}/{methode}",
-                      data=daten or {}, files=dateien or None, timeout=60)
+    # Netzfehler abfangen (D9/S10): der ungefangene requests-Traceback druckte
+    # sonst die Request-URL inklusive Bot-Token ins Terminal.
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/{methode}",
+                          data=daten or {}, files=dateien or None, timeout=60)
+    except requests.RequestException as e:
+        raise SystemExit(f"{methode}: Netzfehler ({type(e).__name__})") from None
     antwort = r.json()
     if not antwort.get("ok"):
         raise SystemExit(f"{methode} fehlgeschlagen: {antwort.get('description')}")
@@ -109,10 +114,13 @@ def main() -> None:
     bot_name = api(token, "getMe")["username"]
     set_name = f"{SET_BASISNAME}_by_{bot_name}"
 
-    existiert = requests.post(
-        f"https://api.telegram.org/bot{token}/getStickerSet",
-        data={"name": set_name}, timeout=60,
-    ).json().get("ok", False)
+    try:
+        existiert = requests.post(
+            f"https://api.telegram.org/bot{token}/getStickerSet",
+            data={"name": set_name}, timeout=60,
+        ).json().get("ok", False)
+    except requests.RequestException as e:
+        raise SystemExit(f"getStickerSet: Netzfehler ({type(e).__name__})") from None
 
     if existiert and args.neu:
         api(token, "deleteStickerSet", {"name": set_name})

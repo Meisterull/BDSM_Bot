@@ -201,7 +201,9 @@ async def generiere_storyline(
             return None, "ARC_TAGE_VERLETZT", {"tage": verletzte_tage}
         return tage, "", {}
     except Exception as e:
-        logger.error("Fehler beim Generieren der Storyline: %s\nAntwort: %s", e, antwort)
+        # Rohantwort nur auf DEBUG – sie enthält generierte intime Inhalte (D9/S8).
+        logger.error("Fehler beim Generieren der Storyline: %s (Antwort: %d Zeichen)", e, len(antwort or ""))
+        logger.debug("Storyline-Rohantwort: %s", antwort)
         return None, "ARC_FEHLER", {}
 
 

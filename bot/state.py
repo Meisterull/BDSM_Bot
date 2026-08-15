@@ -384,9 +384,18 @@ def _persist_now() -> None:
             pfad = config.STATE_FILE
             os.makedirs(os.path.dirname(pfad) or ".", exist_ok=True)
             tmp = pfad + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
+            # 0600 ab Anlage (D9/S2): die History ist Klartext-Intimchat –
+            # der umask-Default (0644, world-readable) wäre inkonsistent zur
+            # 0600-Policy von bot.log/Backups. os.replace übernimmt die Rechte
+            # der tmp-Datei; das chmod danach heilt zusätzlich einen 0644-Bestand.
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(daten, f, ensure_ascii=False)
             os.replace(tmp, pfad)
+            try:
+                os.chmod(pfad, 0o600)
+            except OSError:
+                pass
     except Exception as e:
         logger.warning("State-Persistenz fehlgeschlagen: %s", e)
 

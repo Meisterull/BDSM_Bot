@@ -45,7 +45,8 @@ async def merken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         status="aktiv",
         quelle="manuell",
     )
-    logger.info("Coach-Notiz gespeichert: %s (%s)", text[:60], point_id)
+    logger.info("Coach-Notiz gespeichert (%s, %d Zeichen).", point_id, len(text))
+    logger.debug("Coach-Notiz-Inhalt: %s", text[:60])
     await update.message.reply_text(
         t("COACHREGELN_NOTIZ_GESPEICHERT", text=telegram_helper.escape_md(text)),
         parse_mode="MarkdownV2",
@@ -70,7 +71,8 @@ async def regel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         status="aktiv",
         quelle="manuell",
     )
-    logger.info("Coach-Regel gespeichert: %s (%s)", text[:60], point_id)
+    logger.info("Coach-Regel gespeichert (%s, %d Zeichen).", point_id, len(text))
+    logger.debug("Coach-Regel-Inhalt: %s", text[:60])
     await update.message.reply_text(
         t("COACHREGELN_REGEL_AKTIV", text=telegram_helper.escape_md(text)),
         parse_mode="MarkdownV2",

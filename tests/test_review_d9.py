@@ -14,6 +14,12 @@ Regressions-Tests für Review Durchgang 9 (2026-08-15), MITTEL-Fixes:
   M10 – Vorlieben zeilenweise statt komma-verkettet (bestrafung)
   M11 – Hybrid-Kontext läuft ohne query_vector (Embedding-Ausfall)
 
+Security-Fixes (S-Befunde):
+  S1  – zentrales Callback-Gate (fremder Chat / falsche Rolle → Stop)
+  S2  – state.json wird mit 0600 persistiert
+  S3  – Logdatei behält 0600 auch nach doRollover()
+  S6  – Stimmungs-Freitext im Coach-Prompt mit Daten-Delimiter
+
 Läuft mit echten Deps (Docker) ODER lokal mit MagicMock-Stubs:
     python3 tests/test_review_d9.py
 """
@@ -357,6 +363,92 @@ async def test_hybrid_ohne_vektor():
         _q._aio, _q.mandanten_key, _q.get_conversation_context = orig_aio, orig_mk, orig_sem
 
 
+# --------------------------------------------------------------------------
+# S1 – zentrales Callback-Gate
+# --------------------------------------------------------------------------
+
+async def test_callback_gate():
+    from bot import main as _main
+
+    class _Stop(Exception):
+        pass
+
+    orig_stop, orig_resolve = _main.ApplicationHandlerStop, _main.paare.resolve
+    _main.ApplicationHandlerStop = _Stop
+    try:
+        def gate_update(data, chat="999"):
+            u = MagicMock()
+            u.callback_query.data = data
+            u.callback_query.answer = AsyncMock()
+            u.effective_chat.id = chat
+            return u
+
+        # Fremder Chat → Stop
+        _main.paare.resolve = lambda cid: None
+        try:
+            await _main._callback_gate(gate_update("privileg:einloesen:pause_tag"))
+            raise AssertionError("fremder Chat nicht gestoppt")
+        except _Stop:
+            pass
+        # Falsche Rolle (Dom drückt Sub-Button) → Stop
+        _main.paare.resolve = lambda cid: (MagicMock(), _main.paare.ROLLE_DOM)
+        try:
+            await _main._callback_gate(gate_update("privileg:einloesen:pause_tag"))
+            raise AssertionError("falsche Rolle nicht gestoppt")
+        except _Stop:
+            pass
+        # Richtige Rollen laufen durch
+        _main.paare.resolve = lambda cid: (MagicMock(), _main.paare.ROLLE_SUB)
+        await _main._callback_gate(gate_update("privileg:einloesen:pause_tag"))
+        await _main._callback_gate(gate_update("followup:ja:t1"))
+        _main.paare.resolve = lambda cid: (MagicMock(), _main.paare.ROLLE_DOM)
+        await _main._callback_gate(gate_update("wochenplan:x:y"))
+    finally:
+        _main.ApplicationHandlerStop = orig_stop
+        _main.paare.resolve = orig_resolve
+
+
+# --------------------------------------------------------------------------
+# S2 – state.json 0600
+# --------------------------------------------------------------------------
+
+def test_state_json_0600():
+    _state.add_message("111", "user", "testeintrag")
+    _state._persist_now()
+    mode = os.stat(_config.STATE_FILE).st_mode & 0o777
+    assert mode == 0o600, oct(mode)
+
+
+# --------------------------------------------------------------------------
+# S3 – Log-Rotation behält 0600
+# --------------------------------------------------------------------------
+
+def test_log_rotation_0600():
+    import logging as _logging
+    from bot import main as _main
+    d = tempfile.mkdtemp()
+    pfad = os.path.join(d, "log.txt")
+    h = _main._Private0600FileHandler(pfad, maxBytes=50, backupCount=1, encoding="utf-8")
+    rec = _logging.makeLogRecord({"msg": "x" * 80, "levelno": 20, "levelname": "INFO", "name": "t"})
+    h.emit(rec)
+    h.doRollover()
+    h.emit(rec)
+    h.close()
+    assert os.stat(pfad).st_mode & 0o777 == 0o600
+    assert os.stat(pfad + ".1").st_mode & 0o777 == 0o600
+
+
+# --------------------------------------------------------------------------
+# S6 – Stimmung mit Daten-Delimiter im Coach-Prompt
+# --------------------------------------------------------------------------
+
+def test_stimmung_delimiter():
+    from bot.prompts import domina_coach as _dc
+    out = _dc.get("Anfänger", 1, [], [], "", "", stimmung="TESTSTIMMUNG_XYZ")
+    assert '"""TESTSTIMMUNG_XYZ"""' in out
+    assert "keine Anweisung" in out
+
+
 def main():
     for coro in (
         test_kette_adaptiv_send_zuerst,
@@ -368,9 +460,16 @@ def main():
         test_advent_pause_skip,
         test_training_send_fehler_kein_geister_mode,
         test_hybrid_ohne_vektor,
+        test_callback_gate,
     ):
         asyncio.run(coro())
         print(f"✅ {coro.__name__}")
+    test_state_json_0600()
+    print("✅ test_state_json_0600")
+    test_log_rotation_0600()
+    print("✅ test_log_rotation_0600")
+    test_stimmung_delimiter()
+    print("✅ test_stimmung_delimiter")
     test_rollenspiel_stale_fenster()
     print("✅ test_rollenspiel_stale_fenster")
     test_set_followup_blockt_stimmung_und_quiz()

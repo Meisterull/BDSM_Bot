@@ -425,7 +425,7 @@ async def _handle_nummer(update, context, s, text):
     # gespeichert, nur das Status-Update entfällt.
     point_id = point_ids[idx] if idx < len(point_ids) else None
     if not point_id:
-        logger.warning("Inspiration %s ohne point_id gewählt – Vorlage ohne Rückverweis.", text)
+        logger.warning("Inspiration Nr. %d ohne point_id gewählt – Vorlage ohne Rückverweis.", idx + 1)
 
     await _save_as_vorlage(gewaehlter, point_id)
     for i, pid in enumerate(point_ids):
