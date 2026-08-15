@@ -94,7 +94,7 @@ async def _lade_generierungs_kontext(level: int) -> dict:
     query_vector = await emb.get_embedding(f"Aufgabe Inspiration Level {level} BDSM")
     ctx_entries = await qdrant.get_hybrid_conversation_context("domina", query_vector, limit=5,
                                                                 felder=qdrant.KONTEXT_FELDER)
-    stimmung_entry = await qdrant.get_latest_stimmung("sklave")
+    stimmung_entry = await qdrant.get_latest_stimmung("sklave", max_stunden=48)  # D9/N13
     return {
         "ctx_entries": ctx_entries,
         "letzte_inspirationen": await qdrant.get_recent_inspirationen(limit=5),

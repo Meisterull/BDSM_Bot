@@ -245,14 +245,18 @@ async def handle_loeschen(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         s["loeschen_bestaetigung_id"] = point_id
         s["loeschen_serie_stopp"] = [g.get("qdrant_point_id") for g in glieder]
+        # md_einbett_sicher (D9/N4): Aufgabentext steht im Template in _…_ –
+        # Markdown-Zeichen darin ließen die Bestätigungs-Frage verloren gehen,
+        # während der Bestätigungs-State schon gesetzt ist.
         await update.message.reply_text(
             t("AUFGABEN_SERIE_STOPP_BESTAETIGUNG",
-              aufgabe=aufgabe_text, anzahl=len(glieder)),
+              aufgabe=telegram_helper.md_einbett_sicher(aufgabe_text), anzahl=len(glieder)),
             parse_mode="Markdown"
         )
     else:
         s["loeschen_bestaetigung_id"] = point_id
         await update.message.reply_text(
-            t("AUFGABEN_LOESCHEN_BESTAETIGUNG", aufgabe=aufgabe_text),
+            t("AUFGABEN_LOESCHEN_BESTAETIGUNG",
+              aufgabe=telegram_helper.md_einbett_sicher(aufgabe_text)),
             parse_mode="Markdown"
         )

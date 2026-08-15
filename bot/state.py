@@ -253,7 +253,10 @@ def zaehle_tagesnachricht(paar_id: str) -> int:
     ein Neustart resettet den Zähler; das ist bewusst simpel, die Bremse
     ist Schutz vor Dauerfeuer, keine Abrechnung."""
     import datetime
-    heute = datetime.date.today().isoformat()
+    from zoneinfo import ZoneInfo
+    from bot import config as _config  # lokal: state wird früh importiert
+    # Rollover in Bot-Zeitzone statt System-TZ (D9/N21) – nur Budget-Bremse.
+    heute = datetime.datetime.now(ZoneInfo(_config.TIMEZONE)).date().isoformat()
     zaehler = _state.setdefault("__tagesnachrichten__", {})
     eintrag = zaehler.get(str(paar_id))
     if not eintrag or eintrag.get("tag") != heute:

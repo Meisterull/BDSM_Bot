@@ -84,6 +84,11 @@ PERSONA_PRESETS_DIR = os.getenv("PERSONA_PRESETS_DIR", "data/persona_presets")
 # Feature Flags
 STIMMUNG_ENABLED = os.getenv("STIMMUNG_ENABLED", "false").lower() == "true"
 TRAINING_ENABLED = os.getenv("TRAINING_ENABLED", "true").lower() == "true"
+# Aufgaben-Erinnerung ("seit N Tagen kein Task") – eigenes Gate (D9/N12): der Job
+# prüft TASKS, nicht das Psycho-Training, und hing nur namensbedingt am
+# TRAINING_ENABLED-Gate. Default aus, weil das Lücken-System (LUECKEN_*) die
+# Inaktivität bereits mit einem konkreten Vorschlag statt bloßer Erinnerung deckt.
+TRAINING_ERINNERUNG_ENABLED = os.getenv("TRAINING_ERINNERUNG_ENABLED", "false").lower() == "true"
 
 # Pairing (Multiuser-Abschluss): Registrierung weiterer Paare via /start + Invite-Code.
 # Default AUS – bewusste Betreiber-Entscheidung, erst aktivieren wenn Mehr-Paar-
@@ -262,10 +267,17 @@ AUFGABEN_KATEGORIEN = [
 
 
 def kat_to_cmd(kat: str) -> str:
-    """Kategoriename → gültiger Telegram-Command (nur ASCII, lowercase)."""
-    return (kat.lower()
-            .replace("ü", "ue").replace("ä", "ae")
-            .replace("ö", "oe").replace("ß", "ss"))
+    """Kategoriename → gültiger Telegram-Command (nur a-z, 0-9, _).
+
+    Alles andere → '_' (D9/N22): eigene Kategorien mit Bindestrich/Sonderzeichen
+    („Anal-Training") erzeugten sonst untippbare Commands wie
+    /aufgaben_anal-training. Round-trip bleibt konsistent, weil die Vergleiche
+    (aufgaben.py, skill.py) über DIESELBE Funktion laufen."""
+    import re as _re
+    s = (kat.lower()
+         .replace("ü", "ue").replace("ä", "ae")
+         .replace("ö", "oe").replace("ß", "ss"))
+    return _re.sub(r"[^a-z0-9_]", "_", s)
 
 
 # Psycho-Training Zeit (Minuten nach FOLLOWUP_TIME)

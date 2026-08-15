@@ -935,6 +935,8 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
         scheduler.add_job(_fuer_paar(training_job, pid), "cron", day_of_week="tue,thu",
                           hour=(training_total // 60) % 24, minute=training_total % 60,
                           args=[bot], id=f"daily_training_p{pid}", replace_existing=True)
+    # Eigenes Gate (D9/N12): prüft Tasks, nicht Training – siehe config.py.
+    if config.TRAINING_ERINNERUNG_ENABLED:
         _job("training_erinnerung", training_erinnerung_job, "training_erinnerung_time")
     if config.STIMMUNG_ENABLED:
         _job("stimmung_check", stimmung_job, "stimmung_time")

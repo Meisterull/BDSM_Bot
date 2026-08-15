@@ -93,7 +93,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Kontext für eine Frage in der Stimme der Herrin (wie der Auto-Job).
     sklave_profil = await qdrant.get_user_profile("sklave") or {}
     streak = sklave_profil.get("streak", 0)
-    stimmung_entry = await qdrant.get_latest_stimmung("sklave")
+    stimmung_entry = await qdrant.get_latest_stimmung("sklave", max_stunden=48)  # D9/N13
     aktuelle_stimmung = stimmung_entry.get("zusammenfassung", "") if stimmung_entry else ""
     erteilt = task.get("erteilt_am", "")
     try:

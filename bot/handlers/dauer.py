@@ -59,22 +59,28 @@ async def starten(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ende_lokal = _lokal(ende)
     # follow_up_datum hinter das Ende schieben – die echte Nachfrage macht der
     # dauer_job zur Endzeit, der tägliche followup_job soll nicht mittendrin fragen.
-    await qdrant.erstelle_task(
-        anweisung_text, kategorie, level, quelle="dauer",
-        followup_in_tagen=(stunden // 24) + 2,
-        extra={"dauer_bis": ende.isoformat(), "dauer_stunden": stunden, "dauer_letzter_check": ""},
-    )
-
     try:
         anweisung = await grok.simple(fp.aufgabe_an_sklaven(anweisung_text), max_tokens=250)
     except Exception:
         logger.exception("aufgabe_an_sklaven (Dauer) fehlgeschlagen – Rohtext")
         anweisung = anweisung_text
-    await telegram_helper.send_sklave(
-        context.bot,
-        t("DAUER_AN_SKLAVEN", anweisung=anweisung, stunden=stunden, bis=ende_lokal),
-        parse_mode="Markdown", voice_text=anweisung,
+    point_id = await qdrant.erstelle_task(
+        anweisung_text, kategorie, level, quelle="dauer",
+        followup_in_tagen=(stunden // 24) + 2,
+        extra={"dauer_bis": ende.isoformat(), "dauer_stunden": stunden, "dauer_letzter_check": ""},
     )
+    try:
+        await telegram_helper.send_sklave(
+            context.bot,
+            t("DAUER_AN_SKLAVEN", anweisung=anweisung, stunden=stunden, bis=ende_lokal),
+            parse_mode="Markdown", voice_text=anweisung,
+        )
+    except Exception:
+        # Rollback (D9/N5, Muster blitz): nie zugestellte Aufgabe nicht als
+        # offenen Task zurücklassen – sonst fragt der dauer_job/followup nach
+        # einer Aufgabe, die der Sklave nie gesehen hat.
+        await qdrant.loesche_task(point_id)
+        raise
     await update.message.reply_text(
         t("DAUER_ERTEILT", stunden=stunden, bis=ende_lokal), parse_mode="Markdown")
     logger.info("Dauer-Aufgabe erteilt (%dh, Kategorie %s)", stunden, kategorie)

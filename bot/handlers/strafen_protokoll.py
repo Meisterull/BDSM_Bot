@@ -24,7 +24,12 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for s in strafen:
         datum = s.get("datum", "")[:10]
         aufgabe = s.get("aufgabe", "")[:50]
-        status = "✅ angeordnet" if s.get("status") == "angeordnet" else "💭 vorgeschlagen"
+        # Vollständige Status-Map (D9/N23): 'abgelehnt' (reaktion._alternativ_senden)
+        # erschien vorher fälschlich als „vorgeschlagen".
+        status = {
+            "angeordnet": "✅ angeordnet",
+            "abgelehnt": "❌ abgelehnt",
+        }.get(s.get("status"), "💭 vorgeschlagen")
         text += f"[{datum}] {status}\n_{aufgabe}_\n"
         # Die eigentliche Strafe stand bisher nur in der DB, nie im Protokoll
         # (Test-Befund F3) – ohne sie ist das Protokoll als Nachschlagewerk wertlos.

@@ -118,7 +118,7 @@ async def _baue_system_prompt(
         qdrant.get_active_coach_regeln("domina"),
         qdrant.get_recent_task_kategorien("sklave", limit=5),
         qdrant.get_vertrauens_score("sklave"),
-        qdrant.get_latest_stimmung("sklave"),
+        qdrant.get_latest_stimmung("sklave", max_stunden=48),  # D9/N13: nur frische Stimmung als "aktuell"
     )
     context_str = domina_coach.format_context(ctx_entries)
 
@@ -438,22 +438,38 @@ async def handle_kette_aufgaben(
         sklave_chat = paare.sub_chat_id()
         first_task_id = None
 
-        for position, aufgabe_text in enumerate(kette_liste, start=1):
-            status = "offen" if position == 1 else "kette_wartend"
-            task_id = await qdrant.save_task({
-                "user_id": "sklave",
-                "aufgabe": aufgabe_text,
-                "level": level,
-                "kategorie": kategorie,
-                "status": status,
-                "erteilt_am": erteilt_am,
-                "follow_up_datum": erteilt_am,
-                "kette_id": kette_id,
-                "kette_position": position,
-                "kette_gesamt": gesamt,
-            })
-            if position == 1:
-                first_task_id = task_id
+        # Teil-Rollback (D9/N6): wirft save_task bei Glied k, würden die
+        # Glieder 1..k-1 stehen bleiben und ein erneutes "fertig" der Domina
+        # legte die KOMPLETTE Liste nochmal unter neuer kette_id an (zweites
+        # offenes Erst-Glied, doppelte Kette). Bei Teilfehler alles aufräumen.
+        gespeicherte_ids: list[str] = []
+        try:
+            for position, aufgabe_text in enumerate(kette_liste, start=1):
+                status = "offen" if position == 1 else "kette_wartend"
+                task_id = await qdrant.save_task({
+                    "user_id": "sklave",
+                    "aufgabe": aufgabe_text,
+                    "level": level,
+                    "kategorie": kategorie,
+                    "status": status,
+                    "erteilt_am": erteilt_am,
+                    "follow_up_datum": erteilt_am,
+                    "kette_id": kette_id,
+                    "kette_position": position,
+                    "kette_gesamt": gesamt,
+                })
+                gespeicherte_ids.append(task_id)
+                if position == 1:
+                    first_task_id = task_id
+        except Exception:
+            logger.exception("Ketten-Anlage bei Glied %d/%d fehlgeschlagen – räume %d gespeicherte Glieder auf.",
+                             len(gespeicherte_ids) + 1, gesamt, len(gespeicherte_ids))
+            for tid in gespeicherte_ids:
+                try:
+                    await qdrant.loesche_task(tid)
+                except Exception:
+                    logger.exception("Ketten-Rollback: Glied %s nicht löschbar.", tid)
+            raise
 
         # State aufräumen
         for key in ("kette_aufgaben_liste", "kette_erste_text",

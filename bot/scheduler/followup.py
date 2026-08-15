@@ -314,6 +314,71 @@ def _vorschlag_anfang(inhalt: str) -> str:
     return saetze[0][:90] if saetze and saetze[0] else ""
 
 
+def _vorschlag_abschluss(inhalt: str) -> str:
+    """Letzter Satz eines Vorschlags (max. 90 Zeichen) – für die
+    VERBRAUCHTE-ABSCHLÜSSE-Sperrliste (D9/DIV3): Abschluss-Fragen recyceln
+    genauso wie Opener („Wie lange willst du …?" in 4 von 5 Folgetagen)."""
+    saetze = [s_ for s_ in re.split(r"(?<=[.!?])\s+", (inhalt or "").strip()) if s_]
+    return saetze[-1][:90] if saetze else ""
+
+
+# Deterministischer Schablonen-Detektor (D9/DIV1/3/5): die Prompt-Verbote in
+# _formel_verbot verlieren gegen die Modell-Präferenz (Diversitäts-Messung
+# 15.08.: „Das passt …, weil" trotz Verbot in ~60 % der Outputs, „Wie wär's"
+# rutschte am 5. Folgetag wieder durch). Bekanntes Lernmuster: Prompt-Regeln
+# brauchen einen Detektor + Retry (wie _ist_echo/_ist_spiegel_anfang im Chat).
+_PASST_WEIL_RE = re.compile(r"\bpasst\b[^.!?\n]{0,60}\bweil\b", re.IGNORECASE)
+_WIE_WAERS_RE = re.compile(r"^\W{0,8}wie\s+w[äa]r['’`]?s\b", re.IGNORECASE)
+# Ohne ?-Fenster (Nachtest 15.08.: lange Varianten wie „…, bevor du
+# entscheidest, ob's reicht …?" lagen außerhalb des 80-Zeichen-Fensters).
+# Die Frage an die Domina ist praktisch immer der Schluss-Satz – ein seltener
+# False Positive kostet nur einen harmlosen Retry.
+_WIE_LANGE_RE = re.compile(
+    r"\bwie\s+lange\s+(willst|magst|l[äa]sst)\s+du\b", re.IGNORECASE)
+
+
+def _formel_verstoesse(text: str) -> list[str]:
+    funde = []
+    if _PASST_WEIL_RE.search(text or ""):
+        funde.append('Begründungs-Formel „passt …, weil"')
+    if _WIE_WAERS_RE.search(text or ""):
+        funde.append('Einstieg „Wie wär\'s …"')
+    if _WIE_LANGE_RE.search(text or ""):
+        funde.append('Abschluss-Frage „Wie lange willst du …?"')
+    return funde
+
+
+def _cos(a: list, b: list) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+async def _diversester_kandidat(kandidaten: list[str], referenzen: list[str]) -> str:
+    """Wählt aus mehreren Kandidaten den mit der geringsten maximalen
+    Embedding-Ähnlichkeit zu den letzten Vorschlägen (D9/DIV2): der
+    Reasoning-Pfad konvergiert sonst hart auf ein Rezept (Messung 15.08.:
+    3/3 Wochenend-Vorschläge fast identisch, Cosine bis 0.886)."""
+    kandidaten = [k for k in kandidaten if k]
+    if len(kandidaten) <= 1 or not referenzen:
+        return kandidaten[0] if kandidaten else ""
+    try:
+        ref_vecs = [await embeddings.get_embedding(r) for r in referenzen[:5]]
+        best, best_score = kandidaten[0], None
+        for k in kandidaten:
+            v = await embeddings.get_embedding(k)
+            score = max((_cos(v, rv) for rv in ref_vecs), default=0.0)
+            if best_score is None or score < best_score:
+                best, best_score = k, score
+        logger.info("Diversitäts-Wahl: %d Kandidaten, gewählte max-Ähnlichkeit %.3f.",
+                    len(kandidaten), best_score or 0.0)
+        return best
+    except Exception:
+        logger.exception("Kandidaten-Wahl fehlgeschlagen – nehme ersten.")
+        return kandidaten[0]
+
+
 async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_aktiv: bool = False) -> dict:
     """Sammelt den kompletten Prompt-Kontext (Task-Historie, Tiny-Tasks, Inspirationen,
     Gespräch, Stimmung, Bewertung, Vertrauen, Kategorien-Auswahl, Persönlichkeit)
@@ -343,6 +408,10 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     # sieht die "NICHT wiederholen"-Liste nicht.
     verbrauchte_anfaenge = list(dict.fromkeys(
         a for a in (_vorschlag_anfang(v) for v in letzte_tiny_volltexte[:4]) if a
+    ))
+    # D9/DIV3: Abschluss-Sätze genauso sperren wie Opener.
+    verbrauchte_abschluesse = list(dict.fromkeys(
+        a for a in (_vorschlag_abschluss(v) for v in letzte_tiny_volltexte[:4]) if a
     ))
     mehrstufig_bremse = sum(
         1 for v in letzte_tiny_volltexte[:3] if _STUFEN_RE.search(v)
@@ -387,10 +456,18 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         sklave_profile, letzte_tiny_kategorien, langeweile, wunsch_aktiv,
         domina_praeferenzen=domina_profile.get("kategorie_praeferenzen", {}))
 
+    # D9/DIV4: Interessen pro Lauf subsampeln – das Modell ankerte sonst auf
+    # einer einzelnen dominanten Zeile („Mag es wenn er jammert …" prägte 11
+    # von 14 gemessenen Outputs als immergleiches Motiv). Max. 6 zufällige
+    # Einträge steuern weiter, variieren aber den täglichen Fokus.
+    interessen = list(domina_profile.get("interessen", []) or [])
+    if len(interessen) > 6:
+        interessen = random.sample(interessen, 6)
+
     return dict(
         erfahrungsstand=domina_profile.get("erfahrungsstand", "Anfänger"),
         level=domina_profile.get("aktuelles_level", 1),
-        interessen=domina_profile.get("interessen", []),
+        interessen=interessen,
         sklave_vorlieben=sklave_profile.get("vorlieben", []),
         sklave_hard_limits=sklave_profile.get("hard_limits", []),
         # Kategorie-Dislikes aus Persönlichkeitsprofil (zentrale Logik)
@@ -398,6 +475,7 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         letzte_aufgaben=letzte_aufgaben,
         letzte_tiny_tasks=letzte_tiny_tasks,
         verbrauchte_anfaenge=verbrauchte_anfaenge,
+        verbrauchte_abschluesse=verbrauchte_abschluesse,
         mehrstufig_bremse=mehrstufig_bremse,
         letzte_inspirationen=letzte_inspirationen,
         gewaehlte_kategorien=gewaehlte_kategorien,
@@ -481,12 +559,51 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
         # Limits-Check (Sklave-Hard-Limits + Domina-Grenzen) mit einmaliger Re-Generierung
         sk_hl = sklave_profile.get("hard_limits", []) or []
         do_gr = domina_profile.get("grenzen", []) or []
-        vorschlag = await limits_check.generate_mit_limit_retry(
-            prompt, sk_hl, do_gr, system=system, reasoning=ist_wochenende,
-        )
+
+        async def _generiere() -> str | None:
+            return await limits_check.generate_mit_limit_retry(
+                prompt, sk_hl, do_gr, system=system, reasoning=ist_wochenende,
+            )
+
+        if ist_wochenende:
+            # D9/DIV2: der Reasoning-Pfad konvergiert hart auf ein Rezept
+            # (Messung 15.08.: 3/3 identischer Aufbau, Cosine bis 0.886) –
+            # zwei Kandidaten generieren und den per Embedding unähnlicheren
+            # zu den letzten Vorschlägen nehmen.
+            import asyncio as _asyncio
+            k1, k2 = await _asyncio.gather(_generiere(), _generiere())
+            kandidaten = [k for k in (k1, k2) if k]
+            if kandidaten:
+                _, _, referenz_texte = await qdrant.get_recent_tiny_tasks(limit=5)
+                vorschlag = await _diversester_kandidat(kandidaten, referenz_texte)
+            else:
+                vorschlag = None
+        else:
+            vorschlag = await _generiere()
         if vorschlag is None:
             logger.error("Tiny-Task auch nach Re-Generierung Grenzen-verletzend – verworfen.")
             return
+
+        # D9/DIV1/3/5: Schablonen-Detektor + genau EIN Retry (Muster Anti-Echo
+        # im Sklave-Chat) – das reine Prompt-Verbot verlor in ~60 % der Outputs.
+        funde = _formel_verstoesse(vorschlag)
+        if funde:
+            logger.info("Vorschlag nutzt verbotene Schablonen (%s) – generiere einmal neu.",
+                        "; ".join(funde))
+            retry_prompt = (
+                prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN "
+                "Schablonen benutzt: " + "; ".join(funde) + ". Formuliere den Vorschlag "
+                "neu – der Inhalt darf bleiben, aber Einstieg, Begründung und Schluss "
+                "müssen ohne diese Muster auskommen (Begründung ohne 'passt…weil'-Bau, "
+                "Schluss ohne 'Wie lange…?'-Frage)."
+            )
+            neu = await limits_check.generate_mit_limit_retry(
+                retry_prompt, sk_hl, do_gr, system=system, reasoning=ist_wochenende,
+            )
+            if neu and len(_formel_verstoesse(neu)) <= len(funde):
+                vorschlag = neu
+                if _formel_verstoesse(neu):
+                    logger.info("Auch der Retry nutzt Schablonen – akzeptiere best-effort.")
 
         # Kürzen falls zu lang (Telegram Limit 4096, Prefix ~50 Zeichen)
         if len(vorschlag) > 4000:
@@ -514,8 +631,14 @@ async def _letzte_domina_aktivitaet() -> datetime | None:
     tasks = await qdrant.get_tasks_by_status(
         ["offen", "gefragt", "gefuehl_pending", "erledigt", "nicht_erledigt",
          "serie_wartend", "kette_wartend", "pausiert", "geplant"],
-        limit=1, sort_by_datum=True,
+        limit=5, sort_by_datum=True,
     )
+    # Auto-Content zählt NICHT als Domina-Aktivität (D9/N11, Owner-Entscheid
+    # 15.08.): Blitz-/Advent-Tasks erteilt der Bot selbst – bei aktivem Blitz
+    # oder Adventskalender käme der Lücken-Vorschlag sonst nie, obwohl die
+    # Domina längst ausgestiegen ist. limit=5, damit nach dem Filter noch ein
+    # echter Kandidat übrig ist.
+    tasks = [t_ for t_ in tasks if t_.get("quelle") not in ("blitz", "advent")]
     if tasks:
         stempel.append(_parse_datum(tasks[0].get("erteilt_am", "")))
     jetzt = datetime.now(timezone.utc)
@@ -542,12 +665,16 @@ async def luecken_check_job(bot: Bot) -> None:
 
     # Throttle: nach einem Vorschlag erst nach dem Intervall erneut fragen (kein
     # tägliches Drängeln, auch wenn sie den Vorschlag ignoriert).
+    # 1h-Toleranz (D9/N9): die Throttle-Marke wird Sekunden NACH der Cron-Zeit
+    # geschrieben – ohne Toleranz war "jetzt − Marke" am Tag +INTERVALL immer
+    # knapp unter dem Intervall und der Vorschlag kam systematisch einen Tag
+    # später (Millisekunden-Kanten-Klasse, wie der Ketten-Sweep 30.07.).
     letzter_vorschlag = _parse_datum(domina_profile.get("luecke_letzter_vorschlag_am", ""))
-    if jetzt - letzter_vorschlag < intervall:
+    if jetzt - letzter_vorschlag < intervall - timedelta(hours=1):
         return
 
     letzte_aktivitaet = await _letzte_domina_aktivitaet()
-    if letzte_aktivitaet and jetzt - letzte_aktivitaet < intervall:
+    if letzte_aktivitaet and jetzt - letzte_aktivitaet < intervall - timedelta(hours=1):
         return
 
     tage = (jetzt - letzte_aktivitaet).days if letzte_aktivitaet else config.LUECKEN_INTERVALL_TAGE
@@ -793,6 +920,13 @@ async def _process_kette_tasks(bot: Bot) -> None:
                 # Erst nur beobachten – die Domina kann gerade mitten in einer
                 # frischen Button-Entscheidung stecken.
                 await qdrant.update_task(gid, {"kette_sweep_am": now.isoformat()})
+                continue
+
+            # Nicht in einen aktiven Domina-Flow platzen (D9/N10): Frage einfach
+            # beim nächsten Lauf stellen – sweep_am bleibt stehen, es geht
+            # nichts verloren (kettefail-Buttons sind ohnehin status-geguardet).
+            if state.get_mode(paare.dom_chat_id()) not in ("chat", None):
+                logger.info("KETTE_HAENGT_FRAGE vertagt – Domina in aktivem Flow.")
                 continue
 
             await telegram_helper.send_domina(
@@ -1561,6 +1695,13 @@ Hoch bewertete Aufgaben (Indizien fuer Sklaven-Vorlieben):
                 ch["wert"] = sauber
             per_user[u].append({k: ch[k] for k in ("feld", "operation", "wert", "begruendung") if k in ch})
 
+        # TOCTOU-Re-Check nach dem langen Reasoning-Await (D9/N8): Safeword/Flow
+        # im Fenster → pending-Vorschläge heute nicht mehr senden (Buttons wären
+        # zwar pause_guard-gedeckt, aber der Send in die Pause bricht die Konvention).
+        if _nach_llm_verworfen(paare.dom_chat_id(), "Profil-Pflege"):
+            return {"status": "verworfen", "vorschlaege": 0, "zeitraum": zeitraum,
+                    "info": "Pause/Flow im LLM-Fenster"}
+
         gesendet = 0
         for profile_user, gruppe in per_user.items():
             if not gruppe:
@@ -1614,6 +1755,10 @@ async def profil_pflege_job(bot: Bot) -> None:
     if not _zweiwochen_takt():
         logger.info("Profil-Pflege-Job übersprungen – ungerade ISO-Woche (2-Wochen-Takt).")
         return
+    # Nicht in einen aktiven Domina-Flow platzen (D9/N8); der manuelle
+    # /profilpflege-Pfad (coach_regeln) bleibt bewusst ungeguardet.
+    if _flow_aktiv(paare.dom_chat_id(), "Profil-Pflege"):
+        return
     await generiere_profil_vorschlaege(bot, days=14)
 
 
@@ -1630,6 +1775,8 @@ async def coach_reflexion_job(bot: Bot) -> None:
     Läuft nur in geraden ISO-Wochen (2-Wochen-Takt)."""
     if not _zweiwochen_takt():
         logger.info("Coach-Reflexion-Job übersprungen – ungerade ISO-Woche (2-Wochen-Takt).")
+        return
+    if _flow_aktiv(paare.dom_chat_id(), "Coach-Reflexion"):  # D9/N8
         return
     from bot.handlers import coach_regeln as _cr
     try:
@@ -1697,6 +1844,10 @@ Hier die Gespraeche:
         # Filter: nicht zu kurz, nicht das KEINE_REGEL-Token, max 3
         vorschlaege = [v for v in vorschlaege if len(v) > 8 and "KEINE_REGEL" not in v.upper()][:3]
         if not vorschlaege:
+            return
+
+        # TOCTOU-Re-Check nach dem LLM-Await (D9/N8).
+        if _nach_llm_verworfen(paare.dom_chat_id(), "Coach-Reflexion"):
             return
 
         # Erst ALLE Regeln speichern, dann Intro + Vorschläge senden – sonst

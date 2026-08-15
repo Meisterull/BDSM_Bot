@@ -671,6 +671,7 @@ MESSAGES = {
     "WUNSCH_LISTE": "🗒 *Deine gesammelten Wünsche:*\n{liste}\n\nZum Entfernen tippe einen Knopf:",
     "WUNSCH_ALLE_GELOESCHT": "🗑 Alle gesammelten Wünsche gelöscht.",
     "WUNSCH_EINTRAG_WEG": "Der Eintrag ist nicht mehr da – tippe /meinewuensche für die aktuelle Liste.",
+    "WUNSCH_BEREITS_ENTSCHIEDEN": "Dieser Wunsch ist bereits entschieden.",
     "WUNSCH_LISTE_LEER": "🗑 Entfernt. Du hast keine gesammelten Wünsche mehr.",
     # Bewusst statische Persona-Bestätigung (Stimme der Herrin)
     "WUNSCH_ANGEKOMMEN": "Angekommen. Ob ich ihn dir gewähre, überlege ich mir – hab etwas Geduld. 🖤",

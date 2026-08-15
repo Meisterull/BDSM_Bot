@@ -36,7 +36,14 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     s["followup_task_id"] = None
     state.set_mode(chat_id, "chat")
 
-    domina_profile, level, erledigte = await _speichere_fortschritt(aufgabe, text)
+    # Fangnetz (D9/N14, H2-Klasse ohne LLM): der Task steht schon auf 'erledigt' –
+    # ein Qdrant-Schluckauf hier darf Reaktion/Punkte/Bericht/Bewertung nicht
+    # mehr entfallen lassen.
+    try:
+        domina_profile, level, erledigte = await _speichere_fortschritt(aufgabe, text)
+    except Exception:
+        logger.exception("Fortschritt speichern fehlgeschlagen – fahre mit Defaults fort.")
+        domina_profile, level, erledigte = {}, task.get("level", 1), 0
 
     # --- Sklaven-Pfad: erst inhaltliche Reaktion auf das Gefühl, dann Mechanik ---
 
@@ -203,7 +210,13 @@ async def _sende_bericht_an_domina(context, task_id: str, aufgabe: str, gefuehl:
     # Serverseitig sortiert + kleines Limit (Review D8/M4): ohne sort_by_datum
     # liefert der Scroll ab >100 erledigten Tasks eine willkürliche Teilmenge –
     # die "letzten Gefühle" als Vergleichskontext wären dann falsch.
-    erledigt_tasks = await qdrant.get_tasks_by_status(["erledigt"], limit=20, sort_by_datum=True)
+    try:
+        erledigt_tasks = await qdrant.get_tasks_by_status(["erledigt"], limit=20, sort_by_datum=True)
+    except Exception:
+        # Vergleichskontext ist nice-to-have (D9/N14) – der Bericht selbst
+        # muss auch bei Qdrant-Schluckauf noch rausgehen.
+        logger.exception("Vergleichs-Gefühle nicht ladbar – Bericht ohne Kontext.")
+        erledigt_tasks = []
     erledigt_mit_gefuehl = [
         t for t in erledigt_tasks
         if t.get("gefuehl") and t.get("qdrant_point_id") != task_id

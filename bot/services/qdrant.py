@@ -190,15 +190,20 @@ async def get_user_profile(user_id: str) -> Optional[dict]:
 
 
 async def upsert_user_profile(user_id: str, data: dict) -> str:
+    """Merge-Semantik statt Full-Replace (D9/N19): bestehende Felder, die
+    `data` nicht nennt, bleiben erhalten. Vorher überschrieb der Onboarding-
+    Abschluss alles, was VOR dem Abschluss schon am Profil-Punkt hing
+    (z. B. Patches von lock-freien Scheduler-Jobs/Detektoren)."""
     results, _ = await _aio(client.scroll,
         collection_name="user_profiles",
         scroll_filter=qm.Filter(must=[
             qm.FieldCondition(key="user_id", match=qm.MatchValue(value=mandanten_key(user_id)))
         ]),
         limit=1,
-        with_payload=False,
+        with_payload=True,
         with_vectors=False,
     )
+    bestehend = (results[0].payload or {}) if results else {}
     # Neuanlage mit DETERMINISTISCHER Punkt-ID (Review D8/M13): Scheduler-Jobs
     # laufen nicht unter dem Paar-Lock – legen Job und Handler ein noch fehlendes
     # Profil parallel an, kollidieren beide Upserts jetzt idempotent auf derselben
@@ -207,8 +212,10 @@ async def upsert_user_profile(user_id: str, data: dict) -> str:
     point_id = (str(results[0].id) if results
                 else str(uuid.uuid5(uuid.NAMESPACE_URL, f"user_profile:{mandanten_key(user_id)}")))
 
+    merged = {**bestehend, **data, "user_id": mandanten_key(user_id)}
+
     # Nur semantisch relevante Felder embedden — verhindert nutzlose Vektoren aus Zahlen/Listen
-    embed_data = {k: v for k, v in data.items() if k in _PROFILE_EMBED_FIELDS and v}
+    embed_data = {k: v for k, v in merged.items() if k in _PROFILE_EMBED_FIELDS and v}
     profile_text = " ".join(str(v) for v in embed_data.values()) if embed_data else f"{user_id} profile"
     vector = await emb.get_embedding(profile_text)
 
@@ -217,7 +224,7 @@ async def upsert_user_profile(user_id: str, data: dict) -> str:
         points=[qm.PointStruct(
             id=point_id,
             vector={"text": vector},
-            payload={**data, "user_id": mandanten_key(user_id)},
+            payload=merged,
         )],
     )
     return point_id
@@ -820,8 +827,12 @@ async def get_recent_task_kategorien(user_id: str, limit: int = 5) -> list[str]:
     return [p.get("kategorie", "allgemein") for p in payloads[:limit]]
 
 
-async def get_latest_stimmung(user_id: str) -> Optional[dict]:
-    """Letzte Stimmungsabfrage aus der training Collection."""
+async def get_latest_stimmung(user_id: str, max_stunden: int | None = None) -> Optional[dict]:
+    """Letzte Stimmungsabfrage aus der training Collection.
+
+    max_stunden (D9/N13): die Chat-Pfade rendern den Eintrag als „Aktuelle
+    Stimmung" – eine tagealte Antwort (z. B. nach Abwesenheit) ist keine
+    aktuelle mehr und lenkte Coach/Herrin auf verjährte Gefühlslagen."""
     results, _ = await _aio(client.scroll,
         collection_name="training",
         scroll_filter=qm.Filter(must=[
@@ -832,7 +843,17 @@ async def get_latest_stimmung(user_id: str) -> Optional[dict]:
         with_payload=True, with_vectors=False,
     )
     payloads = [r.payload for r in results]
-    return payloads[0] if payloads else None
+    if not payloads:
+        return None
+    eintrag = payloads[0]
+    if max_stunden is not None:
+        try:
+            d = datetime.fromisoformat(str(eintrag.get("datum", "")).replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) - d > timedelta(hours=max_stunden):
+                return None
+        except ValueError:
+            return None
+    return eintrag
 
 
 async def get_recent_stimmung_fragen(limit: int = 5) -> list[str]:
@@ -1494,7 +1515,14 @@ async def append_profile_limits(user_id: str, feld: str, werte: list[str]) -> li
     bestand = payload.get(feld) or []
     if not isinstance(bestand, list):
         bestand = []
-    neue = [w for w in werte if w not in bestand]
+    # Auch INNERHALB der Eingabe und case-insensitiv dedupen (D9/N17): ein
+    # Patch mit „Nadeln" zweimal bzw. „Anal"/„anal" erzeugte sonst Duplikate.
+    gesehen = {b.casefold() for b in bestand if isinstance(b, str)}
+    neue: list[str] = []
+    for w in werte:
+        if w.casefold() not in gesehen:
+            neue.append(w)
+            gesehen.add(w.casefold())
     if not neue:
         return []
 
@@ -1646,7 +1674,12 @@ async def apply_profile_patch(profile_user: str, patch: dict) -> dict:
             if not isinstance(wert, list):
                 bericht["ignoriert"].append(f"{feld}: kein Listen-Wert")
                 continue
-            limit_zusatz.setdefault(feld, []).extend([v for v in wert if v])
+            # Innerhalb des Patches dedupen (D9/N17) – zwei limit_add-Changes
+            # mit demselben Wert sammelten ihn sonst doppelt an.
+            ziel = limit_zusatz.setdefault(feld, [])
+            for v in wert:
+                if v and v not in ziel:
+                    ziel.append(v)
         elif op == "limit_refine" and feld and feld == limit_feld:
             alt_neu_liste = wert if isinstance(wert, list) else [wert]
             for alt_neu in alt_neu_liste:
@@ -1669,7 +1702,10 @@ async def apply_profile_patch(profile_user: str, patch: dict) -> dict:
             if not isinstance(wert, list):
                 bericht["ignoriert"].append(f"{feld}: kein Listen-Wert")
                 continue
-            neue = [v for v in wert if v and v not in bestand]
+            neue = []
+            for v in wert:  # inkl. Eingabe-Dedup (D9/N17)
+                if v and v not in bestand and v not in neue:
+                    neue.append(v)
             if neue:
                 geaendert[feld] = bestand + neue
                 bericht["angewandt"].append(f"+ {feld}: {', '.join(neue)}")

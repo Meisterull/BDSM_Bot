@@ -20,6 +20,16 @@ Security-Fixes (S-Befunde):
   S3  – Logdatei behält 0600 auch nach doRollover()
   S6  – Stimmungs-Freitext im Coach-Prompt mit Daten-Delimiter
 
+N-/DIV-Fixes (15.08. abends):
+  N1/N2 – Wunsch-Callbacks: Status-Guard + Inhalts-Hash gegen Index-Verschiebung
+  N13 – get_latest_stimmung mit Frische-Fenster
+  N17 – Limit-Patches dedupen Eingabe + Case-Varianten
+  N18 – persona_config: Cache erst NACH erfolgreichem Persist
+  N19 – upsert_user_profile mit Merge-Semantik
+  N22 – kat_to_cmd erzeugt tippbare Commands
+  DIV1/3/5 – Schablonen-Detektor (passt-weil / Wie wär's / Wie lange)
+  DIV3/DIV6 – Abschluss-Sperrliste + Lieblings-vs-schwach-Abgleich im Prompt
+
 Läuft mit echten Deps (Docker) ODER lokal mit MagicMock-Stubs:
     python3 tests/test_review_d9.py
 """
@@ -449,6 +459,205 @@ def test_stimmung_delimiter():
     assert "keine Anweisung" in out
 
 
+# --------------------------------------------------------------------------
+# DIV1/3/5 – Schablonen-Detektor
+# --------------------------------------------------------------------------
+
+def test_formel_verstoesse():
+    from bot.scheduler import followup as _f
+    # Reale Muster aus der Diversitäts-Messung 15.08.
+    assert _f._formel_verstoesse("Das passt zu ihm, weil er bei Schmerz sofort reagiert.")
+    assert _f._formel_verstoesse("Das passt, weil er dir Gründe liefert.")
+    assert _f._formel_verstoesse("Wie wär’s, wenn du ihn heute an den Stuhl fesselst?")
+    assert _f._formel_verstoesse("Lass ihn knien. Wie lange willst du ihn so hinhalten?")
+    assert _f._formel_verstoesse("Gib ihm das Paddle. Wie lange lässt du das laufen?")
+    # Langvariante jenseits eines 80-Zeichen-Fensters (Nachtest 15.08.)
+    assert _f._formel_verstoesse(
+        "Wie lange willst du den Task laufen lassen, bevor du entscheidest, "
+        "ob’s reicht oder noch eine Runde drauf?")
+    # Sauberer Text ohne Schablonen
+    assert not _f._formel_verstoesse(
+        "Er kommt mal wieder mit Ausreden. Lass ihn acht Minuten stehen und "
+        "kneif bei jedem Ausweichen zu. Das zwingt ihn raus aus der Routine.")
+    # 'weil' in anderem Satz als 'passt' ist kein Treffer
+    assert not _f._formel_verstoesse("Das passt gut. Er zögert, weil er müde ist.")
+
+
+def test_vorschlag_abschluss():
+    from bot.scheduler import followup as _f
+    assert _f._vorschlag_abschluss(
+        "Lass ihn knien. Dann entscheidest du. Wie lange willst du ihn so hinhalten?"
+    ) == "Wie lange willst du ihn so hinhalten?"
+    assert _f._vorschlag_abschluss("") == ""
+
+
+# --------------------------------------------------------------------------
+# DIV3/DIV6 – Prompt-Rendering: Abschluss-Sperrliste + Lieblings-Abgleich
+# --------------------------------------------------------------------------
+
+def test_prompt_abschluesse_und_div6():
+    from bot.prompts import followup as _fp
+    _sys, prompt = _fp.tiny_task_vorschlag(
+        erfahrungsstand="Anfänger", level=1, interessen=[],
+        sklave_vorlieben=[], sklave_hard_limits=[],
+        verbrauchte_abschluesse=["Wie lange willst du das laufen lassen?"],
+        sklave_wunsch_kategorien=["Buttplug_Tragen", "Pegging"],
+        bewertungs_kontext="Aufgaben die weniger gefielen (1-2★): Buttplug_Tragen\n",
+    )
+    assert "VERBRAUCHTE ABSCHLÜSSE" in prompt
+    assert "Wie lange willst du das laufen lassen?" in prompt
+    assert "Buttplug_Tragen (zuletzt aber schwach bewertet" in prompt
+    assert "💚 Pegging" in prompt and "Pegging (zuletzt" not in prompt
+
+
+# --------------------------------------------------------------------------
+# N1/N2 – Wunsch-Callbacks
+# --------------------------------------------------------------------------
+
+async def test_wunsch_guards():
+    from bot.handlers import wunsch as _w
+    # N1: bereits entschiedener Wunsch wird nicht erneut entschieden
+    orig_get, orig_save = _w.qdrant.get_wunsch, _w._entscheidung_speichern
+    try:
+        _w.qdrant.get_wunsch = AsyncMock(return_value={"status": "angenommen"})
+        _w._entscheidung_speichern = AsyncMock()
+        u = _fake_query("wunsch:ablehnen:w1")
+        await _w.callback_entscheidung(u, MagicMock())
+        assert _w._entscheidung_speichern.await_count == 0
+    finally:
+        _w.qdrant.get_wunsch, _w._entscheidung_speichern = orig_get, orig_save
+
+    # N2: Hash-Mismatch löscht nichts, sondern aktualisiert die Liste
+    orig_prof, orig_patch = _w.qdrant.get_user_profile, _w.qdrant.patch_profile_fields
+    orig_sub = _w.paare.sub_chat_id
+    try:
+        _w.paare.sub_chat_id = lambda: "222"
+        _w.qdrant.get_user_profile = AsyncMock(
+            return_value={"entdeckte_wuensche": ["Wunsch A", "Wunsch B"]})
+        _w.qdrant.patch_profile_fields = AsyncMock()
+        u = _fake_query(f"wunschdel:0:{_w._wunsch_hash('ETWAS ANDERES')}", chat_id="222")
+        u.callback_query.message.chat_id = "222"
+        u.callback_query.edit_message_text = AsyncMock()
+        await _w.callback_loeschen(u, MagicMock())
+        assert _w.qdrant.patch_profile_fields.await_count == 0
+        assert u.callback_query.edit_message_text.await_count == 1
+    finally:
+        _w.qdrant.get_user_profile, _w.qdrant.patch_profile_fields = orig_prof, orig_patch
+        _w.paare.sub_chat_id = orig_sub
+
+
+# --------------------------------------------------------------------------
+# N13 – Stimmung-Frische
+# --------------------------------------------------------------------------
+
+async def test_stimmung_frische():
+    from datetime import datetime, timedelta, timezone as _tz
+    orig_aio, orig_mk = _q._aio, _q.mandanten_key
+    try:
+        _q.mandanten_key = lambda u: u
+        alt = (datetime.now(_tz.utc) - timedelta(days=5)).isoformat()
+        _q._aio = AsyncMock(return_value=(
+            [SimpleNamespace(payload={"datum": alt, "zusammenfassung": "alt"})], None))
+        assert await _q.get_latest_stimmung("sklave", max_stunden=48) is None
+        assert (await _q.get_latest_stimmung("sklave"))["zusammenfassung"] == "alt"
+    finally:
+        _q._aio, _q.mandanten_key = orig_aio, orig_mk
+
+
+# --------------------------------------------------------------------------
+# N17 – Limit-Dedup (Eingabe + Case)
+# --------------------------------------------------------------------------
+
+async def test_limit_dedup():
+    orig_aio, orig_mk = _q._aio, _q.mandanten_key
+    try:
+        _q.mandanten_key = lambda u: u
+        punkt = SimpleNamespace(id="p1", payload={"user_id": "sklave", "hard_limits": ["Nadeln"]})
+        aufrufe = []
+
+        async def _fake_aio(fn, **kw):
+            aufrufe.append(kw)
+            return ([punkt], None) if "scroll_filter" in kw else None
+
+        _q._aio = _fake_aio
+        orig_reembed = _q._reembed_profile_vector
+        _q._reembed_profile_vector = AsyncMock()
+        try:
+            neue = await _q.append_profile_limits("sklave", "hard_limits",
+                                                  ["Nadeln", "nadeln", "Blut", "Blut"])
+        finally:
+            _q._reembed_profile_vector = orig_reembed
+        assert neue == ["Blut"], neue
+        set_calls = [a for a in aufrufe if "payload" in a and "hard_limits" in (a.get("payload") or {})]
+        assert set_calls and set_calls[0]["payload"]["hard_limits"] == ["Nadeln", "Blut"]
+    finally:
+        _q._aio, _q.mandanten_key = orig_aio, orig_mk
+
+
+# --------------------------------------------------------------------------
+# N18 – Cache erst nach Persist
+# --------------------------------------------------------------------------
+
+async def test_persona_cache_nach_persist():
+    from bot.services import persona_config as _pc
+    orig = _pc.qdrant.patch_profile_fields
+    try:
+        _pc.qdrant.patch_profile_fields = AsyncMock(side_effect=RuntimeError("qdrant down"))
+        cache_vorher = dict(_pc._aktueller_cache())
+        fehler = None
+        try:
+            await _pc.set_safeword("neuwort", "weiterwort")
+        except RuntimeError as e:
+            fehler = e
+        assert fehler is not None
+        assert _pc._aktueller_cache().get("safeword") == cache_vorher.get("safeword")
+        assert _pc._aktueller_cache().get("safeword") != "neuwort"
+    finally:
+        _pc.qdrant.patch_profile_fields = orig
+
+
+# --------------------------------------------------------------------------
+# N19 – upsert_user_profile merged statt zu ersetzen
+# --------------------------------------------------------------------------
+
+async def test_upsert_profile_merge():
+    orig_aio, orig_mk, orig_emb = _q._aio, _q.mandanten_key, _q.emb.get_embedding
+    try:
+        _q.mandanten_key = lambda u: u
+        punkt = SimpleNamespace(id="p1", payload={"user_id": "sklave",
+                                                  "entdeckte_wuensche": ["W1"], "punkte": 42})
+        gespeichert = {}
+
+        async def _fake_aio(fn, **kw):
+            if "scroll_filter" in kw:
+                return ([punkt], None)
+            if "points" in kw and kw["points"]:
+                p = kw["points"][0]
+                gespeichert.update(getattr(p, "payload", None) or {})
+            return None
+
+        _q._aio = _fake_aio
+        _q.emb.get_embedding = AsyncMock(return_value=[0.0] * 4)
+        await _q.upsert_user_profile("sklave", {"vorlieben": ["Neu"]})
+        if gespeichert:  # Stub-Modus: PointStruct ist MagicMock ohne echtes payload
+            assert gespeichert.get("entdeckte_wuensche") == ["W1"]
+            assert gespeichert.get("punkte") == 42
+            assert gespeichert.get("vorlieben") == ["Neu"]
+    finally:
+        _q._aio, _q.mandanten_key, _q.emb.get_embedding = orig_aio, orig_mk, orig_emb
+
+
+# --------------------------------------------------------------------------
+# N22 – kat_to_cmd
+# --------------------------------------------------------------------------
+
+def test_kat_to_cmd_sonderzeichen():
+    assert _config.kat_to_cmd("Anal-Training") == "anal_training"
+    assert _config.kat_to_cmd("Café Spiel") == "caf__spiel"
+    assert _config.kat_to_cmd("Buttplug_Tragen") == "buttplug_tragen"
+    assert _config.kat_to_cmd("Größe") == "groesse"
+
+
 def main():
     for coro in (
         test_kette_adaptiv_send_zuerst,
@@ -461,9 +670,22 @@ def main():
         test_training_send_fehler_kein_geister_mode,
         test_hybrid_ohne_vektor,
         test_callback_gate,
+        test_wunsch_guards,
+        test_stimmung_frische,
+        test_limit_dedup,
+        test_persona_cache_nach_persist,
+        test_upsert_profile_merge,
     ):
         asyncio.run(coro())
         print(f"✅ {coro.__name__}")
+    test_formel_verstoesse()
+    print("✅ test_formel_verstoesse")
+    test_vorschlag_abschluss()
+    print("✅ test_vorschlag_abschluss")
+    test_prompt_abschluesse_und_div6()
+    print("✅ test_prompt_abschluesse_und_div6")
+    test_kat_to_cmd_sonderzeichen()
+    print("✅ test_kat_to_cmd_sonderzeichen")
     test_state_json_0600()
     print("✅ test_state_json_0600")
     test_log_rotation_0600()

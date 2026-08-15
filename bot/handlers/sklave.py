@@ -12,6 +12,7 @@ from telegram.ext import ContextTypes
 
 from bot import state
 from bot.services import qdrant, grok, embeddings as emb, kategorie_logik, telegram_helper, lokal_llm
+from bot.services import limits_check
 from bot.prompts import sklave as sklave_prompt
 from bot.handlers import onboarding
 from bot.messages import t
@@ -91,11 +92,15 @@ def _ist_spiegel_anfang(antwort: str, user_text: str, vorherige: list[str]) -> b
         return False
     anfang = a_woerter[:7]
 
-    # (a) ≥2 Inhaltswörter aus SEINER Nachricht in den ersten 7 Wörtern
-    user_woerter = {w for w in _normalisiere(user_text).split()
-                    if len(w) > 3 and w not in _FUELLWOERTER}
-    if len([w for w in anfang if w in user_woerter]) >= 2:
-        return True
+    # (a) ≥2 Inhaltswörter aus SEINER Nachricht in den ersten 7 Wörtern.
+    # NICHT bei direkten Fragen (D9/N16): eine natürliche Antwort auf „Wie
+    # war X mit Y?" nennt X und Y zwangsläufig früh – der Retry würde dann
+    # mit der DIREKTE-FRAGEN-Regel („konkret beantworten") kollidieren.
+    if not _ist_frage(user_text):
+        user_woerter = {w for w in _normalisiere(user_text).split()
+                        if len(w) > 3 and w not in _FUELLWOERTER}
+        if len([w for w in anfang if w in user_woerter]) >= 2:
+            return True
 
     # (b) Anfangs-Template-Recycling gegen die letzten Antworten
     a_anfang = " ".join(anfang)
@@ -195,6 +200,11 @@ def _dauermotive(vorherige: list[str], user_text: str, anrede: str = "") -> list
 
 # Referenzen auf Fire-and-forget-Tasks halten, sonst GC sie evtl. vor Abschluss.
 _BG_TASKS: set = set()
+# Pro Paar serialisieren (D9/N15): zwei schnell aufeinanderfolgende wunsch-
+# haltige Nachrichten starten zwei Pipelines ohne Paar-Lock; beide machen
+# Read-then-Patch auf entdeckte_wuensche – ohne Lock überschreibt der spätere
+# Patch den früher entdeckten Wunsch (Lost Update im await-Fenster).
+_PIPELINE_LOCKS: dict[str, asyncio.Lock] = {}
 
 
 async def _post_reply_pipeline(bot, text: str) -> None:
@@ -202,6 +212,12 @@ async def _post_reply_pipeline(bot, text: str) -> None:
     Wunsch-Erfassung, Präferenz-Detektor und Domina-Relay brauchen je einen
     Grok-Call und liefen vorher inline unter dem Paar-Lock. Jeder Schritt hat
     sein eigenes Fangnetz – ein Fehler bricht die anderen nicht ab."""
+    lock = _PIPELINE_LOCKS.setdefault(paare.aktueller_kontext(), asyncio.Lock())
+    async with lock:
+        await _post_reply_pipeline_inner(bot, text)
+
+
+async def _post_reply_pipeline_inner(bot, text: str) -> None:
     # Geäußerte Wünsche / "würde gern mal ausprobieren" dauerhaft aufnehmen
     # (gated über Signalwörter, hard-limit-gefiltert). Profile liest der
     # Erfasser bewusst selbst frisch: Read-then-Patch auf entdeckte_wuensche
@@ -301,7 +317,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         qdrant.get_tasks_by_status(["offen", "gefragt"]),
         _erinnerung(),
         _letzte_gefuehle(),
-        qdrant.get_latest_stimmung("sklave"),
+        qdrant.get_latest_stimmung("sklave", max_stunden=48),  # D9/N13: nur frische Stimmung als "aktuell"
     )
     profile = profile or {}
     domina_profile = domina_profile or {}
@@ -508,6 +524,40 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
         except Exception as e:
             logger.error("Anti-Echo-Neugenerierung fehlgeschlagen: %s", e)
+
+    # Limits-Post-Check (D9/N24, Owner-Entscheid 15.08.): die freie Chat-Antwort
+    # war der einzige Sub-sichtbare Pfad ohne limits_check (alle Generatoren
+    # laufen über generate_mit_limit_retry). Meta-Gespräch-Heuristik gegen
+    # False Positives: nennt SEINE Nachricht den Begriff selbst (er redet ÜBER
+    # das Limit), geht die Antwort unverändert raus – nur wenn die Herrin einen
+    # Limit-Begriff von sich aus einführt, wird einmal neu generiert (danach
+    # best-effort: der zweite Versuch geht ungeprüft raus, Log bleibt).
+    try:
+        _treffer = await limits_check.verletzungen(
+            response,
+            profile.get("hard_limits", []) or [],
+            domina_profile.get("grenzen", []) or [],
+        )
+        _text_lower = text.lower()
+        _neu = [tr for tr in _treffer
+                if tr.get("matched_via", "").lower() not in _text_lower
+                and tr.get("limit", "").lower() not in _text_lower]
+        if _neu:
+            _q = sorted({tr["quelle"] for tr in _neu})
+            logger.warning("Chat-Antwort führt %d Limit-Begriff(e) ein [%s] – generiere einmal neu.",
+                           len(_neu), ", ".join(_q))
+            verboten = limits_check.begriffe_zum_verbieten(_neu)
+            async with telegram_helper.typing_action(context.bot, chat_id):
+                response = await grok.chat(
+                    system + "\n\nWICHTIG: Deine letzte Antwort enthielt VERBOTENE BEGRIFFE: "
+                    + ", ".join(verboten)
+                    + ". Diese Begriffe, ihre Synonyme und alles thematisch Verwandte sind "
+                    "ABSOLUT TABU (Hard Limits bzw. persönliche Grenzen). Antworte neu, "
+                    "ohne diese Themen aufzugreifen.",
+                    history,
+                )
+    except Exception as e:
+        logger.error("Limits-Post-Check fehlgeschlagen – Antwort geht unverändert raus: %s", e)
 
     # Antwort zur History hinzufügen
     state.add_message(chat_id, "assistant", response)

@@ -175,6 +175,11 @@ async def starte_faellige(bot) -> None:
     Läuft täglich; blockiert ein aktiver Arc, wird am Folgetag mit einem Tag
     weniger gestartet (Minimum 3 Tage, sonst Meldung + Status 'verpasst')."""
     from bot.handlers import arc  # lazy: zirkulären Import vermeiden
+    # Guards (D9/N7, Muster luecke/serie): nicht in einen aktiven Domina-Flow
+    # oder die Safeword-Pause hineinstarten; lazy wegen Zirkular-Import.
+    from bot.scheduler.followup import _flow_aktiv, _nach_llm_verworfen
+    if _flow_aktiv(paare.dom_chat_id(), "Event-Arc-Start"):
+        return
     plaene = await _geplante()
     if not plaene:
         return
@@ -213,6 +218,24 @@ async def starte_faellige(bot) -> None:
         if tage is None:
             logger.error("Event-Arc-Generierung fehlgeschlagen (%s) – nächster Versuch morgen", fehler_key)
             continue
+
+        # Längen-Check (D9/N7): generiere_storyline validiert nur >=3. Liefert
+        # das LLM MEHR Tage, läge das Finale nach dem Event-Datum (der Arc
+        # rückt 1 Tag/Tag vor) – kürzen und das Finale (letzter Tag) behalten.
+        # Bei WENIGER Tagen: verwerfen, morgen mit kleinerem Fenster erneut.
+        if len(tage) > tage_anzahl:
+            logger.warning("Event-Storyline mit %d statt %d Tagen – kürze (Finale bleibt).",
+                           len(tage), tage_anzahl)
+            tage = tage[:tage_anzahl - 1] + [tage[-1]]
+        elif len(tage) < tage_anzahl:
+            logger.error("Event-Storyline mit nur %d statt %d Tagen – nächster Versuch morgen.",
+                         len(tage), tage_anzahl)
+            continue
+
+        # TOCTOU-Re-Check nach dem (langsamen) Reasoning-Await (D9/N7):
+        # Safeword/Flow im Fenster → heute nicht mehr aktivieren/senden.
+        if _nach_llm_verworfen(paare.dom_chat_id(), "Event-Arc-Start"):
+            return
 
         await arc.aktiviere_arc(plan.get("thema", ""), tage, extra={
             "event_datum": plan.get("datum"),

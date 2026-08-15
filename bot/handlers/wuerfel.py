@@ -158,7 +158,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # statt des früher hartkodierten 3.
     domina_profil = await qdrant.get_user_profile("domina") or {}
     level = domina_profil.get("aktuelles_level", 3)
-    await qdrant.erstelle_task(aufgabe_text, kategorie, level, quelle="wuerfel")
 
     s.pop("wuerfel_kategorie", None)
     s.pop("wuerfel_aufgabe", None)
@@ -171,10 +170,17 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         logger.error("aufgabe_an_sklaven fehlgeschlagen, sende Roh-Text: %s", e)
         anweisung = aufgabe_text
+    point_id = await qdrant.erstelle_task(aufgabe_text, kategorie, level, quelle="wuerfel")
     # Schicksals-Sticker: der Würfel hat entschieden
     await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.SCHICKSAL)
-    await telegram_helper.send_sklave(context.bot, t("WUERFEL_BEFEHL_PREFIX", anweisung=anweisung),
-                                      voice_text=anweisung)
+    try:
+        await telegram_helper.send_sklave(context.bot, t("WUERFEL_BEFEHL_PREFIX", anweisung=anweisung),
+                                          voice_text=anweisung)
+    except Exception:
+        # Rollback (D9/N5, Muster blitz): nie zugestellte Aufgabe nicht als
+        # offenen Task zurücklassen.
+        await qdrant.loesche_task(point_id)
+        raise
     await query.message.reply_text(
         t("WUERFEL_ERTEILT", kategorie=kategorie_logik.anzeige_name(kategorie)), parse_mode="Markdown",
     )

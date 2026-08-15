@@ -102,22 +102,24 @@ def setup_kontext() -> str:
 
 async def set_bot_name(name: str) -> str:
     name = (name or "").strip()
-    _aktueller_cache()["bot_name"] = name
+    # Erst persistieren, dann Cache (D9/N18): wirft Qdrant, divergierten
+    # Cache und Persistenz sonst bis zum Neustart.
     await qdrant.patch_profile_fields(_profil_user_id(), {"bot_name": name})
+    _aktueller_cache()["bot_name"] = name
     return name
 
 
 async def set_sklave_anrede(name: str) -> str:
     name = (name or "").strip()
+    await qdrant.patch_profile_fields(_profil_user_id(), {"sklave_anrede": name})  # erst persistieren (D9/N18)
     _aktueller_cache()["sklave_anrede"] = name
-    await qdrant.patch_profile_fields(_profil_user_id(), {"sklave_anrede": name})
     return name
 
 
 async def set_setup_kontext(text: str) -> str:
     text = (text or "").strip()
+    await qdrant.patch_profile_fields(_profil_user_id(), {"setup_kontext": text})  # erst persistieren (D9/N18)
     _aktueller_cache()["setup_kontext"] = text
-    await qdrant.patch_profile_fields(_profil_user_id(), {"setup_kontext": text})
     return text
 
 
@@ -144,8 +146,8 @@ def sprache_anweisung() -> str:
 
 async def set_sprache(wert: str) -> str:
     wert = (wert or "").strip()
+    await qdrant.patch_profile_fields(_profil_user_id(), {"sprache": wert})  # erst persistieren (D9/N18)
     _aktueller_cache()["sprache"] = wert
-    await qdrant.patch_profile_fields(_profil_user_id(), {"sprache": wert})
     return wert
 
 
@@ -165,10 +167,13 @@ async def set_safeword(wort: str, resume: str) -> tuple[str, str]:
     Validierung (2 verschiedene Einzel-Wörter) macht der Aufrufer (einstellungen.py)."""
     wort = (wort or "").strip().lower()
     resume = (resume or "").strip().lower()
+    # Erst persistieren, dann Cache (D9/N18) – beim SICHERHEITSRELEVANTEN
+    # Safeword darf der laufende Prozess nie einen Wert nutzen, der einen
+    # Neustart nicht überlebt.
+    await qdrant.patch_profile_fields(_profil_user_id(), {"safeword": wort, "resume_wort": resume})
     cache = _aktueller_cache()
     cache["safeword"] = wort
     cache["resume_wort"] = resume
-    await qdrant.patch_profile_fields(_profil_user_id(), {"safeword": wort, "resume_wort": resume})
     return wort, resume
 
 
@@ -222,8 +227,8 @@ async def set_ui_locale(wert: str) -> str:
     wert = (wert or "").strip().lower()
     if wert not in VERFUEGBAR:
         wert = ""
+    await qdrant.patch_profile_fields(_profil_user_id(), {"bot_locale": wert})  # erst persistieren (D9/N18)
     _aktueller_cache()["bot_locale"] = wert
-    await qdrant.patch_profile_fields(_profil_user_id(), {"bot_locale": wert})
     return wert
 
 
@@ -243,10 +248,10 @@ async def set_rollen(dom: str, sub: str) -> tuple[str, str]:
     Lesen (unbekannt → Default), hier wird nur persistiert."""
     dom = (dom or "").strip().lower()
     sub = (sub or "").strip().lower()
+    await qdrant.patch_profile_fields(_profil_user_id(), {"dom_geschlecht": dom, "sub_geschlecht": sub})  # erst persistieren (D9/N18)
     cache = _aktueller_cache()
     cache["dom_geschlecht"] = dom
     cache["sub_geschlecht"] = sub
-    await qdrant.patch_profile_fields(_profil_user_id(), {"dom_geschlecht": dom, "sub_geschlecht": sub})
     return dom, sub
 
 
@@ -325,8 +330,8 @@ async def set_abwesenheit(von: "date | None", bis: "date | None", grund: str = "
         "abwesend_bis": bis.isoformat() if bis else "",
         "abwesend_grund": (grund or "").strip() if von else "",
     }
+    await qdrant.patch_profile_fields(_profil_user_id(), werte)  # erst persistieren (D9/N18)
     _aktueller_cache().update(werte)
-    await qdrant.patch_profile_fields(_profil_user_id(), werte)
 
 
 def zeit(feld: str) -> str:
@@ -344,8 +349,8 @@ async def set_zeit(feld: str, wert: str) -> str:
     if feld not in ZEIT_FELDER:
         raise ValueError(f"Unbekanntes Zeit-Feld: {feld!r}")
     wert = (wert or "").strip()
+    await qdrant.patch_profile_fields(_profil_user_id(), {feld: wert})  # erst persistieren (D9/N18)
     _aktueller_cache()[feld] = wert
-    await qdrant.patch_profile_fields(_profil_user_id(), {feld: wert})
     return wert
 
 
@@ -358,6 +363,6 @@ async def set_persona_stil(key: str) -> str:
     """Setzt das Stil-Preset. Validierung gegen die Preset-Liste macht der Aufrufer
     (einstellungen.py) – hier wird nur persistiert."""
     key = (key or "").strip()
+    await qdrant.patch_profile_fields(_profil_user_id(), {"persona_stil": key})  # erst persistieren (D9/N18)
     _aktueller_cache()["persona_stil"] = key
-    await qdrant.patch_profile_fields(_profil_user_id(), {"persona_stil": key})
     return key

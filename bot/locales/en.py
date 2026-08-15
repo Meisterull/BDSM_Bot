@@ -673,6 +673,7 @@ MESSAGES = {
     "WUNSCH_LISTE": "🗒 *Your collected wishes:*\n{liste}\n\nTap a button to remove one:",
     "WUNSCH_ALLE_GELOESCHT": "🗑 All collected wishes deleted.",
     "WUNSCH_EINTRAG_WEG": "That entry is gone – tap /meinewuensche for the current list.",
+    "WUNSCH_BEREITS_ENTSCHIEDEN": "This wish has already been decided.",
     "WUNSCH_LISTE_LEER": "🗑 Removed. You have no collected wishes left.",
     # Bewusst statische Persona-Bestätigung (Stimme der Herrin)
     "WUNSCH_ANGEKOMMEN": "Received. Whether I grant it to you, I'll think about – have some patience. 🖤",

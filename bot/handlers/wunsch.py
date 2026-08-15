@@ -26,11 +26,20 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(t("WUNSCH_EINREICHEN"), parse_mode="Markdown")
 
 
+def _wunsch_hash(w: str) -> str:
+    """Kurzer Inhalts-Hash im callback_data (D9/N2): ein Tap auf eine ALTE
+    Listen-Nachricht darf nach Index-Verschiebung nicht den falschen Wunsch
+    löschen – der Hash bindet den Button an den konkreten Text."""
+    import hashlib
+    return hashlib.sha1(w.encode("utf-8")).hexdigest()[:8]
+
+
 def _wunsch_buttons(wuensche: list) -> InlineKeyboardMarkup | None:
     """Pro Wunsch ein Lösch-Knopf (umgeht Command-mit-Argument-Probleme)."""
     if not wuensche:
         return None
-    rows = [[InlineKeyboardButton(f"🗑 {i + 1}. {w[:28]}", callback_data=f"wunschdel:{i}")]
+    rows = [[InlineKeyboardButton(f"🗑 {i + 1}. {w[:28]}",
+                                  callback_data=f"wunschdel:{i}:{_wunsch_hash(w)}")]
             for i, w in enumerate(wuensche)]
     rows.append([InlineKeyboardButton(t("BUTTON_ALLE_LOESCHEN"), callback_data="wunschdel:alle")])
     return InlineKeyboardMarkup(rows)
@@ -72,13 +81,23 @@ async def callback_loeschen(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await qdrant.patch_profile_fields("sklave", {"entdeckte_wuensche": []})
         await query.edit_message_text(t("WUNSCH_ALLE_GELOESCHT"))
         return
+    teile = was.split(":")
     try:
-        i = int(was)
+        i = int(teile[0])
     except ValueError:
         return
-    if not (0 <= i < len(wuensche)):
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(t("WUNSCH_EINTRAG_WEG"))
+    hash_soll = teile[1] if len(teile) > 1 else None  # Alt-Buttons ohne Hash
+    if not (0 <= i < len(wuensche)) or (hash_soll and _wunsch_hash(wuensche[i]) != hash_soll):
+        # Stale-Button (D9/N2): Liste hat sich verschoben – nichts löschen,
+        # stattdessen die Nachricht auf den aktuellen Stand bringen.
+        if wuensche:
+            await query.edit_message_text(
+                _wunsch_liste_text(wuensche), parse_mode="Markdown",
+                reply_markup=_wunsch_buttons(wuensche),
+            )
+        else:
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(t("WUNSCH_EINTRAG_WEG"))
         return
     wuensche.pop(i)
     await qdrant.patch_profile_fields("sklave", {"entdeckte_wuensche": wuensche})
@@ -149,6 +168,17 @@ async def callback_entscheidung(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     _, action, wunsch_id = query.data.split(":", 2)
 
+    # Status-Guard (D9/N1): nur einen noch EINGEREICHTEN Wunsch entscheiden –
+    # Doppel-Tap oder ein Monate alter Stale-Button darf einen längst
+    # entschiedenen Wunsch nicht erneut flippen (zweite Herrin-Nachricht,
+    # angenommen→abgelehnt). Buttons VOR dem Speichern entfernen (Muster privileg).
+    wunsch_data = await qdrant.get_wunsch(wunsch_id) or {}
+    if wunsch_data.get("status", "eingereicht") != "eingereicht":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(t("WUNSCH_BEREITS_ENTSCHIEDEN"))
+        return
+    await query.edit_message_reply_markup(reply_markup=None)
+
     entscheidung = "angenommen" if action == "annehmen" else "abgelehnt"
     await _entscheidung_speichern(context, wunsch_id, entscheidung, kommentar="")
 
@@ -159,7 +189,6 @@ async def callback_entscheidung(update: Update, context: ContextTypes.DEFAULT_TY
     state.get(paare.dom_chat_id()).pop("wunsch_id", None)
 
     emoji = "✅" if entscheidung == "angenommen" else "❌"
-    await query.edit_message_reply_markup(reply_markup=None)
     await query.message.reply_text(t("WUNSCH_ENTSCHIEDEN", emoji=emoji, entscheidung=entscheidung))
 
 

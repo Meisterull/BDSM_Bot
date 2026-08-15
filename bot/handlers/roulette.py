@@ -165,16 +165,22 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     domina_profil = await qdrant.get_user_profile("domina") or {}
     level = domina_profil.get("aktuelles_level", 3)
-    await qdrant.erstelle_task(strafe, "allgemein", level, quelle="roulette")
     try:
         anweisung = await grok.simple(fp.aufgabe_an_sklaven(strafe), max_tokens=250)
     except Exception:
         logger.exception("aufgabe_an_sklaven (Roulette) fehlgeschlagen – Rohtext")
         anweisung = strafe
+    point_id = await qdrant.erstelle_task(strafe, "allgemein", level, quelle="roulette")
     # Schicksals-Sticker: die Maschine hat entschieden
     await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.SCHICKSAL)
-    await telegram_helper.send_sklave(
-        context.bot, t("ROULETTE_AN_SKLAVEN", anweisung=anweisung),
-        parse_mode="Markdown", voice_text=anweisung)
+    try:
+        await telegram_helper.send_sklave(
+            context.bot, t("ROULETTE_AN_SKLAVEN", anweisung=anweisung),
+            parse_mode="Markdown", voice_text=anweisung)
+    except Exception:
+        # Rollback (D9/N5, Muster blitz): nie zugestellte Strafe nicht als
+        # offenen Task zurücklassen.
+        await qdrant.loesche_task(point_id)
+        raise
     await query.message.reply_text(t("ROULETTE_ERTEILT"))
     logger.info("Roulette-Strafe erteilt (Stufe %s)", stufe)

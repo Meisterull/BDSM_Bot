@@ -159,6 +159,15 @@ async def callback_button(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
     _, action, point_id = query.data.split(":", 2)
+
+    # Doppel-Tap-/Stale-Guard (D9/N3): nur einen noch VORGESCHLAGENEN Eintrag
+    # entscheiden – ein zweiter/verspäteter Tap verbuchte das Kategorie-Signal
+    # sonst doppelt (verzerrt die 60/30/10-Gewichtung) bzw. überschrieb einen
+    # späteren Status.
+    eintrag = await qdrant.get_tiny_task_by_id(point_id)
+    if not eintrag or eintrag.get("status", "vorgeschlagen") != "vorgeschlagen":
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
     await query.edit_message_reply_markup(reply_markup=None)
 
     if action in ("uebernommen", "gut"):

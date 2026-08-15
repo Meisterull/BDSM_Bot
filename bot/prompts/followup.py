@@ -325,6 +325,7 @@ def _aufgaben_kontext(
     letzte_aufgaben: list = None,
     letzte_tiny_tasks: list = None,
     verbrauchte_anfaenge: list = None,
+    verbrauchte_abschluesse: list = None,
     mehrstufig_bremse: bool = False,
     letzte_inspirationen: list = None,
     gewaehlte_kategorien: list = None,
@@ -368,6 +369,14 @@ def _aufgaben_kontext(
             "\nVERBRAUCHTE ANFÄNGE (so begannen deine letzten Vorschläge – beginne heute "
             "STRUKTURELL anders, nicht mit demselben Einstieg oder Satzmuster):\n"
             + "\n".join(f"  • {a}" for a in verbrauchte_anfaenge) + "\n"
+        )
+    # D9/DIV3: Abschluss-Sätze recyceln genauso wie Opener – „Wie lange willst
+    # du …?" beendete 4 von 5 Folgetags-Vorschlägen, stand aber in keiner Liste.
+    if verbrauchte_abschluesse:
+        anfaenge_str += (
+            "\nVERBRAUCHTE ABSCHLÜSSE (so endeten deine letzten Vorschläge – beende heute "
+            "ANDERS, keine Variation dieser Schluss-Sätze oder ihres Frage-Musters):\n"
+            + "\n".join(f"  • {a}" for a in verbrauchte_abschluesse) + "\n"
         )
     if mehrstufig_bremse:
         anfaenge_str += (
@@ -424,9 +433,24 @@ def _aufgaben_kontext(
         )
     wunsch_str = ""
     if sklave_wunsch_kategorien:
+        # Widerspruchs-Abgleich (D9/DIV6): steht dieselbe Kategorie zugleich in
+        # der „weniger gefielen (1-2★)"-Zeile des Bewertungs-Kontexts, wird das
+        # im Prompt explizit versöhnt – beide Signale unkommentiert nebeneinander
+        # („Lieblings-Kategorie Buttplug_Tragen" + „weniger gefielen:
+        # Buttplug_Tragen") verwirrten das Modell (live gerendert 15.08.).
+        schwach: set = set()
+        for zeile in (bewertungs_kontext or "").splitlines():
+            if "weniger gefielen" in zeile and ":" in zeile:
+                schwach = {k.strip() for k in zeile.split(":", 1)[1].split(",") if k.strip()}
+
+        def _lieblings_zeile(k: str) -> str:
+            if k in schwach:
+                return f"💚 {k} (zuletzt aber schwach bewertet – nur mit wirklich frischem Dreh)"
+            return f"💚 {k}"
+
         wunsch_str = (
             f"\nLieblings-Kategorien {s['label_gen']} (HINWEIS, KEINE PFLICHT):\n"
-            + "\n".join(f"💚 {k}" for k in sklave_wunsch_kategorien)
+            + "\n".join(_lieblings_zeile(k) for k in sklave_wunsch_kategorien)
             + "\nFalls eine der Pflicht-Kategorien für heute mit einer Lieblings-Kategorie "
             f"übereinstimmt, betone diese Verbindung.\n"
         )
@@ -559,9 +583,9 @@ def _formel_verbot() -> str:
     s = rollen.sub()
     return f"""FORMULIERUNGS-VIELFALT (strikt): Baue die Nachricht anders auf als zuletzt – variiere Einstieg, Aufbau und Schluss.
 Diese abgenutzten Schablonen-Sätze sind VERBOTEN (auch leicht abgewandelt):
-- Einstieg: "Hey, wie wär's mit …" / "Wie wär's heute mal mit …"
+- Einstieg: "Hey, wie wär's mit …" / "Wie wär's heute mal mit …" / "Wie wär's, wenn du …"
 - Begründung: "Das passt (genau) zu {s['dat']}, weil …"
-- Abschluss: "Klingt das machbar?"
+- Abschluss: "Klingt das machbar?" / "Wie lange willst du das laufen/ihn so stehen lassen?" (jede "Wie lange willst du …?"-Variante)
 Der Inhalt (Aufgabe + kurze Begründung) bleibt – nur die Formulierung muss frisch sein."""
 
 

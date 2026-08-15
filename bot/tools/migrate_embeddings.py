@@ -25,14 +25,17 @@ COLLECTIONS = [
     "training", "wuensche", "geheimnisse", "strafen", "coach_regeln", "skills",
 ]
 
-_PROFILE_EMBED_FIELDS = ["interessen", "vorlieben", "hard_limits", "ziele", "erfahrungsstand",
-                         "kategorie_reaktionen", "persoenlichkeit_tags", "wunsch_kategorien"]
+# Feld-MENGE aus qdrant.py importieren statt lokal kopieren (D9/N20): die Kopie
+# war gedriftet (`grenzen` fehlte) – ein Re-Embed lief dann mit anderem Text als
+# die Runtime-Pfade. Für deterministische Reihenfolge sortiert iterieren.
+from bot.services.qdrant import _PROFILE_EMBED_FIELDS
 
 
 def embed_text(collection: str, p: dict) -> str:
-    """Rekonstruiert exakt den Text, den die jeweilige save_*-Funktion embeddet."""
+    """Rekonstruiert den Text, den die jeweilige save_*-Funktion embeddet
+    (gleiche Feld-Menge; die Wort-Reihenfolge kann abweichen, semantisch egal)."""
     if collection == "user_profiles":
-        parts = [str(p[k]) for k in _PROFILE_EMBED_FIELDS if p.get(k)]
+        parts = [str(p[k]) for k in sorted(_PROFILE_EMBED_FIELDS) if p.get(k)]
         return " ".join(parts) if parts else f"{p.get('user_id', '')} profile"
     if collection == "tasks":
         return p.get("aufgabe", "") or ""

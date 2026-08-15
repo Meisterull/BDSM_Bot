@@ -5,6 +5,9 @@ Zeiten-Helper – Validierung und Normalisierung von Zeitfenster-Eingaben
 """
 import re
 from datetime import datetime, time, timezone
+from zoneinfo import ZoneInfo
+
+from bot import config
 
 # Eingaben, die explizit "keine Zeitfenster" bedeuten
 _VERNEINUNGEN = {
@@ -30,7 +33,11 @@ def alter_label(datum_iso: str) -> str:
         d = datetime.fromisoformat(datum_iso)
         if d.tzinfo is None:
             d = d.replace(tzinfo=timezone.utc)
-        tage = (datetime.now().astimezone().date() - d.astimezone().date()).days
+        # Bot-Zeitzone statt System-TZ (D9/N21): der Container setzt TZ zwar
+        # passend, aber ein Fremdbetrieb ohne TZ liefe auf UTC und „heute/
+        # gestern" kippte um Mitternacht einen Tag daneben.
+        bot_tz = ZoneInfo(config.TIMEZONE)
+        tage = (datetime.now(bot_tz).date() - d.astimezone(bot_tz).date()).days
     except (ValueError, TypeError):
         return ""
     if tage <= 0:

@@ -157,7 +157,11 @@ async def handle_antwort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception:
         logger.exception("Quiz-Reaktion fehlgeschlagen")
 
-    ergebnis = t(f"QUIZ_{urteil}", punkte=punkte_neu, antwort=muster)
+    # md_einbett_sicher (D9/N4): die LLM-Musterantwort steht im Template in
+    # _…_ – ein '_'/'*' darin bräche das Markup und die Ergebnis-Nachricht
+    # ginge NACH der Punktebuchung verloren (BadRequest ohne Fallback).
+    ergebnis = t(f"QUIZ_{urteil}", punkte=punkte_neu,
+                 antwort=telegram_helper.md_einbett_sicher(muster))
     await update.message.reply_text(ergebnis, parse_mode="Markdown")
     if reaktion:
         await update.message.reply_text(reaktion)

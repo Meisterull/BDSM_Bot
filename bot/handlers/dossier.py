@@ -202,8 +202,9 @@ async def aktualisiere_offene_faeden() -> list[str]:
 
     system = """Aus den jüngsten Äußerungen des Sklaven: Worauf würde eine aufmerksame, ihn gut kennende Herrin von sich aus zurückkommen? Gemeint sind OFFENE FÄDEN – erwähnter Stress/Termin, eine Sorge, ein geäußerter Wunsch, ein Ereignis, etwas Unabgeschlossenes, auch geäußerte Langeweile oder ein Wunsch nach Abwechslung/etwas Neuem.
 
-Gib MAXIMAL 4 sehr kurze Stichpunkte (je max. 12 Wörter), jeweils so, dass man konkret darauf zurückkommen kann. Nur was wirklich aus dem Material hervorgeht – nichts erfinden. Nur was ER geäußert hat zählt – Ansagen, Drohungen oder Szenen-Ideen der Herrin sind KEINE offenen Fäden.
-DESTILLIERE, zitiere nicht: formuliere in dritter Person über ihn ("will …", "wünscht sich …", "hatte Stress mit …"), übernimm NIE seinen Wortlaut 1:1. Der Verlauf einer laufenden Rollenspiel-Szene (was gerade konkret passiert ist oder verlangt wurde) ist KEIN offener Faden – nur, was darüber hinaus offen bleibt. Wenn es nichts Offenes gibt, antworte NUR mit: KEINE.
+Gib MAXIMAL 4 sehr kurze Stichpunkte (je max. 14 Wörter), jeweils so, dass man konkret darauf zurückkommen kann. Nur was wirklich aus dem Material hervorgeht – nichts erfinden. Nur was ER geäußert hat zählt – Ansagen, Drohungen oder Szenen-Ideen der Herrin sind KEINE offenen Fäden.
+DESTILLIERE, zitiere nicht: formuliere in dritter Person über ihn ("will …", "wünscht sich …", "hatte Stress mit …"), übernimm NIE seinen Wortlaut 1:1.
+RICHTUNG/ROLLEN IMMER MITNEHMEN: Legt seine Äußerung fest, WER etwas tut oder bekommt oder unter welcher Bedingung ("von der Herrin", "nur bei ihr", "an ihm"), muss der Stichpunkt diese Richtung explizit nennen ("will auch X von der Herrin", nicht nur "will auch X"). Bei Themen, die je nach Richtung Wunsch oder absolutes Tabu sind, ist ein richtungsloser Stichpunkt gefährlich mehrdeutig – im Zweifel die Richtung aus dem Kontext übernehmen oder den Faden weglassen. Der Verlauf einer laufenden Rollenspiel-Szene (was gerade konkret passiert ist oder verlangt wurde) ist KEIN offener Faden – nur, was darüber hinaus offen bleibt. Wenn es nichts Offenes gibt, antworte NUR mit: KEINE.
 Ein Stichpunkt pro Zeile, ohne Nummerierung, ohne Markdown."""
     prompt = f"""Jüngste Gespräche:
 {chr(10).join('- ' + g for g in gespraeche) or '(keine)'}

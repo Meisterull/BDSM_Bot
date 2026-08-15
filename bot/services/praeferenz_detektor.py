@@ -260,7 +260,9 @@ async def _verarbeite(bot, rolle: str, text: str) -> bool:
         profile_user=rolle,
         profile_patch=patch,
     )
-    nachricht = t("PRAEFERENZ_VORSCHLAG", diff=diff)
+    # md_einbett_sicher (D9/N4): der LLM-extrahierte diff steht im Template in
+    # einer ```-Fence – ein Backtick darin bricht die Fence (strip_md-Fallback).
+    nachricht = t("PRAEFERENZ_VORSCHLAG", diff=telegram_helper.md_einbett_sicher(diff))
     buttons = _cr.vorschlag_buttons(point_id)
     if rolle == "sklave":
         await telegram_helper.send_sklave(bot, nachricht, parse_mode="Markdown", reply_markup=buttons)
