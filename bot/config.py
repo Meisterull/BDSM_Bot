@@ -27,6 +27,8 @@ GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 # grok-4.3 lehnt frequency_penalty/presence_penalty mit HTTP 400 ab ("does not
 # support parameter"). Penalties daher nur senden, wenn das Modell sie kann –
 # per Env GROK_SUPPORTS_PENALTIES=1 reaktivierbar für Modelle, die sie können.
+# Nachgetestet 24.08.2026: auch grok-4.20/-non-reasoning lehnen ab — der
+# Schalter bleibt vorerst für ALLE xAI-Modelle aus.
 GROK_SUPPORTS_PENALTIES = os.getenv("GROK_SUPPORTS_PENALTIES", "0").lower() in ("1", "true", "yes")
 
 # Primärer LLM-Provider für alle Chat-Completions (Persona, Aufgaben, Klassifikation):
@@ -209,6 +211,11 @@ LOG_USERS = os.getenv("LOG_USERS", "")
 FALLBACK_LLM_URL = os.getenv("FALLBACK_LLM_URL", "")
 FALLBACK_LLM_KEY = os.getenv("FALLBACK_LLM_KEY", "")      # bei Ollama egal/leer
 FALLBACK_LLM_MODEL = os.getenv("FALLBACK_LLM_MODEL", "")  # z.B. llama3.1 / kimi-k2.6:cloud
+# Eigenes Timeout für den Fallback: er bekommt den VOLLEN Payload, und lokale
+# CPU-Inferenz braucht dafür ein Vielfaches der Cloud-Zeit. Ohne das würde er
+# das knappe LLM_TIMEOUT des Primär-Providers erben und wäre bei genau den
+# großen Jobs nutzlos, für die er gedacht ist (Wochenplan, 16.08.2026).
+FALLBACK_LLM_TIMEOUT = float(os.getenv("FALLBACK_LLM_TIMEOUT", "300"))
 
 # Lokales Fallback-LLM für den Sklaven-Chat bei Grok-Ausfall. Anders als
 # FALLBACK_LLM_* (voller Payload) bekommt es einen abgespeckten Kurz-Prompt –

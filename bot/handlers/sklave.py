@@ -464,8 +464,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 # Modell sie kann bleiben sie als Absicht stehen; der wirksame Hebel
                 # gegen Gleichförmigkeit ist hier die erhöhte Temperatur.
                 temperature=0.9,
-                frequency_penalty=0.5,   # bestraft wortgleiche Phrasen-Wiederholung (inert auf grok-4.3)
-                presence_penalty=0.3,    # schiebt sanft Richtung neuer Begriffe (inert auf grok-4.3)
+                frequency_penalty=0.5,   # bestraft wortgleiche Phrasen-Wiederholung
+                presence_penalty=0.3,    # schiebt sanft Richtung neuer Begriffe
+                # Stand 24.08.2026: xAI lehnt Penalties bei ALLEN aktuellen
+                # Modellen ab (4.3/4.20/4.20-non-reasoning je HTTP 400
+                # "does not support parameter") — bleiben inert, bis
+                # GROK_SUPPORTS_PENALTIES=1 gesetzt wird, und das erst nach
+                # erneutem API-Test.
             )
     except Exception as e:
         logger.error("Grok-Ausfall im Sklave-Handler: %s", e)

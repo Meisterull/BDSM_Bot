@@ -6,6 +6,7 @@ Der Modulname bleibt historisch `grok` – alle Callsites importieren ihn so.
 import re
 import asyncio
 import logging
+import time
 import httpx
 from bot import config
 
@@ -96,15 +97,35 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
     raise last_exc
 
 
-async def _post_chat(url: str, headers: dict, payload: dict) -> str:
-    """Ein OpenAI-kompatibler Chat-Completion-Aufruf, gibt den Antwort-Text zurück."""
-    resp = await _client.post(url, headers=headers, json=payload)
+async def _post_chat(url: str, headers: dict, payload: dict,
+                     timeout: float | None = None) -> str:
+    """Ein OpenAI-kompatibler Chat-Completion-Aufruf, gibt den Antwort-Text zurück.
+
+    `timeout` überschreibt das Client-Timeout für diesen einen Aufruf (der
+    Fallback-LLM braucht deutlich länger als der Primär-Provider). Nicht
+    einfach `timeout=None` durchreichen: httpx liest das als "gar kein
+    Timeout", nicht als "Client-Vorgabe" – deshalb nur setzen, wenn übergeben.
+    """
+    extra = {"timeout": timeout} if timeout is not None else {}
+    start = time.monotonic()
+    resp = await _client.post(url, headers=headers, json=payload, **extra)
     resp.raise_for_status()
+    daten = resp.json()
+    # Beobachtbarkeit (24.08.2026): Dauer + Token-Verbrauch je Call — vorher
+    # waren Kosten und Latenz komplett unsichtbar (kein usage-Logging, keine
+    # Zeitmessung im ganzen Bot). Eine INFO-Zeile pro Call reicht: der
+    # Logserver/`docker logs` machen daraus Tages-Summen per grep.
+    usage = daten.get("usage") or {}
+    logger.info(
+        "LLM-Call %s: %.1fs | Tokens in=%s out=%s",
+        payload.get("model"), time.monotonic() - start,
+        usage.get("prompt_tokens", "?"), usage.get("completion_tokens", "?"),
+    )
     # `content` kann bei Refusal/leerem Completion `null`/leer sein. Das ist wie
     # ein Fehler zu behandeln (ValueError → Retry+Fallback-Kaskade in chat()):
     # ein stilles "" würde sonst an reply_text("") crashen bzw. Antworten
     # verschlucken – im schlimmsten Fall NACH einem Status-Update (gefuehl.py).
-    content = resp.json()["choices"][0]["message"]["content"]
+    content = daten["choices"][0]["message"]["content"]
     if not content or not content.strip():
         raise ValueError("LLM lieferte leere Antwort (Refusal/leeres Completion)")
     return content
@@ -119,9 +140,11 @@ async def _try_fallback(payload: dict, model: str) -> str | None:
         headers["Authorization"] = f"Bearer {config.FALLBACK_LLM_KEY}"
     fb_payload = {**payload, "model": config.FALLBACK_LLM_MODEL or model}
     try:
-        logger.warning("LLM (%s) nicht erreichbar – nutze Fallback-LLM %s",
-                       config.LLM_PROVIDER, config.FALLBACK_LLM_URL)
-        return await _post_chat(config.FALLBACK_LLM_URL, headers, fb_payload)
+        logger.warning("LLM (%s) nicht erreichbar – nutze Fallback-LLM %s (Modell %s, Timeout %.0fs)",
+                       config.LLM_PROVIDER, config.FALLBACK_LLM_URL,
+                       fb_payload.get("model"), config.FALLBACK_LLM_TIMEOUT)
+        return await _post_chat(config.FALLBACK_LLM_URL, headers, fb_payload,
+                                timeout=config.FALLBACK_LLM_TIMEOUT)
     except Exception as e:
         logger.error("Fallback-LLM ebenfalls fehlgeschlagen: %s", e)
         return None
