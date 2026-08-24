@@ -34,6 +34,28 @@ _TIMEOUT = 20  # Sekunden für Synthese + Encoding zusammen (best-effort Pfad)
 ROLLE_HERRIN = "herrin"
 ROLLE_COACH = "coach"
 
+# Sprech-Tags, die Grok-TTS versteht: eckige Einschübe ([laugh], [pause] …)
+# und wickelnde Stil-Tags (<whisper>…</whisper> …). Die Anleitung wandert in
+# Generator-Prompts (nur bei GROK_TTS – Piper würde die Tags vorlesen), der
+# Entferner macht Texte für die Text-Bubble bzw. den Piper-Fallback sauber.
+SPRECH_TAG_ANLEITUNG = (
+    "Vertonungs-Tags (die Nachricht wird als Sprachnachricht gesprochen): setze SPARSAM "
+    "2-4 Sprech-Tags, wo sie Wirkung tragen – [laugh] [sigh] [pause] [long-pause] als "
+    "eigene Einschübe, <whisper>…</whisper> <soft>…</soft> <slow>…</slow> um kurze "
+    "Passagen (z.B. eine Drohung geflüstert, eine Pause vor der Pointe, ein spöttisches "
+    "Lachen). Keine anderen Tags, nichts erklären."
+)
+_INLINE_TAG_RE = re.compile(r"\[(?:pause|long-pause|laugh|cry|sigh|breath|giggle|whisper)\]", re.I)
+_WRAP_TAG_RE = re.compile(r"</?(?:whisper|soft|loud|slow|fast|singing)>", re.I)
+
+
+def entferne_sprech_tags(text: str) -> str:
+    """Nimmt Grok-Sprech-Tags aus einem Text – für die Text-Darstellung in der
+    Chat-Bubble und für den Piper-Fallback (der läse '[laugh]' sonst wörtlich vor)."""
+    text = _INLINE_TAG_RE.sub("", text or "")
+    text = _WRAP_TAG_RE.sub("", text)
+    return re.sub(r"\s+", " ", text).strip()
+
 
 def _host_port() -> tuple[str, int] | None:
     """Parst TTS_WYOMING_URL ('tcp://host:port' oder 'host:port'). None = aus."""
@@ -202,10 +224,11 @@ async def synthesize(text: str, rolle: str = ROLLE_HERRIN) -> bytes | None:
             except Exception:
                 logger.exception("Grok-TTS fehlgeschlagen – versuche Piper-Fallback")
 
-    # 2) Piper (lokal) – Original-Verhalten.
+    # 2) Piper (lokal) – Original-Verhalten. Sprech-Tags raus: Piper kennt sie
+    # nicht und läse eckige Tags wörtlich vor.
     if not _host_port():
         return None
-    text = _gekuerzt(bereinige(text))
+    text = _gekuerzt(bereinige(entferne_sprech_tags(text)))
     if not text:
         return None
     try:

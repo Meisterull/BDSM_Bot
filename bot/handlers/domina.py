@@ -75,6 +75,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Aufgabe in Grok-Antwort erkennen
     if not is_task:
         is_task, task_text = grok.extract_task(response)
+    # Nachricht an den Sklaven ([SPRACHNACHRICHT: …], s. domina_coach-Regeln)
+    sn_gefunden, sn_inhalt = grok.extract_sprachnachricht(response)
 
     # Antwort senden (ohne [AUFGABE: ...] Tag) – Markdown mit Fallback,
     # weil der Coach Bold/Listen nutzen darf.
@@ -84,6 +86,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # das rohe "[AUFGABE: …"-Fragment stünde wörtlich in der Coach-Nachricht.
     if not is_task:
         clean_response = re.sub(r"\[AUFGABE:[^\]]*$", "", clean_response).rstrip()
+    # [SPRACHNACHRICHT:]-Tag (komplett ODER von max_tokens gekappt) nie anzeigen.
+    clean_response = re.sub(r"\[SPRACHNACHRICHT:[^\]]*\]?", "", clean_response).rstrip()
     if clean_response:
         await telegram_helper.reply_markdown_safe(update.message, clean_response)
         # „Telefonieren" (Flag aus handle_voice): gesprochene Frage → Antwort
@@ -91,6 +95,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if context.chat_data.get("voice_eingang"):
             await telegram_helper.voice_an(context.bot, chat_id, clean_response,
                                            empfaenger_rolle=paare.ROLLE_DOM)
+
+    if sn_gefunden and sn_inhalt:
+        await _sende_sprachnachricht_an_sklaven(update, context, sn_inhalt)
 
     # Aufgabe gefunden → Limits-Check, dann Bestätigung anfragen
     if is_task and task_text:
@@ -124,6 +131,39 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _bg = _asyncio.create_task(_detektor_bg())
     _BG_TASKS.add(_bg)
     _bg.add_done_callback(_BG_TASKS.discard)
+
+
+async def _sende_sprachnachricht_an_sklaven(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                            inhalt: str) -> None:
+    """[SPRACHNACHRICHT:]-Tag des Coachs: Inhalt durchs Limits-Gate (wie die
+    Aufgaben-Pfade, D8/H1), in der Herrin-Stimme ausformulieren (Sprech-Tags
+    bei Grok-TTS) und dem Sklaven als Text (ohne Tags) + Voice zustellen."""
+    from bot.services import limits_check, tts
+    try:
+        treffer = await limits_check.verletzungen(inhalt)
+    except Exception:
+        logger.exception("Limits-Check der Sprachnachricht fehlgeschlagen – nicht gesendet.")
+        await update.message.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
+        return
+    if treffer:
+        await update.message.reply_text(
+            t("COACH_SPRACHNACHRICHT_LIMIT", begriffe=", ".join(treffer)))
+        return
+    try:
+        nachricht = await grok.simple(fp.nachricht_an_sklaven(inhalt), max_tokens=250)
+    except Exception as e:
+        # Muster Ketten-Start: bei LLM-Fehler lieber den Roh-Inhalt zustellen
+        # als die zugesagte Nachricht verfallen zu lassen.
+        logger.error("nachricht_an_sklaven fehlgeschlagen, sende Inhalt direkt: %s", e)
+        nachricht = inhalt
+    try:
+        await telegram_helper.send_sklave(context.bot, tts.entferne_sprech_tags(nachricht),
+                                          voice_text=nachricht)
+    except Exception:
+        logger.exception("Sprachnachricht-Zustellung an den Sklaven fehlgeschlagen.")
+        await update.message.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
+        return
+    await update.message.reply_text(t("COACH_SPRACHNACHRICHT_GESENDET"))
 
 
 async def _baue_system_prompt(

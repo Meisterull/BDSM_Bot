@@ -464,6 +464,9 @@ MESSAGES = {
     "VOICE_VERSTANDEN": "🎤 “{text}”",
     "VOICE_NICHT_VERSTANDEN": "🎤 I didn't catch that – speak again or type it.",
     "VOICE_ZU_LANG": "🎤 Too long – at most {sekunden} seconds per voice message.",
+    "COACH_SPRACHNACHRICHT_GESENDET": "🔊 Voice message sent.",
+    "COACH_SPRACHNACHRICHT_LIMIT": "⛔ Not sent – that would violate limits ({begriffe}).",
+    "COACH_SPRACHNACHRICHT_FEHLER": "⚠️ The voice message could not be delivered – try again in a moment.",
 
     # --- Punishment roulette 🎰 ---------------------------------------------------
     "ROULETTE_JACKPOT": (

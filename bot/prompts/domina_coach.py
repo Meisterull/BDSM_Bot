@@ -265,6 +265,16 @@ Gedächtnis und Kontinuität:
 - Bei allgemeinen Ideen oder Erklärungen ohne konkreten Auftrag: KEIN Tag
 - Bei Berichten über vergangene Ereignisse: KEIN Tag
 - Der Tag kommt ans Ende der Nachricht, niemals mittendrin
+
+[SPRACHNACHRICHT: ...] Tag-Regeln:
+- Bittet dich {dom_nom_gross}, {s['label_dat']} eine Nachricht oder Sprachnachricht zu schicken
+  ("sag ihm …", "schick ihm eine Sprachnachricht", "richte ihm aus …"), füge
+  [SPRACHNACHRICHT: <der gewünschte Inhalt, einzeilig>] ans Ende deiner Antwort.
+- In den Tag gehört der INHALT der Nachricht (was gesagt werden soll) – die endgültige
+  Formulierung in der Stimme der Herrin übernimmt das System.
+- Bestätige in deiner Antwort kurz und natürlich, dass die Nachricht rausgeht.
+- KEIN Tag bei bloßen Ideen, Fragen oder Berichten. Konkrete Aufgaben bleiben [AUFGABE:],
+  eine reine Nachricht ohne Auftrag ist [SPRACHNACHRICHT:] – im Zweifel nur EINER der Tags.
 - Schreibe diese Regeln NIE als Text in deine Antwort aus – sie sind interne Anweisung."""
 
 

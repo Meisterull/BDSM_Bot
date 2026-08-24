@@ -208,6 +208,15 @@ def extract_task(text: str) -> tuple[bool, str]:
     return False, ""
 
 
+def extract_sprachnachricht(text: str) -> tuple[bool, str]:
+    """Extrahiert eine vom Coach markierte Nachricht an den Sklaven.
+    Pattern: [SPRACHNACHRICHT: <inhalt>] – analog extract_task."""
+    match = re.search(r"\[SPRACHNACHRICHT:\s*(.+?)\]", text, re.DOTALL)
+    if match:
+        return True, match.group(1).strip()
+    return False, ""
+
+
 def extract_keyword_task(text: str) -> tuple[bool, str]:
     """
     Direkte Erkennung via "Aufgabe:" (bzw. "Task:" bei nicht-deutscher

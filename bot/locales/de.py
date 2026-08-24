@@ -462,6 +462,9 @@ MESSAGES = {
     "VOICE_VERSTANDEN": "🎤 „{text}“",
     "VOICE_NICHT_VERSTANDEN": "🎤 Das habe ich nicht verstanden – sprich nochmal oder tipp es.",
     "VOICE_ZU_LANG": "🎤 Zu lang – maximal {sekunden} Sekunden pro Sprachnachricht.",
+    "COACH_SPRACHNACHRICHT_GESENDET": "🔊 Sprachnachricht ist raus.",
+    "COACH_SPRACHNACHRICHT_LIMIT": "⛔ Nicht gesendet – das würde Limits verletzen ({begriffe}).",
+    "COACH_SPRACHNACHRICHT_FEHLER": "⚠️ Sprachnachricht konnte nicht zugestellt werden – probier es gleich nochmal.",
 
     # --- Strafen-Roulette 🎰 -----------------------------------------------------
     "ROULETTE_JACKPOT": (

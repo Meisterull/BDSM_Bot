@@ -102,6 +102,25 @@ def aufgabe_an_sklaven(aufgabe: str, rollenspiel_ton: str = "") -> tuple[str, st
     return system, user
 
 
+def nachricht_an_sklaven(inhalt: str) -> tuple[str, str]:
+    """Freie (Sprach-)Nachricht der Herrin an den Sklaven – Coach-Relay über den
+    [SPRACHNACHRICHT:]-Tag (handlers/domina.py). Bei aktivem Grok-TTS bekommt
+    das LLM die Sprech-Tag-Anleitung mit; die Text-Bubble wird von den Tags
+    befreit (tts.entferne_sprech_tags), gesprochen werden sie."""
+    from bot.services import tts  # lazy: kein Service-Import beim Prompt-Laden
+    s = rollen.sub()
+    tag_block = f"\n{tts.SPRECH_TAG_ANLEITUNG}\n" if config.GROK_TTS else ""
+    system = (
+        f"{_du_bist_dom()}. Verwandle den folgenden Inhalt in eine kurze, persönliche "
+        f"Sprachnachricht von dir an {s['akk']} – Ich-Form, dein Ton, direkt an {s['akk']} "
+        f"gesprochen. Zwei bis vier Sätze. Keine Einleitung, keine Erklärung, kein Coach-Ton.\n"
+        f"{tag_block}\n"
+        f"{persona.fuer_sklaven_prompt()}"
+    )
+    user = f"Inhalt (Kontext, formuliere ihn als deine eigene Nachricht, nicht wörtlich): {inhalt}"
+    return system, user
+
+
 def reaktion_auf_gefuehl(aufgabe: str, gefuehl: str) -> tuple[str, str]:
     """Kurze, persönliche Reaktion der Herrin auf die Gefühl-Antwort des Sklaven."""
     s = rollen.sub()
