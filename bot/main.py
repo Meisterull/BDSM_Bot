@@ -557,7 +557,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(t("VOICE_VERSTANDEN", text=text))
     with update.message._unfrozen():
         update.message.text = text
-    await handle_message(update, context)
+    # „Telefonieren": Wer spricht, bekommt die Antwort auch gesprochen. Die
+    # Chat-Handler (sklave/domina) lesen das Flag und hängen eine Voice-Bubble
+    # an; finally räumt auf, damit getippte Folge-Nachrichten stumm bleiben.
+    context.chat_data["voice_eingang"] = True
+    try:
+        await handle_message(update, context)
+    finally:
+        context.chat_data.pop("voice_eingang", None)
 
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

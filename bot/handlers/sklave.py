@@ -11,7 +11,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot import state
-from bot.services import qdrant, grok, embeddings as emb, kategorie_logik, telegram_helper, lokal_llm
+from bot.services import qdrant, grok, embeddings as emb, kategorie_logik, telegram_helper, lokal_llm, paare
 from bot.services import limits_check
 from bot.prompts import sklave as sklave_prompt
 from bot.handlers import onboarding
@@ -504,6 +504,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Persistenz dieses einen Notbetrieb-Austauschs opfern wir bewusst mit.
         state.add_message(chat_id, "assistant", response)
         await update.message.reply_text(response)
+        if context.chat_data.get("voice_eingang"):
+            await telegram_helper.voice_an(context.bot, chat_id, response,
+                                           empfaenger_rolle=paare.ROLLE_SUB)
         return
 
     # Anti-Echo: Hat grok fast wortgleich eine frühere Antwort wiederholt (typisch
@@ -568,6 +571,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state.add_message(chat_id, "assistant", response)
 
     await update.message.reply_text(response)
+    # „Telefonieren" (Flag aus handle_voice): gesprochene Nachricht → Antwort
+    # zusätzlich als Voice-Bubble in der Herrin-Stimme (best-effort).
+    if context.chat_data.get("voice_eingang"):
+        await telegram_helper.voice_an(context.bot, chat_id, response,
+                                       empfaenger_rolle=paare.ROLLE_SUB)
 
     # Best-effort-Nachverarbeitung (Wunsch-Erfassung, Präferenz-Detektor,
     # Domina-Relay = bis zu 3 Grok-Calls) als Hintergrund-Task (Review D8/N1):

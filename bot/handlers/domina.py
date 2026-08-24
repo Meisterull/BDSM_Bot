@@ -86,6 +86,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         clean_response = re.sub(r"\[AUFGABE:[^\]]*$", "", clean_response).rstrip()
     if clean_response:
         await telegram_helper.reply_markdown_safe(update.message, clean_response)
+        # „Telefonieren" (Flag aus handle_voice): gesprochene Frage → Antwort
+        # zusätzlich als Voice-Bubble in der Coach-Stimme (best-effort).
+        if context.chat_data.get("voice_eingang"):
+            await telegram_helper.voice_an(context.bot, chat_id, clean_response,
+                                           empfaenger_rolle=paare.ROLLE_DOM)
 
     # Aufgabe gefunden → Limits-Check, dann Bestätigung anfragen
     if is_task and task_text:

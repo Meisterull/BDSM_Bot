@@ -320,13 +320,18 @@ async def test_llm_fallback():
     _config.FALLBACK_LLM_MODEL = "llama3.1"
     erfasst = {}
 
-    async def fake_post(url, headers, pl):
+    async def fake_post(url, headers, pl, timeout=None):
         erfasst["model"] = pl["model"]
+        erfasst["timeout"] = timeout
         return "FB"
 
     _grok._post_chat = fake_post
     assert await _grok._try_fallback(payload, "grok") == "FB"
     assert erfasst["model"] == "llama3.1"
+    # 16.08.2026: Der Fallback MUSS sein eigenes, groesseres Timeout mitgeben.
+    # Erbte er das knappe LLM_TIMEOUT des Primaer-Providers, waere er bei genau
+    # den grossen Prompts nutzlos, fuer die er gedacht ist (Wochenplan).
+    assert erfasst["timeout"] == _config.FALLBACK_LLM_TIMEOUT
 
     async def boom(*a, **k):
         raise RuntimeError("down")

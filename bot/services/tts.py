@@ -1,14 +1,18 @@
 """
-TTS-Service – Sprachnachrichten der Herrin via Piper (Wyoming-Protokoll).
+TTS-Service – Sprachnachrichten via Grok-TTS (Cloud) und/oder Piper (lokal).
 
-Vollständig lokal: der Text geht an einen wyoming-piper-Server im eigenen Netz
-(TTS_WYOMING_URL, z.B. tcp://192.0.2.10:10200), das PCM wird im Container mit
-opusenc (opus-tools, siehe Dockerfile) in OGG/Opus gewandelt – das Format, das
-Telegram für echte Voice-Bubbles verlangt. Kein Cloud-Leak intimer Inhalte.
+Zwei Backends, beide enden in der gleichen opusenc-Kette (opus-tools, siehe
+Dockerfile) → OGG/Opus, das Format für echte Telegram-Voice-Bubbles:
+- Grok-TTS (GROK_TTS=1, api.x.ai/v1/tts, XAI_API_KEY): expressive multilinguale
+  Stimmen, EINE pro Empfänger-Rolle (der Sklave hört die Herrin, die Domina den
+  Coach). Der vorzulesende Text stammt ohnehin von Grok – TTS schickt also
+  nichts Neues in die Cloud. WAV angefordert ({"codec": "wav"}), damit die
+  lokale Opus-Kette unverändert weiterläuft.
+- Piper (TTS_WYOMING_URL, Wyoming-Protokoll): vollständig lokal, Fallback wenn
+  Grok aus/fehlschlägt.
 
-Default AUS (TTS_WYOMING_URL leer) → synthesize() liefert None, alle Aufrufer
-sind best-effort und senden dann nur Text. Fehler dürfen NIE eine Text-
-Zustellung verhindern.
+Beides aus → synthesize() liefert None, alle Aufrufer sind best-effort und
+senden dann nur Text. Fehler dürfen NIE eine Text-Zustellung verhindern.
 """
 import asyncio
 import io
@@ -17,11 +21,18 @@ import logging
 import re
 import wave
 
+import httpx
+
 from bot import config
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 20  # Sekunden für Synthese + Encoding zusammen (best-effort Pfad)
+
+# Empfänger-Rolle → Grok-Stimme. Bewusst über die EMPFÄNGER-Seite: Voice an den
+# Sub spricht die Herrin-Persona, Voice an die Dom-Seite den Coach.
+ROLLE_HERRIN = "herrin"
+ROLLE_COACH = "coach"
 
 
 def _host_port() -> tuple[str, int] | None:
@@ -37,10 +48,12 @@ def _host_port() -> tuple[str, int] | None:
     return host, int(port)
 
 
-def bereinige(text: str) -> str:
+def bereinige(text: str, tags_erhalten: bool = False) -> str:
     """Macht einen Chat-Text vorlesbar: Markdown-Zeichen und Emojis raus,
-    Mehrfach-Whitespace glätten. Kein NLP – Piper liest den Rest gut."""
-    text = re.sub(r"[*_`#>|]", "", text or "")
+    Mehrfach-Whitespace glätten. Kein NLP – Piper liest den Rest gut.
+    tags_erhalten=True (Grok-Pfad) lässt `>` stehen, damit Sprech-Tags wie
+    <whisper>…</whisper> überleben – Piper bekommt solche Tags nie zu sehen."""
+    text = re.sub(r"[*_`#|]" if tags_erhalten else r"[*_`#>|]", "", text or "")
     # Emojis / Symbole (außerhalb Basis-Multilingual-Plane + Misc-Symbole)
     text = re.sub(r"[\U0001F000-\U0001FAFF☀-➿️]", "", text)
     return re.sub(r"\s+", " ", text).strip()
@@ -57,6 +70,36 @@ def _voice_fuer_kontext() -> str:
     except Exception:
         code = ""
     return (config.TTS_STIMMEN.get(code) if code else None) or config.TTS_VOICE
+
+
+def _grok_voice(rolle: str) -> str:
+    return (config.GROK_TTS_VOICE_COACH if rolle == ROLLE_COACH
+            else config.GROK_TTS_VOICE_HERRIN)
+
+
+async def _grok_wav(text: str, rolle: str) -> bytes | None:
+    """Grok-TTS: Text → WAV-Bytes (16-bit-PCM laut codec-Anforderung).
+    Wirft bei HTTP-Fehlern – der Aufrufer fängt und fällt auf Piper zurück."""
+    from bot.services import persona_config  # lazy wie _voice_fuer_kontext
+    try:
+        sprache = persona_config.sprach_code() or "de"
+    except Exception:
+        sprache = "de"
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.post(
+            "https://api.x.ai/v1/tts",
+            headers={"Authorization": f"Bearer {config.XAI_API_KEY}"},
+            json={
+                "text": text,
+                "voice_id": _grok_voice(rolle),
+                "language": sprache,
+                # WAV statt MP3-Default: das Image hat nur opusenc, und der
+                # frisst WAV – die lokale Opus-Kette bleibt für beide Backends.
+                "output_format": {"codec": "wav"},
+            },
+        )
+        resp.raise_for_status()
+        return resp.content or None
 
 
 async def _wyoming_pcm(text: str) -> tuple[bytes, int, int, int] | None:
@@ -135,16 +178,36 @@ async def _als_opus(wav: bytes) -> bytes | None:
     return stdout
 
 
-async def synthesize(text: str) -> bytes | None:
+def _gekuerzt(text: str) -> str:
+    if len(text) > config.TTS_MAX_ZEICHEN:
+        return text[: config.TTS_MAX_ZEICHEN].rsplit(" ", 1)[0] + " …"
+    return text
+
+
+async def synthesize(text: str, rolle: str = ROLLE_HERRIN) -> bytes | None:
     """Text → OGG/Opus-Bytes für Telegram send_voice. None = TTS aus/Fehler
-    (Aufrufer sendet dann einfach keinen Voice-Zusatz)."""
+    (Aufrufer sendet dann einfach keinen Voice-Zusatz).
+    `rolle` wählt die Grok-Stimme (Empfänger-Seite: herrin|coach)."""
+    # 1) Grok-TTS (Gate + Key nötig); Fehler → still weiter zu Piper.
+    if config.GROK_TTS and config.XAI_API_KEY:
+        grok_text = _gekuerzt(bereinige(text, tags_erhalten=True))
+        if grok_text:
+            try:
+                async with asyncio.timeout(_TIMEOUT):
+                    wav = await _grok_wav(grok_text, rolle)
+                    if wav:
+                        ogg = await _als_opus(wav)
+                        if ogg:
+                            return ogg
+            except Exception:
+                logger.exception("Grok-TTS fehlgeschlagen – versuche Piper-Fallback")
+
+    # 2) Piper (lokal) – Original-Verhalten.
     if not _host_port():
         return None
-    text = bereinige(text)
+    text = _gekuerzt(bereinige(text))
     if not text:
         return None
-    if len(text) > config.TTS_MAX_ZEICHEN:
-        text = text[: config.TTS_MAX_ZEICHEN].rsplit(" ", 1)[0] + " …"
     try:
         async with asyncio.timeout(_TIMEOUT):
             ergebnis = await _wyoming_pcm(text)

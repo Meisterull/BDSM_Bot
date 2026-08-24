@@ -97,15 +97,17 @@ async def send_an(bot: Bot, paar, rolle: str, text: str, parse_mode: str | None 
     chat_id = paar.chat_id(rolle)
     await _send_with_md_fallback(bot, chat_id, text, parse_mode, reply_markup)
     if voice_text:
-        await voice_an(bot, chat_id, voice_text)
+        await voice_an(bot, chat_id, voice_text, empfaenger_rolle=rolle)
 
 
-async def send_domina(bot: Bot, text: str, parse_mode: str | None = None, reply_markup=None) -> None:
+async def send_domina(bot: Bot, text: str, parse_mode: str | None = None, reply_markup=None,
+                      voice_text: str | None = None) -> None:
     """Kontext-Wrapper: sendet an die Dom-Seite des Paares im aktiven
     Paar-Kontext (Updates: TypeHandler in main.py; Scheduler: _pro_paar).
     Damit sind die ~33 nutzenden Module automatisch paar-korrekt."""
     from bot.services import paare  # lazy: zirkelfreier Modul-Import
-    await send_an(bot, paare.paar_im_kontext(), paare.ROLLE_DOM, text, parse_mode, reply_markup)
+    await send_an(bot, paare.paar_im_kontext(), paare.ROLLE_DOM, text, parse_mode,
+                  reply_markup, voice_text=voice_text)
 
 
 async def send_sklave(bot: Bot, text: str, parse_mode: str | None = None, reply_markup=None,
@@ -116,12 +118,15 @@ async def send_sklave(bot: Bot, text: str, parse_mode: str | None = None, reply_
                   reply_markup, voice_text=voice_text)
 
 
-async def voice_an(bot: Bot, chat_id, text: str) -> bool:
-    """Spricht `text` als Voice-Message an chat_id (lokales Piper-TTS).
-    Still no-op wenn TTS aus ist; True nur bei erfolgreichem Versand."""
-    from bot.services import tts  # lazy: kein Import-Gewicht wenn TTS aus
+async def voice_an(bot: Bot, chat_id, text: str, empfaenger_rolle: str | None = None) -> bool:
+    """Spricht `text` als Voice-Message an chat_id (Grok-TTS bzw. Piper).
+    Still no-op wenn TTS aus ist; True nur bei erfolgreichem Versand.
+    `empfaenger_rolle` (paare.ROLLE_*) wählt die Grok-Stimme: die Dom-Seite
+    hört den Coach, die Sub-Seite die Herrin (Default)."""
+    from bot.services import paare, tts  # lazy: kein Import-Gewicht wenn TTS aus
+    stimme = tts.ROLLE_COACH if empfaenger_rolle == paare.ROLLE_DOM else tts.ROLLE_HERRIN
     try:
-        ogg = await tts.synthesize(text)
+        ogg = await tts.synthesize(text, rolle=stimme)
         if not ogg:
             return False
         await bot.send_voice(chat_id=chat_id, voice=ogg)

@@ -161,6 +161,15 @@ TTS_STIMMEN = {
 }
 TTS_MAX_ZEICHEN = int(os.getenv("TTS_MAX_ZEICHEN", "600"))
 
+# Grok-TTS (Cloud, POST https://api.x.ai/v1/tts, nutzt XAI_API_KEY): expressive
+# multilinguale Stimmen inkl. Sprech-Tags ([laugh], <whisper>…</whisper>).
+# GROK_TTS=1 schaltet es VOR Piper; Piper (TTS_WYOMING_URL) bleibt Fallback bei
+# Fehler/Timeout. Stimme je EMPFÄNGER-Rolle: der Sklave hört die Herrin, die
+# Domina hört den Coach. Kosten: 15 $/1 Mio. Zeichen (TTS_MAX_ZEICHEN deckelt).
+GROK_TTS = os.getenv("GROK_TTS", "") == "1"
+GROK_TTS_VOICE_HERRIN = os.getenv("GROK_TTS_VOICE_HERRIN", "aurora")
+GROK_TTS_VOICE_COACH = os.getenv("GROK_TTS_VOICE_COACH", "ara")
+
 # Sprachnachrichten VERSTEHEN 🎤 (lokales Whisper via Wyoming-Protokoll).
 # Leer = aus (Voice läuft dann wie bisher als Medien-Weiterleitung).
 STT_WYOMING_URL = os.getenv("STT_WYOMING_URL", "")
