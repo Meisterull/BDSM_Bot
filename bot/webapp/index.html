@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cockpit</title>
+<script>
+// Diagnose (Inbetriebnahme): JS-Fehler und Umgebungs-Info an den Server melden,
+// bevor irgendetwas anderes passiert – "leere Seite" wird sonst unsichtbar.
+window._diag = [];
+window.onerror = function (msg, src, zeile) {
+  window._diag.push("FEHLER: " + msg + " @" + (src || "?") + ":" + zeile);
+  try { navigator.sendBeacon("/api/log", JSON.stringify({ fehler: String(msg), zeile: zeile })); } catch (e) {}
+};
+</script>
+<!-- Selbst gehostet (LAN-autark): das externe telegram.org-Script stand
+     blockierend im Head – lud es nicht, blieb die Seite KOMPLETT leer. -->
+<script src="/telegram-web-app.js"></script>
+<style>
+  /* Telegram-Theme-Variablen mit neutralen Fallbacks */
+  :root {
+    --bg: var(--tg-theme-bg-color, #f4f4f5);
+    --fg: var(--tg-theme-text-color, #18181b);
+    --hint: var(--tg-theme-hint-color, #71717a);
+    --card: var(--tg-theme-secondary-bg-color, #ffffff);
+    --akzent: var(--tg-theme-button-color, #2481cc);
+    --akzent-fg: var(--tg-theme-button-text-color, #ffffff);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--fg);
+         font: 16px/1.45 -apple-system, Roboto, "Segoe UI", sans-serif;
+         padding: 12px 12px calc(24px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 1.15rem; margin: 4px 2px 12px; }
+  h2 { font-size: .95rem; color: var(--hint); margin: 18px 2px 8px;
+       text-transform: uppercase; letter-spacing: .04em; }
+  .kacheln { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .kachel { background: var(--card); border-radius: 12px; padding: 10px 8px; text-align: center; }
+  .kachel b { display: block; font-size: 1.35rem; }
+  .kachel span { font-size: .72rem; color: var(--hint); }
+  .karte { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+  .karte .datum { color: var(--hint); font-size: .75rem; }
+  .leer { color: var(--hint); font-size: .9rem; padding: 4px 2px; }
+  .status-erledigt { color: #16a34a; } .status-nicht_erledigt { color: #dc2626; }
+  textarea { width: 100%; min-height: 110px; border: 1px solid var(--hint); border-radius: 12px;
+             background: var(--card); color: var(--fg); padding: 10px; font: inherit; resize: vertical; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+  .tags button, .aktionen button {
+    border: 0; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: .85rem;
+    background: var(--card); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .aktionen { display: flex; gap: 8px; margin-top: 10px; }
+  .aktionen .primaer { background: var(--akzent); color: var(--akzent-fg); flex: 1; padding: 12px; }
+  audio { width: 100%; margin-top: 10px; }
+  #meldung { margin-top: 10px; font-size: .9rem; min-height: 1.2em; }
+  #laden { color: var(--hint); padding: 30px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div id="laden">lädt…</div>
+<div id="app" style="display:none">
+  <h1 id="titel">Cockpit</h1>
+  <div class="kacheln" id="kacheln"></div>
+  <div id="stimmung-block" style="display:none"><h2>Aktuelle Stimmung</h2>
+    <div class="karte" id="stimmung"></div></div>
+  <h2>Offene Aufgaben</h2><div id="offene"></div>
+  <h2>Zuletzt</h2><div id="letzte"></div>
+  <div id="studio" style="display:none">
+    <h2>Sprachnachrichten-Studio</h2>
+    <div class="karte">
+      <textarea id="text" placeholder="Nachricht an ihn… Tags per Knopf einfügen."></textarea>
+      <div class="tags" id="tagleiste"></div>
+      <div class="aktionen">
+        <button id="vorschau">▶ Vorschau</button>
+        <button id="senden" class="primaer">Senden 🔊</button>
+      </div>
+      <audio id="player" controls style="display:none"></audio>
+      <div id="meldung"></div>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+const tg = window.Telegram?.WebApp;
+tg?.ready(); tg?.expand();
+const initData = tg?.initData || "";
+// Diagnose-Beacon: was sieht der WebView wirklich? (Inbetriebnahme-Hilfe)
+try {
+  fetch("/api/log", { method: "POST", body: JSON.stringify({
+    telegram_js: !!window.Telegram, plattform: tg?.platform || "-",
+    version: tg?.version || "-", initDataLen: initData.length,
+    initDataUnsafeUser: !!tg?.initDataUnsafe?.user, fehler_bisher: window._diag,
+  }) });
+} catch (e) {}
+const hole = (pfad, opts = {}) => fetch(pfad, {
+  ...opts,
+  headers: { "X-Init-Data": initData, "Content-Type": "application/json",
+             "X-Tg-Platform": (tg?.platform || "kein-telegram") + "/" + (tg?.version || "-"),
+             ...(opts.headers || {}) },
+});
+const el = (id) => document.getElementById(id);
+const esc = (s) => { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; };
+
+// Sprech-Tags: eckige = Einschub am Cursor, spitze = umschließen die Auswahl
+const TAGS = [
+  ["[pause]", "pause"], ["[laugh]", "lachen"], ["[sigh]", "seufzen"],
+  ["<whisper>", "flüstern"], ["<soft>", "sanft"], ["<slow>", "langsam"],
+];
+function tagEinfuegen(tag) {
+  const t = el("text"), von = t.selectionStart, bis = t.selectionEnd, v = t.value;
+  if (tag.startsWith("<")) {
+    const schluss = tag.replace("<", "</");
+    t.value = v.slice(0, von) + tag + v.slice(von, bis) + schluss + v.slice(bis);
+    t.selectionStart = t.selectionEnd = bis + tag.length + (von === bis ? 0 : schluss.length);
+  } else {
+    const raum = von > 0 && v[von - 1] !== " " ? " " : "";
+    t.value = v.slice(0, von) + raum + tag + " " + v.slice(bis);
+    t.selectionStart = t.selectionEnd = von + raum.length + tag.length + 1;
+  }
+  t.focus();
+}
+
+async function laden() {
+  if (!initData) {
+    // Ohne Telegram-Kontext (normaler Browser, oder Link statt web_app-Knopf)
+    // gibt es keine signierten Daten – klar sagen statt kryptisch 401 zeigen.
+    el("laden").textContent = tg?.platform
+      ? "Telegram hat keine Anmelde-Daten übergeben – bitte über den Knopf aus /app öffnen."
+      : "Bitte in Telegram über /app öffnen (im Browser gibt es keine Anmelde-Daten).";
+    return;
+  }
+  let d;
+  try {
+    const r = await hole("/api/uebersicht");
+    if (!r.ok) throw new Error((await r.json()).fehler || r.status);
+    d = await r.json();
+  } catch (e) {
+    el("laden").textContent = "Fehler: " + e.message;
+    return;
+  }
+  el("laden").style.display = "none";
+  el("app").style.display = "";
+  el("titel").textContent = d.rolle === "domina" ? "Cockpit" : "Deine Übersicht";
+  el("kacheln").innerHTML = [
+    [d.punkte, "Punkte"], [d.streak, "Streak"], [d.streak_max, "Bester Streak"],
+    [d.vertrauen.score + "/100", "Vertrauen"], [d.erledigt_gesamt, "Erledigt"],
+    [d.abzeichen_anzahl, "Abzeichen"],
+  ].map(([w, l]) => `<div class="kachel"><b>${esc(String(w))}</b><span>${l}</span></div>`).join("");
+  if (d.stimmung) {
+    el("stimmung-block").style.display = "";
+    el("stimmung").textContent = d.stimmung;
+  }
+  el("offene").innerHTML = d.offene_tasks.length
+    ? d.offene_tasks.map((t) => `<div class="karte">${esc(t.aufgabe)}<div class="datum">${esc(t.erteilt_am)}${t.kategorie ? " · " + esc(t.kategorie) : ""}</div></div>`).join("")
+    : `<div class="leer">Keine offenen Aufgaben.</div>`;
+  el("letzte").innerHTML = d.letzte_tasks.length
+    ? d.letzte_tasks.map((t) => `<div class="karte"><span class="status-${t.status}">${t.status === "erledigt" ? "✅" : "❌"}</span> ${esc(t.aufgabe)}<div class="datum">${esc(t.erteilt_am)}</div></div>`).join("")
+    : `<div class="leer">Noch nichts.</div>`;
+
+  if (d.rolle === "domina") {
+    el("studio").style.display = "";
+    el("tagleiste").innerHTML = TAGS.map(([tag, label]) =>
+      `<button type="button" data-tag="${tag.replaceAll('"', "")}">${label}</button>`).join("");
+    el("tagleiste").addEventListener("click", (ev) => {
+      const b = ev.target.closest("button"); if (b) tagEinfuegen(b.dataset.tag);
+    });
+    if (!d.grok_tts) el("meldung").textContent = "Hinweis: Grok-TTS ist aus – Tags werden ignoriert.";
+  }
+}
+
+async function vorschau() {
+  const text = el("text").value.trim();
+  if (!text) return;
+  el("meldung").textContent = "Vorschau wird erzeugt…";
+  try {
+    const r = await hole("/api/vorschau", { method: "POST", body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error((await r.json()).fehler || r.status);
+    const url = URL.createObjectURL(await r.blob());
+    const p = el("player"); p.src = url; p.style.display = ""; p.play().catch(() => {});
+    el("meldung").textContent = "";
+  } catch (e) { el("meldung").textContent = "Vorschau fehlgeschlagen: " + e.message; }
+}
+
+async function senden() {
+  const text = el("text").value.trim();
+  if (!text) return;
+  el("senden").disabled = true;
+  el("meldung").textContent = "Wird gesendet…";
+  try {
+    const r = await hole("/api/senden", { method: "POST", body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error((await r.json()).fehler || r.status);
+    el("meldung").textContent = "🔊 Zugestellt.";
+    tg?.HapticFeedback?.notificationOccurred("success");
+  } catch (e) { el("meldung").textContent = "Senden fehlgeschlagen: " + e.message; }
+  el("senden").disabled = false;
+}
+
+el("vorschau").addEventListener("click", vorschau);
+el("senden").addEventListener("click", senden);
+laden();
+</script>
+</body>
+</html>

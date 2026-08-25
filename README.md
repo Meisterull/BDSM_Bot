@@ -58,7 +58,8 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 - **Personas** — the dominant voice and the coach voice are configurable style presets (Markdown files, bring your own), with optional bot name, form of address, and a real-world setup context so generated scenes stay anatomically and logistically consistent.
 - **Role constellations** — F/M, M/F, F/F, M/M. Labels, pronouns and the anatomy-consistency rules are generated from the configured constellation.
 - **Languages** — UI texts, menus and command aliases in German and English, and the LLM reply language free-form — all **per couple**, switchable at runtime.
-- **Voice** — optional fully local voice messages: Piper TTS (the dominant's messages as voice bubbles) and Whisper STT (voice input incl. safeword check), language-aware per couple; bundled as a compose profile.
+- **Voice** — optional voice messages: Piper TTS (fully local) or Grok TTS (cloud; expressive multilingual voices per role with speech tags like `[laugh]` and `<whisper>`), plus Whisper STT (voice input incl. safeword check), language-aware per couple. Speaking to the bot gets you a spoken reply; the coach can relay a whispered voice message to the sub on request.
+- **Mini App** — optional in-chat web app (`/app`): a stats cockpit for both partners and a voice-message studio for the dominant (tag buttons, TTS preview, one-tap delivery). Runs LAN-only if you want; see [MINIAPP.md](MINIAPP.md).
 
 ### Running it
 

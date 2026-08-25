@@ -467,6 +467,9 @@ MESSAGES = {
     "COACH_SPRACHNACHRICHT_GESENDET": "🔊 Voice message sent.",
     "COACH_SPRACHNACHRICHT_LIMIT": "⛔ Not sent – that would violate limits ({begriffe}).",
     "COACH_SPRACHNACHRICHT_FEHLER": "⚠️ The voice message could not be delivered – try again in a moment.",
+    "MINIAPP_OEFFNEN": "📱 Your mini app – tap the button (reachable on the home network only):",
+    "MINIAPP_KNOPF": "📱 Open",
+    "MINIAPP_AUS": "The mini app is not configured (MINIAPP_PORT/MINIAPP_URL in .env).",
 
     # --- Punishment roulette 🎰 ---------------------------------------------------
     "ROULETTE_JACKPOT": (

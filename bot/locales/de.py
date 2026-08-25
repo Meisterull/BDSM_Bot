@@ -465,6 +465,9 @@ MESSAGES = {
     "COACH_SPRACHNACHRICHT_GESENDET": "🔊 Sprachnachricht ist raus.",
     "COACH_SPRACHNACHRICHT_LIMIT": "⛔ Nicht gesendet – das würde Limits verletzen ({begriffe}).",
     "COACH_SPRACHNACHRICHT_FEHLER": "⚠️ Sprachnachricht konnte nicht zugestellt werden – probier es gleich nochmal.",
+    "MINIAPP_OEFFNEN": "📱 Deine Mini-App – tippe auf den Knopf (nur im Heimnetz erreichbar):",
+    "MINIAPP_KNOPF": "📱 Öffnen",
+    "MINIAPP_AUS": "Die Mini-App ist nicht eingerichtet (MINIAPP_PORT/MINIAPP_URL in der .env).",
 
     # --- Strafen-Roulette 🎰 -----------------------------------------------------
     "ROULETTE_JACKPOT": (

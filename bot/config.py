@@ -170,6 +170,15 @@ GROK_TTS = os.getenv("GROK_TTS", "") == "1"
 GROK_TTS_VOICE_HERRIN = os.getenv("GROK_TTS_VOICE_HERRIN", "aurora")
 GROK_TTS_VOICE_COACH = os.getenv("GROK_TTS_VOICE_COACH", "ara")
 
+# Telegram-Mini-App (services/miniapp.py): Cockpit + Sprachnachrichten-Studio.
+# LAN-only-Betrieb: HTTPS mit Zertifikat der lokalen Heimnetz-CA, Port nur ins
+# LAN mappen (docker-compose.override.yml). MINIAPP_PORT=0 = aus (Default).
+# MINIAPP_URL ist die von den Handys erreichbare https-URL (für den /app-Knopf).
+MINIAPP_PORT = int(os.getenv("MINIAPP_PORT", "0"))
+MINIAPP_URL = os.getenv("MINIAPP_URL", "")
+MINIAPP_SSL_CERT = os.getenv("MINIAPP_SSL_CERT", "/app/ssl-miniapp/fullchain.pem")
+MINIAPP_SSL_KEY = os.getenv("MINIAPP_SSL_KEY", "/app/ssl-miniapp/privkey.pem")
+
 # Sprachnachrichten VERSTEHEN 🎤 (lokales Whisper via Wyoming-Protokoll).
 # Leer = aus (Voice läuft dann wie bisher als Medien-Weiterleitung).
 STT_WYOMING_URL = os.getenv("STT_WYOMING_URL", "")

@@ -101,6 +101,8 @@ DOMINA_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
         Eintrag("blitz",         "⚡ Blitzaufgaben an/aus", in_hilfe=False,
                 lang="Unangekündigte Mini-Aufgaben mit Countdown für den Sklaven (gehen direkt raus)"),
         Eintrag("ueberspringen", "Optionalen Kommentar überspringen"),
+        Eintrag("app",           "📱 Mini-App: Cockpit & Sprachnachrichten-Studio",
+                lang="Mini-App im Chat öffnen: Statistik-Cockpit + Sprachnachrichten-Studio (LAN)"),
         Eintrag("abbrechen",     "Aktuelle Aktion abbrechen"),
         Eintrag("hilfe",         "Alle Befehle anzeigen",
                 lang="Diese Übersicht"),
@@ -136,6 +138,8 @@ SKLAVE_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
     ("⚙️ System", [
         Eintrag("abwesend",  "📆 Abwesenheit eintragen (fließt in Vorschläge ein)",
                 lang="Abwesenheit eintragen: /abwesend 20.07.-02.08. Grund – Aufgaben & Vorschläge berücksichtigen den Zeitraum; /abwesend ende hebt auf"),
+        Eintrag("app",       "📱 Mini-App: Deine Übersicht",
+                lang="Mini-App im Chat öffnen: Punkte, Streak, Aufgaben als Übersicht (LAN)"),
         Eintrag("abbrechen", "Aktuelle Aktion abbrechen"),
         Eintrag("hilfe",     "Alle Befehle anzeigen",
                 lang="Diese Übersicht"),
@@ -154,14 +158,14 @@ _DOMINA_MENUE_REIHENFOLGE = [
     "regel", "merken", "regeln", "vergessen", "profil_check",
     "lerne", "skills", "lerne_neu", "skill_bearbeiten",
     "strafen", "geheimnis", "profil",
-    "einstellungen", "abwesend", "luecken", "blitz", "ueberspringen", "hilfe", "abbrechen",
+    "einstellungen", "abwesend", "luecken", "blitz", "ueberspringen", "app", "hilfe", "abbrechen",
 ]
 
 _SKLAVE_MENUE_REIHENFOLGE = [
     "stats", "meineaufgaben",
     "stimmung", "wunsch", "meinewuensche", "wunschkategorien",
     "privileg", "wette", "quiz", "profil",
-    "abwesend", "hilfe", "abbrechen",
+    "abwesend", "app", "hilfe", "abbrechen",
 ]
 
 # Fallback-Menü für unbekannte Chats: nur /hilfe.

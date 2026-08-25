@@ -629,6 +629,22 @@ def _wrap_outgoing_logging(application: Application) -> None:
         bot.copy_message = _logged_copy
 
 
+async def app_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/app – Mini-App (Cockpit + Sprachnachrichten-Studio) im Chat öffnen.
+    Der web_app-Knopf lädt MINIAPP_URL in Telegrams In-App-Ansicht; die Seite
+    weist sich dort selbst über signierte initData aus (services/miniapp.py)."""
+    chat_id = str(update.effective_chat.id)
+    if not paare.ist_autorisiert(chat_id):
+        return
+    if not (config.MINIAPP_PORT and config.MINIAPP_URL):
+        await update.message.reply_text(t("MINIAPP_AUS"))
+        return
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton(
+        t("MINIAPP_KNOPF"), web_app=WebAppInfo(url=config.MINIAPP_URL))]])
+    await update.message.reply_text(t("MINIAPP_OEFFNEN"), reply_markup=kb)
+
+
 async def post_init(application: Application) -> None:
     from telegram import BotCommand, BotCommandScopeChat
     from bot import commands_katalog
@@ -636,6 +652,13 @@ async def post_init(application: Application) -> None:
 
     _wrap_outgoing_logging(application)
     logserver.start()
+    # Mini-App-Server (no-op wenn MINIAPP_PORT=0). Braucht den laufenden Loop
+    # für run_coroutine_threadsafe aus dem Server-Thread. import hier nötig:
+    # weiter unten in DIESER Funktion gibt es ein lokales `import asyncio`,
+    # damit ist der Name funktionsweit lokal (UnboundLocalError sonst).
+    import asyncio
+    from bot.services import miniapp
+    miniapp.start(asyncio.get_running_loop(), application.bot)
 
     _max_versuche = 3
     _pause = 5
@@ -773,6 +796,7 @@ def register_handlers(app: Application) -> None:
 
     app.add_handler(CommandHandler(ck.aliases("profil"),      profil.show))
     app.add_handler(CommandHandler(ck.aliases("stats"),       stats.show))  # neu
+    app.add_handler(CommandHandler(ck.aliases("app"),         app_cmd))
     app.add_handler(CommandHandler(ck.aliases("aufgaben"),    aufgaben.show))
     app.add_handler(CommandHandler(ck.aliases("vorlagen"),    vorlagen.show))
     app.add_handler(CommandHandler(ck.aliases("inspiration"), inspiration.show))
