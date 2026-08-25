@@ -146,8 +146,10 @@ async def _sende_sprachnachricht_an_sklaven(update: Update, context: ContextType
         await update.message.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
         return
     if treffer:
+        # verletzungen() liefert Dicts (limit/matched_via) – nur die Limit-Namen zeigen
         await update.message.reply_text(
-            t("COACH_SPRACHNACHRICHT_LIMIT", begriffe=", ".join(treffer)))
+            t("COACH_SPRACHNACHRICHT_LIMIT",
+              begriffe=", ".join(sorted({v["limit"] for v in treffer}))))
         return
     try:
         nachricht = await grok.simple(fp.nachricht_an_sklaven(inhalt), max_tokens=250)

@@ -14,6 +14,47 @@ What it shows:
   preview, then deliver it to the submissive as text (tags stripped) + voice bubble
   (tags spoken). Requires Grok TTS (`GROK_TTS=1`, see `.env.example`); with Piper the
   studio still works but tags are ignored.
+- **Task workshop** (dominant side only): assign a free-text task with optional
+  category — the same pipeline as in chat (hard-limits gate with a clear rejection,
+  the dominant persona phrases the command, delivery as text + voice, follow-up via
+  the scheduler). Plus a "3 ideas" button (profile-based, limit-filtered inspiration
+  with one-tap take-over into the form), a delete button on open tasks (soft-delete,
+  same as `/loeschen`), **multi-day series** (2/3/7/14 days, generated as an arc like
+  in chat, every day limit-checked) and **task chains** (collect 2–8 links, each one
+  limit-gated — a violating link rejects the whole chain naming it; link 1 is
+  delivered, the rest unlock on completion).
+- **Weekly progress chart** and **active privileges / running bet** (read-only,
+  mirrors `/stats`).
+- **Training library** (dominant side only): pick a category, and the coach writes a
+  practical, profile-aware guide for it (preparation, safety, step by step,
+  aftercare — curated `/lerne` knowledge included, limit-checked with one
+  regeneration). Guides are stored in the `training` collection (`typ: kategorie`)
+  and stay readable in the app.
+- **Psycho training** (dominant side only): the `/training` flow as an app card —
+  pick a type (or auto-rotate), get an exercise, answer, receive coach feedback;
+  stored like the chat flow. Works on demand even when `TRAINING_ENABLED` is off
+  (that flag gates the *daily* training job, which stays untouched).
+- **Calling the coach** (dominant side only, experimental): hold-to-talk voice
+  rounds — the page records raw PCM (deliberately no MediaRecorder: the server has
+  no ffmpeg to decode webm/opus), builds a 16 kHz WAV in JS, the server runs
+  Whisper → coach reply (full persona prompt + the *shared* chat history, task
+  extraction disabled) → TTS, and the answer auto-plays. Requires the Telegram
+  WebView to grant microphone access; if it doesn't, the page says so and voice
+  messages in chat remain the fallback. Note: the OGG/Opus reply won't play on
+  iOS Safari WebViews.
+- **Wish box** (submissive side): submit a wish from the app — stored like `/wunsch`
+  and delivered to the dominant with the usual accept/decline buttons in chat.
+- **Preference & limits editor** (both sides, each edits only their *own* profile):
+  chip lists with add/remove — the dominant edits interests and boundaries, the
+  submissive edits preferences and hard limits (removing a hard limit asks for an
+  extra confirmation). Same storage path as `/profil`.
+- **Badge gallery** (both sides): the submissive's *earned* badges with emoji and
+  description — never the unearned ones, so secret badge goals stay secret (earned
+  secret badges carry a 🤫 marker, mirroring `/stats`).
+- **Absence calendar** (both sides): enter or clear a vacation/away period with an
+  optional reason — same state as `/abwesend` (one period per couple, jobs keep
+  running, generators and both chat personas take the absence into account), and
+  the partner is notified in chat.
 
 The server is part of the bot process (`bot/services/miniapp.py`, stdlib only): it
 serves the page over HTTPS and validates Telegram's `initData` signature
@@ -108,6 +149,9 @@ Send `/app` to the bot and tap the button. Done.
   `/app`; old buttons keep their old URL.
 - **"Bitte in Telegram über /app öffnen"** → you opened the page in a normal
   browser. There is no Telegram identity there; that message is expected.
+- **Native `<select>` dropdowns don't open** in Telegram's Android WebView — taps
+  are simply swallowed. The category picker is therefore a custom overlay; avoid
+  `<select>` when extending the page.
 - **Every access is logged** (`Mini-App-Zugriff …` with client platform and
   initData length), and the page posts a diagnostic beacon to `/api/log` on load
   (JS errors, platform, initData presence). Grep the bot log for `Mini-App` — the

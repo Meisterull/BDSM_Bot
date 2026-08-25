@@ -50,8 +50,29 @@ window.onerror = function (msg, src, zeile) {
   .aktionen { display: flex; gap: 8px; margin-top: 10px; }
   .aktionen .primaer { background: var(--akzent); color: var(--akzent-fg); flex: 1; padding: 12px; }
   audio { width: 100%; margin-top: 10px; }
-  #meldung { margin-top: 10px; font-size: .9rem; min-height: 1.2em; }
+  #meldung, .feld-meldung { margin-top: 10px; font-size: .9rem; min-height: 1.2em; }
   #laden { color: var(--hint); padding: 30px 0; text-align: center; }
+  select { border: 1px solid var(--hint); border-radius: 10px; background: var(--card);
+           color: var(--fg); padding: 8px; font: inherit; font-size: .85rem; max-width: 55%; }
+  .karte-kopf { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+  .karte-kopf button { border: 0; background: none; font-size: 1rem; padding: 2px 4px; flex-shrink: 0; }
+  .idee { border-top: 1px solid rgba(128,128,128,.25); margin-top: 10px; padding-top: 10px; }
+  .idee button { margin-top: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg);
+          border: 1px solid rgba(128,128,128,.35); border-radius: 999px;
+          padding: 4px 10px; font-size: .85rem; }
+  .chip button { border: 0; background: none; color: var(--hint); font-size: .95rem; padding: 0 2px; }
+  .zeile { display: flex; gap: 8px; margin-top: 6px; }
+  .zeile input[type="text"] { flex: 1; border: 1px solid var(--hint); border-radius: 10px;
+          background: var(--card); color: var(--fg); padding: 8px; font: inherit; font-size: .9rem; min-width: 0; }
+  input[type="date"] { border: 1px solid var(--hint); border-radius: 10px; background: var(--card);
+          color: var(--fg); padding: 8px; font: inherit; font-size: .9rem; flex: 1; min-width: 0; }
+  .feld-titel { font-weight: 600; font-size: .9rem; margin-top: 12px; }
+  .feld-titel:first-child { margin-top: 0; }
+  details { border-top: 1px solid rgba(128,128,128,.25); padding: 8px 0; }
+  details summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
+  details .anleitung { white-space: pre-wrap; font-size: .9rem; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -59,6 +80,10 @@ window.onerror = function (msg, src, zeile) {
 <div id="app" style="display:none">
   <h1 id="titel">Cockpit</h1>
   <div class="kacheln" id="kacheln"></div>
+  <div id="verlauf-block" style="display:none"><h2>Erledigt pro Woche</h2>
+    <div class="karte" id="verlauf"></div></div>
+  <div id="privilegien-block" style="display:none"><h2>Privilegien &amp; Wette</h2>
+    <div class="karte" id="privilegien"></div></div>
   <div id="stimmung-block" style="display:none"><h2>Aktuelle Stimmung</h2>
     <div class="karte" id="stimmung"></div></div>
   <h2>Offene Aufgaben</h2><div id="offene"></div>
@@ -76,6 +101,91 @@ window.onerror = function (msg, src, zeile) {
       <div id="meldung"></div>
     </div>
   </div>
+  <div id="werkstatt" style="display:none">
+    <h2>Aufgaben-Werkstatt</h2>
+    <div class="karte">
+      <textarea id="aufgabe-text" placeholder="Aufgabe beschreiben – die Herrin formuliert daraus ihren eigenen Befehl an ihn."></textarea>
+      <div class="aktionen">
+        <!-- bewusst KEIN <select>: native Dropdowns öffnen sich in Telegrams
+             Android-WebView oft nicht – eigener Overlay-Picker stattdessen -->
+        <button id="aufgabe-kat" data-wert="">Kategorie ▾</button>
+        <button id="aufgabe-erteilen" class="primaer">Erteilen ✅</button>
+      </div>
+      <div class="aktionen">
+        <button id="inspiration">💡 3 Ideen holen</button>
+        <button id="serie-starten">📅 Als Serie…</button>
+        <button id="kette-add">⛓ Zur Kette</button>
+      </div>
+      <div class="chips" id="kette-chips"></div>
+      <div class="aktionen" id="kette-aktion" style="display:none">
+        <button id="kette-starten" class="primaer"></button>
+      </div>
+      <div id="ideen"></div>
+      <div id="werkstatt-meldung" class="feld-meldung"></div>
+    </div>
+  </div>
+  <div id="training-block" style="display:none">
+    <h2>Training</h2>
+    <div class="karte">
+      <div class="aktionen">
+        <button id="training-kat" data-wert="">Kategorie wählen ▾</button>
+        <button id="training-erstellen" class="primaer">📖 Erstellen</button>
+      </div>
+      <div id="training-meldung" class="feld-meldung"></div>
+      <div id="trainings"></div>
+    </div>
+  </div>
+  <div id="psycho-block" style="display:none">
+    <h2>Psycho-Training</h2>
+    <div class="karte">
+      <div class="aktionen">
+        <button id="psycho-typ" data-wert="">Typ: automatisch ▾</button>
+        <button id="psycho-holen" class="primaer">🧠 Übung holen</button>
+      </div>
+      <div id="psycho-uebung" class="anleitung" style="display:none"></div>
+      <textarea id="psycho-eingabe" style="display:none; margin-top:10px" placeholder="Deine Antwort an den Coach…"></textarea>
+      <div class="aktionen" id="psycho-aktion" style="display:none">
+        <button id="psycho-senden" class="primaer">Antworten</button>
+      </div>
+      <div id="psycho-feedback" class="anleitung" style="display:none"></div>
+      <div id="psycho-meldung" class="feld-meldung"></div>
+    </div>
+  </div>
+  <div id="anruf-block" style="display:none">
+    <h2>Coach anrufen</h2>
+    <div class="karte">
+      <div class="aktionen"><button id="anruf-taste" class="primaer">🎙 Halten zum Sprechen</button></div>
+      <div id="anruf-verlauf"></div>
+      <div id="anruf-meldung" class="feld-meldung"></div>
+    </div>
+  </div>
+  <div id="wunsch-block" style="display:none">
+    <h2>Wunsch einreichen</h2>
+    <div class="karte">
+      <textarea id="wunsch-text" placeholder="Was wünschst du dir? Geht mit Entscheidungs-Knöpfen an deine Herrin."></textarea>
+      <div class="aktionen"><button id="wunsch-senden" class="primaer">Einreichen 💌</button></div>
+      <div id="wunsch-meldung" class="feld-meldung"></div>
+    </div>
+  </div>
+  <div id="abzeichen-block" style="display:none"><h2>Abzeichen</h2>
+    <div class="karte" id="abzeichen"></div></div>
+  <h2 id="editor-titel"></h2>
+  <div class="karte" id="editor"></div>
+  <h2>Abwesenheit / Urlaub</h2>
+  <div class="karte">
+    <div id="abwesenheit-status" class="leer"></div>
+    <div class="zeile"><input type="date" id="abw-von"><input type="date" id="abw-bis"></div>
+    <div class="zeile"><input type="text" id="abw-grund" placeholder="Grund (optional, z.B. Urlaub)"></div>
+    <div class="aktionen">
+      <button id="abw-ende" style="display:none">Aufheben</button>
+      <button id="abw-setzen" class="primaer">Eintragen 📆</button>
+    </div>
+    <div id="abw-meldung" class="feld-meldung"></div>
+  </div>
+</div>
+<div id="picker" style="display:none; position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.45);">
+  <div style="position:absolute; left:12px; right:12px; top:8vh; bottom:8vh; background:var(--card);
+              border-radius:14px; overflow-y:auto; padding:8px;" id="picker-liste"></div>
 </div>
 <script>
 "use strict";
@@ -149,7 +259,7 @@ async function laden() {
     el("stimmung").textContent = d.stimmung;
   }
   el("offene").innerHTML = d.offene_tasks.length
-    ? d.offene_tasks.map((t) => `<div class="karte">${esc(t.aufgabe)}<div class="datum">${esc(t.erteilt_am)}${t.kategorie ? " · " + esc(t.kategorie) : ""}</div></div>`).join("")
+    ? d.offene_tasks.map((t) => `<div class="karte"><div class="karte-kopf"><span>${esc(t.aufgabe)}${t.serie ? " 🔄" : ""}</span>${d.rolle === "domina" && t.id ? `<button data-loeschen="${esc(t.id)}" title="Aufgabe löschen">🗑</button>` : ""}</div><div class="datum">${esc(t.erteilt_am)}${t.kategorie ? " · " + esc(t.kategorie) : ""}</div></div>`).join("")
     : `<div class="leer">Keine offenen Aufgaben.</div>`;
   el("letzte").innerHTML = d.letzte_tasks.length
     ? d.letzte_tasks.map((t) => `<div class="karte"><span class="status-${t.status}">${t.status === "erledigt" ? "✅" : "❌"}</span> ${esc(t.aufgabe)}<div class="datum">${esc(t.erteilt_am)}</div></div>`).join("")
@@ -157,13 +267,198 @@ async function laden() {
 
   if (d.rolle === "domina") {
     el("studio").style.display = "";
+    el("werkstatt").style.display = "";
     el("tagleiste").innerHTML = TAGS.map(([tag, label]) =>
       `<button type="button" data-tag="${tag.replaceAll('"', "")}">${label}</button>`).join("");
-    el("tagleiste").addEventListener("click", (ev) => {
-      const b = ev.target.closest("button"); if (b) tagEinfuegen(b.dataset.tag);
-    });
     if (!d.grok_tts) el("meldung").textContent = "Hinweis: Grok-TTS ist aus – Tags werden ignoriert.";
+    kategorien = d.kategorien || [];
+    el("training-block").style.display = "";
+    el("psycho-block").style.display = "";
+    el("anruf-block").style.display = "";
+    trainingsLaden();
+  } else {
+    el("wunsch-block").style.display = "";
   }
+
+  if (d.abzeichen?.length) {
+    el("abzeichen-block").style.display = "";
+    el("abzeichen").innerHTML = d.abzeichen.map((a) =>
+      `<div class="karte-kopf" style="margin-bottom:8px"><span>${esc(a.emoji)} <b>${esc(a.name)}</b>${a.geheim ? " 🤫" : ""}<div class="datum">${esc(a.beschreibung)}</div></span></div>`).join("");
+  }
+  if (d.verlauf?.length) {
+    el("verlauf-block").style.display = "";
+    verlaufRender(d.verlauf);
+  }
+  if (d.privilegien?.length || d.wette_einsatz) {
+    el("privilegien-block").style.display = "";
+    el("privilegien").innerHTML =
+      (d.privilegien || []).map((p) =>
+        `<div>🎁 ${esc(p.name)}${p.gueltig_bis ? `<span class="datum"> · gültig bis ${esc(p.gueltig_bis)}</span>` : ""}</div>`).join("") +
+      (d.wette_einsatz ? `<div>🎰 Aktive Wette: <b>${esc(String(d.wette_einsatz))} Punkte</b> – doppelt oder nichts</div>` : "");
+  }
+
+  // Vorlieben/Grenzen-Editor (eigene Listen) + Abwesenheit
+  listen = d.profil_listen || {};
+  el("editor-titel").textContent =
+    d.rolle === "domina" ? "Deine Interessen & Grenzen" : "Deine Vorlieben & Limits";
+  editorRender();
+  const a = d.abwesenheit;
+  el("abwesenheit-status").textContent = a
+    ? `Eingetragen: ${a.von} bis ${a.bis}${a.grund ? " – " + a.grund : ""}`
+    : "Aktuell keine Abwesenheit eingetragen.";
+  el("abw-ende").style.display = a ? "" : "none";
+  if (a) {
+    el("abw-von").value = a.von; el("abw-bis").value = a.bis;
+    el("abw-grund").value = a.grund || "";
+  }
+}
+
+const FELD_LABELS = {
+  interessen: "Interessen", grenzen: "Grenzen",
+  vorlieben: "Vorlieben", hard_limits: "Absolute Grenzen (Hard Limits)",
+};
+let listen = {};
+let kategorien = [];
+
+// Eigener Overlay-Picker (native <select> öffnet in Telegrams Android-WebView
+// oft nicht). Generisch: [wert, label]-Liste + Callback; Tap auf den
+// Hintergrund schließt ohne Auswahl.
+let pickerCb = null;
+function pickerZeigen(eintraege, aktuell, cb) {
+  pickerCb = cb;
+  el("picker-liste").innerHTML = eintraege.map(([wert, label]) =>
+    `<div class="chip" data-wert="${esc(wert)}" style="margin:4px 0; ${wert === aktuell ? "border-color:var(--akzent)" : ""}">${esc(label)}</div>`).join("");
+  el("picker").style.display = "";
+}
+el("picker").addEventListener("click", (ev) => {
+  const c = ev.target.closest("[data-wert]");
+  el("picker").style.display = "none";
+  const cb = pickerCb; pickerCb = null;
+  if (c && cb) cb(c.dataset.wert);
+});
+el("aufgabe-kat").addEventListener("click", () => {
+  pickerZeigen([["", "— keine Kategorie —"]].concat(kategorien.map((k) => [k, k])),
+    el("aufgabe-kat").dataset.wert, (wert) => {
+      el("aufgabe-kat").dataset.wert = wert;
+      el("aufgabe-kat").textContent = wert ? wert + " ▾" : "Kategorie ▾";
+    });
+});
+
+// Wochen-Verlauf als schlichte SVG-Balken (keine Bibliothek)
+function verlaufRender(punkte) {
+  const max = Math.max(1, ...punkte.map((p) => p.erledigt));
+  const bw = 100 / punkte.length;
+  el("verlauf").innerHTML = `<svg viewBox="0 0 100 46" style="width:100%; height:110px; display:block">` +
+    punkte.map((p, i) => {
+      const h = (p.erledigt / max) * 30;
+      return `<rect x="${(i * bw + 2).toFixed(1)}" y="${(34 - h).toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="var(--akzent)" opacity="${p.erledigt ? 1 : .25}"></rect>` +
+        `<text x="${(i * bw + bw / 2).toFixed(1)}" y="31" font-size="3.4" text-anchor="middle" fill="${p.erledigt ? "var(--akzent-fg)" : "var(--hint)"}">${p.erledigt || ""}</text>` +
+        `<text x="${(i * bw + bw / 2).toFixed(1)}" y="42" font-size="3.2" text-anchor="middle" fill="var(--hint)">${p.woche}</text>`;
+    }).join("") + `</svg>`;
+}
+
+// Ketten-Bau: Glieder lokal sammeln, dann als Ganzes erteilen
+let kette = [];
+function ketteRender() {
+  el("kette-chips").innerHTML = kette.map((g, i) =>
+    `<span class="chip">${i + 1}. ${esc(g.length > 40 ? g.slice(0, 40) + "…" : g)}<button data-kette-del="${i}">✕</button></span>`).join("");
+  el("kette-aktion").style.display = kette.length >= 2 ? "" : "none";
+  el("kette-starten").textContent = `⛓ Kette starten (${kette.length} Glieder)`;
+}
+
+function editorRender() {
+  el("editor").innerHTML = Object.entries(listen).map(([feld, werte]) => `
+    <div class="feld-titel">${FELD_LABELS[feld] || feld}</div>
+    <div class="chips">${werte.map((w, i) =>
+      `<span class="chip">${esc(w)}<button data-del="${feld}:${i}" title="entfernen">✕</button></span>`).join("")
+      || '<span class="leer">– leer –</span>'}</div>
+    <div class="zeile"><input type="text" data-neu="${feld}" placeholder="Neuer Eintrag…"><button data-add="${feld}">＋</button></div>
+  `).join("") + `<div id="editor-meldung" class="feld-meldung"></div>`;
+}
+async function listeSpeichern(feld) {
+  const r = await hole("/api/profil_liste", { method: "POST",
+    body: JSON.stringify({ feld, werte: listen[feld] }) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.fehler || r.status);
+  listen[feld] = d.werte;
+  editorRender();
+  el("editor-meldung").textContent = "✅ Gespeichert.";
+}
+
+// Bestätigung: Telegrams nativer Dialog, sonst Browser-confirm (Testbetrieb)
+const bestaetigen = (frage) => new Promise((ok) => {
+  if (tg?.showConfirm) tg.showConfirm(frage, ok);
+  else ok(window.confirm(frage));
+});
+
+async function aufgabeErteilen(text) {
+  text = (text || "").trim();
+  if (!text) return;
+  if (!(await bestaetigen("Aufgabe jetzt erteilen? Sie geht sofort an ihn raus."))) return;
+  const m = el("werkstatt-meldung");
+  m.textContent = "Wird formuliert und zugestellt…";
+  el("aufgabe-erteilen").disabled = true;
+  try {
+    const r = await hole("/api/aufgabe", { method: "POST", body: JSON.stringify({
+      text, kategorie: el("aufgabe-kat").dataset.wert || "" }) });
+    const d = await r.json();
+    if (d.limit) { m.textContent = "⛔ Verletzt Limits: " + d.limit; }
+    else if (!r.ok) { throw new Error(d.fehler || r.status); }
+    else {
+      m.textContent = "✅ Erteilt und zugestellt.";
+      el("aufgabe-text").value = ""; el("ideen").innerHTML = "";
+      tg?.HapticFeedback?.notificationOccurred("success");
+      laden();
+    }
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+  el("aufgabe-erteilen").disabled = false;
+}
+
+async function inspirationHolen() {
+  const m = el("werkstatt-meldung");
+  el("inspiration").disabled = true;
+  m.textContent = "Ideen werden generiert – dauert ~30 Sekunden…";
+  try {
+    const r = await hole("/api/inspiration", { method: "POST", body: "{}" });
+    if (!r.ok) throw new Error((await r.json()).fehler || r.status);
+    const d = await r.json();
+    // Nummerierung + Markdown-Zeichen raus – die Ideen kommen als "1. **Titel** …"
+    const sauber = (d.vorschlaege || []).map((v) =>
+      v.replace(/^\s*\d+\.\s*/, "").replace(/[*_#`]/g, "").trim());
+    el("ideen").innerHTML = sauber.map((v, i) =>
+      `<div class="idee">${esc(v)}<br><button data-idee="${i}">↑ Übernehmen</button></div>`).join("")
+      || `<div class="leer">Keine Ideen bekommen.</div>`;
+    el("ideen").dataset.roh = JSON.stringify(sauber);
+    m.textContent = "";
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+  el("inspiration").disabled = false;
+}
+
+async function aufgabeLoeschen(id) {
+  if (!(await bestaetigen("Diese offene Aufgabe löschen?"))) return;
+  try {
+    const r = await hole("/api/aufgabe_loeschen", { method: "POST",
+      body: JSON.stringify({ task_id: id }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler || r.status);
+    laden();
+  } catch (e) { el("werkstatt-meldung").textContent = "Löschen fehlgeschlagen: " + e.message; }
+}
+
+async function wunschSenden() {
+  const text = el("wunsch-text").value.trim();
+  if (!text) return;
+  const m = el("wunsch-meldung");
+  el("wunsch-senden").disabled = true;
+  m.textContent = "Wird eingereicht…";
+  try {
+    const r = await hole("/api/wunsch", { method: "POST", body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error((await r.json()).fehler || r.status);
+    m.textContent = "💌 Eingereicht – deine Herrin entscheidet.";
+    el("wunsch-text").value = "";
+    tg?.HapticFeedback?.notificationOccurred("success");
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+  el("wunsch-senden").disabled = false;
 }
 
 async function vorschau() {
@@ -195,6 +490,287 @@ async function senden() {
 
 el("vorschau").addEventListener("click", vorschau);
 el("senden").addEventListener("click", senden);
+el("tagleiste").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button"); if (b) tagEinfuegen(b.dataset.tag);
+});
+el("aufgabe-erteilen").addEventListener("click", () => aufgabeErteilen(el("aufgabe-text").value));
+el("inspiration").addEventListener("click", inspirationHolen);
+el("wunsch-senden").addEventListener("click", wunschSenden);
+el("offene").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-loeschen]");
+  if (b) aufgabeLoeschen(b.dataset.loeschen);
+});
+el("ideen").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-idee]");
+  if (!b) return;
+  const liste = JSON.parse(el("ideen").dataset.roh || "[]");
+  el("aufgabe-text").value = liste[+b.dataset.idee] || "";
+  el("aufgabe-text").scrollIntoView({ behavior: "smooth" });
+});
+// Trainings-Bibliothek: Kategorie wählen -> Anleitung erstellen -> ablegen
+async function trainingsLaden() {
+  try {
+    const r = await hole("/api/trainings");
+    if (!r.ok) return;
+    const d = await r.json();
+    el("trainings").innerHTML = (d.trainings || []).map((tr) =>
+      `<details><summary>📖 ${esc(tr.kategorie)} <span class="datum">· ${esc(tr.datum)}</span></summary><div class="anleitung">${esc(tr.anleitung.replace(/\*\*?/g, ""))}</div></details>`).join("")
+      || `<div class="leer">Noch keine Trainings abgelegt – Kategorie wählen und erstellen.</div>`;
+  } catch (e) { /* Liste ist Komfort – Fehler nicht in den Vordergrund */ }
+}
+el("training-kat").addEventListener("click", () => {
+  pickerZeigen(kategorien.map((k) => [k, k]), el("training-kat").dataset.wert, (wert) => {
+    el("training-kat").dataset.wert = wert;
+    el("training-kat").textContent = wert + " ▾";
+  });
+});
+el("training-erstellen").addEventListener("click", async () => {
+  const kategorie = el("training-kat").dataset.wert;
+  const m = el("training-meldung");
+  if (!kategorie) { m.textContent = "Erst eine Kategorie wählen."; return; }
+  m.textContent = `Anleitung für „${kategorie}" wird geschrieben (~30 s)…`;
+  el("training-erstellen").disabled = true;
+  try {
+    const r = await hole("/api/training", { method: "POST",
+      body: JSON.stringify({ kategorie }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler || r.status);
+    m.textContent = "✅ Abgelegt – unten aufklappen zum Lesen.";
+    tg?.HapticFeedback?.notificationOccurred("success");
+    trainingsLaden();
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+  el("training-erstellen").disabled = false;
+});
+// --- Psycho-Training (Übung -> Antwort -> Feedback, Ablage serverseitig) ----
+const PSYCHO_TYPEN = [["", "automatisch"], ["mindset", "Mindset"], ["situation", "Situation"],
+                      ["reflexion", "Reflexion"], ["challenge", "Challenge"]];
+let psychoAktuell = null; // {typ, uebung}
+el("psycho-typ").addEventListener("click", () => {
+  pickerZeigen(PSYCHO_TYPEN, el("psycho-typ").dataset.wert, (wert) => {
+    el("psycho-typ").dataset.wert = wert;
+    el("psycho-typ").textContent = "Typ: " + (PSYCHO_TYPEN.find((p) => p[0] === wert)?.[1] || "automatisch") + " ▾";
+  });
+});
+el("psycho-holen").addEventListener("click", async () => {
+  const m = el("psycho-meldung");
+  m.textContent = "Übung wird erstellt (~20 s)…";
+  el("psycho-holen").disabled = true;
+  el("psycho-feedback").style.display = "none";
+  try {
+    const r = await hole("/api/psycho_uebung", { method: "POST",
+      body: JSON.stringify({ typ: el("psycho-typ").dataset.wert }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler || r.status);
+    psychoAktuell = d;
+    el("psycho-uebung").textContent = `🧠 ${d.typ.charAt(0).toUpperCase() + d.typ.slice(1)}:\n\n${d.uebung.replace(/\*\*?/g, "")}`;
+    el("psycho-uebung").style.display = "";
+    el("psycho-eingabe").style.display = "";
+    el("psycho-eingabe").value = "";
+    el("psycho-aktion").style.display = "";
+    m.textContent = "";
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+  el("psycho-holen").disabled = false;
+});
+el("psycho-senden").addEventListener("click", async () => {
+  const antwort = el("psycho-eingabe").value.trim();
+  const m = el("psycho-meldung");
+  if (!antwort || !psychoAktuell) return;
+  m.textContent = "Coach denkt nach…";
+  el("psycho-senden").disabled = true;
+  try {
+    const r = await hole("/api/psycho_antwort", { method: "POST", body: JSON.stringify({
+      typ: psychoAktuell.typ, uebung: psychoAktuell.uebung, antwort }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler || r.status);
+    el("psycho-feedback").textContent = "💬 " + d.feedback.replace(/\*\*?/g, "");
+    el("psycho-feedback").style.display = "";
+    el("psycho-eingabe").style.display = "none";
+    el("psycho-aktion").style.display = "none";
+    m.textContent = "✅ Abgelegt.";
+    tg?.HapticFeedback?.notificationOccurred("success");
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+  el("psycho-senden").disabled = false;
+});
+
+// --- Coach anrufen: halten -> PCM aufnehmen -> 16k-WAV -> Server -----------
+// Bewusst KEIN MediaRecorder: dessen webm/opus könnte der Server ohne ffmpeg
+// nicht dekodieren – rohes PCM + selbstgebautes WAV geht überall.
+let aufnahme = null;
+async function aufnahmeStart() {
+  const m = el("anruf-meldung");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const quelle = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const teile = [];
+    proc.onaudioprocess = (ev) => teile.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+    quelle.connect(proc); proc.connect(ctx.destination);
+    aufnahme = { stream, ctx, proc, teile, rate: ctx.sampleRate };
+    el("anruf-taste").textContent = "🔴 Aufnahme… loslassen zum Senden";
+    m.textContent = "";
+  } catch (e) {
+    m.textContent = "Mikrofon nicht verfügbar (" + e.name + ") – nutze dann einfach eine Sprachnachricht im Chat.";
+    aufnahme = null;
+  }
+}
+function wavAus(teile, rate) {
+  let n = 0; teile.forEach((t) => (n += t.length));
+  const roh = new Float32Array(n); let o = 0;
+  teile.forEach((t) => { roh.set(t, o); o += t.length; });
+  // auf 16 kHz mono heruntertasten (kleiner Upload, Whisper reicht das völlig)
+  const ziel = 16000, faktor = rate / ziel, laenge = Math.floor(roh.length / faktor);
+  const buf = new ArrayBuffer(44 + laenge * 2), dv = new DataView(buf);
+  const schreibe = (pos, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(pos + i, s.charCodeAt(i)); };
+  schreibe(0, "RIFF"); dv.setUint32(4, 36 + laenge * 2, true); schreibe(8, "WAVEfmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, ziel, true); dv.setUint32(28, ziel * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); schreibe(36, "data");
+  dv.setUint32(40, laenge * 2, true);
+  for (let i = 0; i < laenge; i++) {
+    const v = Math.max(-1, Math.min(1, roh[Math.floor(i * faktor)]));
+    dv.setInt16(44 + i * 2, v * 0x7fff, true);
+  }
+  return buf;
+}
+async function aufnahmeStopp() {
+  if (!aufnahme) return;
+  const { stream, ctx, proc, teile, rate } = aufnahme;
+  aufnahme = null;
+  el("anruf-taste").textContent = "🎙 Halten zum Sprechen";
+  proc.disconnect(); stream.getTracks().forEach((t) => t.stop()); ctx.close();
+  const m = el("anruf-meldung");
+  const dauer = teile.length * 4096 / rate;
+  if (dauer < 0.5) { m.textContent = "Zu kurz – Taste gedrückt halten, während du sprichst."; return; }
+  m.textContent = "Coach hört zu… (Antwort dauert ~15-30 s)";
+  try {
+    const r = await fetch("/api/anruf", { method: "POST", body: wavAus(teile, rate),
+      headers: { "X-Init-Data": initData, "Content-Type": "audio/wav" } });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler || r.status);
+    el("anruf-verlauf").innerHTML +=
+      `<div class="karte" style="margin-top:8px"><div class="datum">Du:</div>${esc(d.transkript)}</div>` +
+      `<div class="karte"><div class="datum">Coach:</div>${esc(d.antwort)}</div>`;
+    m.textContent = "";
+    if (d.audio) {
+      const audio = new Audio("data:audio/ogg;base64," + d.audio);
+      audio.play().catch(() => { m.textContent = "▶ Antwort konnte nicht automatisch abspielen."; });
+    }
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+}
+["pointerdown", "touchstart"].forEach((ev) =>
+  el("anruf-taste").addEventListener(ev, (e) => { e.preventDefault(); if (!aufnahme) aufnahmeStart(); }));
+["pointerup", "pointercancel", "touchend"].forEach((ev) =>
+  el("anruf-taste").addEventListener(ev, (e) => { e.preventDefault(); aufnahmeStopp(); }));
+
+el("serie-starten").addEventListener("click", () => {
+  const text = el("aufgabe-text").value.trim();
+  const m = el("werkstatt-meldung");
+  if (!text) { m.textContent = "Erst die Basis-Aufgabe eintippen."; return; }
+  pickerZeigen([["2", "2 Tage"], ["3", "3 Tage"], ["7", "7 Tage (Woche)"], ["14", "14 Tage"]],
+    "", async (tage) => {
+      if (!(await bestaetigen(`${tage}-Tage-Serie jetzt starten? Tag 1 geht sofort an ihn raus.`))) return;
+      m.textContent = `Serie wird gebaut (Bogen über ${tage} Tage, ~30 s)…`;
+      el("serie-starten").disabled = true;
+      try {
+        const r = await hole("/api/serie", { method: "POST", body: JSON.stringify({
+          text, kategorie: el("aufgabe-kat").dataset.wert || "", tage: +tage }) });
+        const d = await r.json();
+        if (d.limit) m.textContent = "⛔ Verletzt Limits: " + d.limit;
+        else if (!r.ok) throw new Error(d.fehler || r.status);
+        else {
+          m.textContent = `✅ ${tage}-Tage-Serie gestartet.`;
+          el("aufgabe-text").value = "";
+          tg?.HapticFeedback?.notificationOccurred("success");
+          laden();
+        }
+      } catch (e) { m.textContent = "Fehler: " + e.message; }
+      el("serie-starten").disabled = false;
+    });
+});
+el("kette-add").addEventListener("click", () => {
+  const text = el("aufgabe-text").value.trim();
+  if (!text) return;
+  if (kette.length >= 8) { el("werkstatt-meldung").textContent = "Maximal 8 Glieder."; return; }
+  kette.push(text);
+  el("aufgabe-text").value = "";
+  el("werkstatt-meldung").textContent = "";
+  ketteRender();
+});
+el("kette-chips").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-kette-del]");
+  if (b) { kette.splice(+b.dataset.ketteDel, 1); ketteRender(); }
+});
+el("kette-starten").addEventListener("click", async () => {
+  if (!(await bestaetigen(`Kette mit ${kette.length} Gliedern starten? Glied 1 geht sofort raus, die weiteren schalten sich nach Erledigung frei.`))) return;
+  const m = el("werkstatt-meldung");
+  m.textContent = "Kette wird angelegt…";
+  el("kette-starten").disabled = true;
+  try {
+    const r = await hole("/api/kette", { method: "POST", body: JSON.stringify({
+      glieder: kette, kategorie: el("aufgabe-kat").dataset.wert || "" }) });
+    const d = await r.json();
+    if (d.limit) m.textContent = `⛔ Glied ${d.glied} verletzt Limits: ${d.limit}`;
+    else if (!r.ok) throw new Error(d.fehler || r.status);
+    else {
+      m.textContent = "✅ Kette gestartet.";
+      kette = []; ketteRender();
+      tg?.HapticFeedback?.notificationOccurred("success");
+      laden();
+    }
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+  el("kette-starten").disabled = false;
+});
+el("editor").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  try {
+    if (b.dataset.del) {
+      const [feld, i] = b.dataset.del.split(":");
+      const wert = listen[feld][+i];
+      if (feld === "hard_limits" &&
+          !(await bestaetigen(`Hard Limit „${wert}" wirklich entfernen? Es schützt dich vor Aufgaben mit diesem Thema.`)))
+        return;
+      listen[feld].splice(+i, 1);
+      await listeSpeichern(feld);
+    } else if (b.dataset.add) {
+      const inp = el("editor").querySelector(`input[data-neu="${b.dataset.add}"]`);
+      const w = (inp?.value || "").trim();
+      if (!w) return;
+      listen[b.dataset.add].push(w);
+      await listeSpeichern(b.dataset.add);
+    }
+  } catch (e) { el("editor-meldung").textContent = "Fehler: " + e.message; }
+});
+el("editor").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && ev.target.dataset?.neu) {
+    ev.preventDefault();
+    el("editor").querySelector(`button[data-add="${ev.target.dataset.neu}"]`)?.click();
+  }
+});
+el("abw-setzen").addEventListener("click", async () => {
+  const von = el("abw-von").value, bis = el("abw-bis").value;
+  const m = el("abw-meldung");
+  if (!von || !bis) { m.textContent = "Bitte beide Daten wählen."; return; }
+  try {
+    const r = await hole("/api/abwesenheit", { method: "POST", body: JSON.stringify({
+      von, bis, grund: el("abw-grund").value.trim() }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler || r.status);
+    m.textContent = "📆 Eingetragen – dein Partner wurde informiert.";
+    laden();
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+});
+el("abw-ende").addEventListener("click", async () => {
+  if (!(await bestaetigen("Abwesenheit aufheben?"))) return;
+  try {
+    const r = await hole("/api/abwesenheit", { method: "POST", body: JSON.stringify({ ende: true }) });
+    if (!r.ok) throw new Error((await r.json()).fehler || r.status);
+    el("abw-meldung").textContent = "Aufgehoben.";
+    el("abw-von").value = el("abw-bis").value = el("abw-grund").value = "";
+    laden();
+  } catch (e) { el("abw-meldung").textContent = "Fehler: " + e.message; }
+});
 laden();
 </script>
 </body>
