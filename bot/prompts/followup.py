@@ -224,21 +224,29 @@ _GEFUEHL_FRAGEN = [
 ]
 
 
-_STIMMUNG_FRAGEN = [
-    "Wie geht es dir gerade?",
-    "Wo steht dein Kopf heute?",
-    "Wie fühlst du dich nach diesem Tag bisher?",
-    "Was beschäftigt dich gerade?",
-    "Was geht dir gerade durch den Kopf?",
-    "Wie viel Energie steckt heute noch in dir?",
-    "Was war heute bisher das Beste – und was das Nervigste?",
-    "Wie angespannt oder entspannt bist du gerade?",
-    "Was brauchst du heute von mir?",
-    "Wie fühlt sich dein Körper heute an?",
-    "Worauf hättest du heute Lust – und worauf gar nicht?",
-    "Wenn dein Tag ein Wetter wäre – welches?",
-    "Was würdest du mir erzählen, wenn ich jetzt neben dir stünde?",
-    "Läuft dein Tag so, wie du ihn dir vorgestellt hast?",
+_STIMMUNG_RICHTUNGEN = [
+    # Bewusst Stichworte, KEINE fertigen Fragesätze: fertige Sätze schreibt das
+    # Modell wörtlich ab, statt sie umzuformulieren (Befund 27.08.2026 – am
+    # 25.08. ging der Seed unverändert als Frage an den Sub raus).
+    # Ebenso bewusst OHNE Pronomen: die Sub-Rolle ist konfigurierbar, ein
+    # hartes "sein/er" hier würde die Rollen-Pronomen aushebeln. Und ohne
+    # zweite Person ("dir"/"du" = hier die Dom-Seite): schreibt das Modell
+    # das Stichwort doch mal ab, kippt die Anrede sonst auf den Sub und
+    # dreht die Richtung um (Befund 27.08.2026, vgl. AUFGABEN_ANTI_KLISCHEE).
+    "das allgemeine Befinden im Moment",
+    "wo der Kopf heute steht",
+    "wie der bisherige Tag nachwirkt",
+    "was gerade innerlich beschäftigt",
+    "was gerade durch den Kopf geht",
+    "wie viel Energie heute noch da ist",
+    "das Beste und das Nervigste am heutigen Tag",
+    "wie angespannt oder entspannt es gerade ist",
+    "welche Unterstützung heute gebraucht wird",
+    "wie der Körper sich heute anfühlt",
+    "worauf heute Lust wäre und worauf gar nicht",
+    "ein Wetter-Bild für den heutigen Tag",
+    "was bei einem Gespräch von Angesicht zu Angesicht zuerst käme",
+    "ob der Tag so läuft wie vorgestellt",
 ]
 
 _STIMMUNG_TONLAGEN = [
@@ -250,14 +258,38 @@ _STIMMUNG_TONLAGEN = [
 ]
 
 
-def stimmung_abfragen(vermeiden: list[str] | None = None) -> tuple[str, str]:
+def _satzanfaenge(vermeiden: list[str], woerter: int = 3) -> list[str]:
+    """Die ersten `woerter` Wörter der zuletzt gestellten Fragen – exakt die
+    Wortfolgen, auf die der Wiederholungs-Detektor anspringt."""
+    raus, gesehen = [], set()
+    for v in vermeiden:
+        teile = (v or "").split()[:woerter]
+        if len(teile) < woerter:
+            continue
+        anfang = " ".join(teile).rstrip(",;:")
+        if anfang.lower() not in gesehen:
+            gesehen.add(anfang.lower())
+            raus.append(anfang)
+    return raus
+
+
+def stimmung_richtungen() -> list[str]:
+    """Die möglichen Richtungen – der Aufrufer wählt selbst, damit er über
+    mehrere Versuche hinweg OHNE Zurücklegen ziehen kann (handlers/stimmung)."""
+    return list(_STIMMUNG_RICHTUNGEN)
+
+
+def stimmung_abfragen(vermeiden: list[str] | None = None,
+                      richtung: str | None = None) -> tuple[str, str]:
     """Frisch formulierte Stimmungs-Frage in der Stimme der Herrin – statt Tag
     für Tag desselben statischen Texts (Nutzer-Feedback 2026-06-12). Zwei
-    unabhängige Zufalls-Seeds (Richtung + Tonlage) lenken die Formulierung;
+    unabhängige Seeds (Richtung + Tonlage) lenken die Formulierung;
     `vermeiden` = die zuletzt gestellten Fragen als Sperr-Liste, weil das
     Modell sonst trotz Seed auf dieselbe Lieblings-Formulierung konvergiert
-    (Nutzer-Feedback 2026-07-06: fast jeden Tag gleich formuliert)."""
-    frage = random.choice(_STIMMUNG_FRAGEN)
+    (Nutzer-Feedback 2026-07-06: fast jeden Tag gleich formuliert).
+    `richtung` kommt vom Aufrufer (Retry mit anderer Richtung, s.
+    stimmung_richtungen); ohne Angabe wird gewürfelt."""
+    frage = richtung or random.choice(_STIMMUNG_RICHTUNGEN)
     tonlage = random.choice(_STIMMUNG_TONLAGEN)
     s = rollen.sub()
     vermeiden_block = ""
@@ -267,11 +299,26 @@ def stimmung_abfragen(vermeiden: list[str] | None = None) -> tuple[str, str]:
             "So hast du zuletzt gefragt – formuliere heute DEUTLICH anders "
             f"(anderer Satzanfang, andere Wörter, anderes Bild):\n{letzte}\n"
         )
+        # Die Satzanfänge NOCH EINMAL einzeln und wörtlich: der Detektor in
+        # handlers/stimmung verwirft jede Frage, die mit denselben drei Wörtern
+        # beginnt wie eine der letzten. Die Liste oben allein reicht nicht – die
+        # Herrin startete trotzdem fast jede Frage mit "Ich frage mich"
+        # (Befund 27.08.2026), womit reihenweise brauchbare Fragen durchfielen.
+        anfaenge = _satzanfaenge(vermeiden)
+        if anfaenge:
+            gesperrt = ", ".join(f'"{a}"' for a in anfaenge)
+            vermeiden_block += (
+                f"Beginne auf KEINEN Fall mit einer dieser Wortfolgen: {gesperrt}. "
+                "Such einen anderen Einstieg.\n"
+            )
     system = (
         f"{_du_bist_dom()}. Frag {_sub_mit_poss('dein', 'akk')} kurz nach {s['poss']}er aktuellen Stimmung – "
         "Ich-Form, ein bis zwei Sätze, offen formuliert, in deinem Ton. "
         "Keine Aufgabe, keine Liste, keine Erklärung, keine Anführungszeichen.\n"
-        f"Richtung diesmal: '{frage}' – Tonlage: {tonlage}.\n"
+        f"Richtung diesmal: {frage} – Tonlage: {tonlage}.\n"
+        "Die Richtung ist ein Stichwort NUR für dich: formuliere daraus deine eigene "
+        "Frage. Übernimm die Stichwort-Formulierung NICHT wörtlich und schreib sie "
+        "nicht ab.\n"
         f"{vermeiden_block}\n"
         f"{persona.fuer_sklaven_prompt()}"
     )

@@ -15,6 +15,7 @@ test:
 	python3 tests/test_abwesenheit.py
 	python3 tests/test_datum_erkennung.py
 	python3 tests/test_lokal_llm.py
+	python3 tests/test_stimmung.py
 
 # Image bauen – nur wenn die Tests grün sind.
 build: test

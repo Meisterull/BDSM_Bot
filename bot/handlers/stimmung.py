@@ -5,6 +5,7 @@ Kein täglicher aufdringlicher Job mehr – nur wenn STIMMUNG_ENABLED=true.
 """
 import difflib
 import logging
+import random
 from telegram import Update, Bot
 from telegram.ext import ContextTypes
 from bot import config, state
@@ -39,39 +40,78 @@ def _zu_aehnlich(frage: str, vorherige: list[str]) -> bool:
     return False
 
 
-async def _frage_text() -> str:
+_VERSUCHE = 3
+
+
+def _richtungs_kandidaten(verbrauchte: set[str]) -> list[str]:
+    """Bis zu _VERSUCHE Richtungen OHNE Zurücklegen, zuerst die zuletzt nicht
+    benutzten. Vorher wurde pro Versuch neu gewürfelt – ein Retry konnte damit
+    dieselbe Richtung ziehen, die gerade zur Wiederholung geführt hatte
+    (Befund 27.08.2026: vier Tage in Folge das Wetter-Bild). Reichen die
+    frischen nicht, wird mit den verbrauchten aufgefüllt – sonst stünde nach
+    ein paar Tagen gar keine Auswahl mehr zur Verfügung."""
+    alle = fp.stimmung_richtungen()
+    frisch = [r for r in alle if r not in verbrauchte]
+    rest = [r for r in alle if r in verbrauchte]
+    random.shuffle(frisch)
+    random.shuffle(rest)
+    return (frisch + rest)[:_VERSUCHE]
+
+
+async def _frage_text() -> tuple[str, str]:
     """Jedes Mal frisch per LLM formulierte Stimmungs-Frage (Nutzer-Feedback:
     der immergleiche statische Text wirkt mechanisch). Die letzten Fragen gehen
     als Sperr-Liste in den Prompt; wird es trotzdem die gleiche Formulierung,
-    greift ein Retry (neuer Zufalls-Seed). Fällt bei LLM-Fehlern auf den
-    bisherigen Standardtext zurück."""
+    greift ein Retry mit ANDERER Richtung. Fällt bei LLM-Fehlern – und wenn
+    alle Versuche zu ähnlich bleiben – auf den statischen Standardtext zurück.
+    Gibt (Frage, benutzte Richtung) zurück; die Richtung landet in der
+    Sperr-Liste, damit sie morgen nicht sofort wieder dran ist."""
     try:
-        vorherige = await qdrant.get_recent_stimmung_fragen(limit=5)
+        letzte = await qdrant.get_recent_stimmung_eintraege(limit=5)
     except Exception as e:
         logger.warning("Letzte Stimmungs-Fragen nicht ladbar (Sperr-Liste leer): %s", e)
-        vorherige = []
+        letzte = []
+    vorherige = [e.get("zusammenfassung", "") for e in letzte]
+    verbrauchte = {e.get("richtung") for e in letzte if e.get("richtung")}
+    kandidaten = _richtungs_kandidaten(verbrauchte)
 
-    text = ""
+    # Arbeitskopie: verworfene Kandidaten wandern in die Sperr-Liste des
+    # NÄCHSTEN Versuchs. Sonst bekommt der Retry exakt dieselbe Vorgabe wie der
+    # gescheiterte Versuch – und damit oft denselben Lieblings-Satzanfang.
+    sperre = list(vorherige)
     try:
-        for versuch in range(2):
-            text = (await grok.simple(fp.stimmung_abfragen(vermeiden=vorherige), max_tokens=120)).strip()
+        for versuch, richtung in enumerate(kandidaten, start=1):
+            text = (await grok.simple(
+                fp.stimmung_abfragen(vermeiden=sperre, richtung=richtung),
+                max_tokens=120,
+            )).strip()
             if text and not _zu_aehnlich(text, vorherige):
-                break
-            logger.info("Stimmungs-Frage zu ähnlich zu den letzten (Versuch %d) – Retry.", versuch + 1)
+                return text, richtung
+            logger.info("Stimmungs-Frage zu ähnlich zu den letzten (Versuch %d, Richtung '%s') – Retry.",
+                        versuch, richtung)
+            if text:
+                sperre.append(text)
     except Exception as e:
         logger.warning("Stimmungs-Frage per LLM fehlgeschlagen – Standardtext: %s", e)
+    else:
+        # KEIN Ausweichen auf den letzten Kandidaten: der ist als zu ähnlich
+        # ERKANNT worden. Genau der ging bisher trotzdem raus – am 26./27.08.2026
+        # zeichengleich an zwei Tagen hintereinander.
+        logger.warning("Alle %d Stimmungs-Versuche zu ähnlich – statischer Standardtext "
+                       "statt Wiederholung.", len(kandidaten))
+    return t("STIMMUNG_FRAGE"), ""
 
-    return text or t("STIMMUNG_FRAGE")
 
-
-async def _merke_frage(frage: str) -> None:
+async def _merke_frage(frage: str, richtung: str = "") -> None:
     """Gesendete Frage in die Sperr-Liste (typ=stimmung_frage) – NACH dem
     erfolgreichen Senden aufrufen, sonst blockt eine nie zugestellte
     Formulierung künftige Fragen (Trace 06.07., Lücke 6)."""
     if frage == t("STIMMUNG_FRAGE"):
         return  # statischer Fallback gehört nicht in die Sperr-Liste
     try:
-        await qdrant.save_training("sklave", {"typ": "stimmung_frage", "zusammenfassung": frage})
+        await qdrant.save_training("sklave", {"typ": "stimmung_frage",
+                                              "zusammenfassung": frage,
+                                              "richtung": richtung})
     except Exception as e:
         logger.warning("Stimmungs-Frage nicht als Sperr-Listen-Eintrag gespeichert: %s", e)
 
@@ -88,7 +128,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     async with telegram_helper.typing_action(context.bot, chat_id):
-        frage = await _frage_text()
+        frage, richtung = await _frage_text()
     await update.message.reply_text(frage)
     # Mode erst NACH erfolgreichem Senden – ein Sendefehler darf keinen
     # Geister-Stimmungs-Modus hinterlassen (Trace 06.07., Lücke 6).
@@ -97,7 +137,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # ihre eigene Frage nicht und deutet seine Folge-Nachricht gegen den Kontext
     # des VORTAGES (Befund 02.07.).
     state.add_message(chat_id, "assistant", frage)
-    await _merke_frage(frage)
+    await _merke_frage(frage, richtung)
 
 
 async def frage_stellen(bot: Bot) -> None:
@@ -113,7 +153,7 @@ async def frage_stellen(bot: Bot) -> None:
         logger.info("Stimmungsfrage übersprungen – aktiver State: %s", s.get("mode"))
         return
 
-    frage = await _frage_text()
+    frage, richtung = await _frage_text()
     # Re-Check NACH dem LLM-Await (TOCTOU): im Fenster kann der Sklave einen
     # Flow begonnen oder ein Safeword gesendet haben.
     if state.is_paused() or s.get("mode", "chat") != "chat":
@@ -125,7 +165,7 @@ async def frage_stellen(bot: Bot) -> None:
     # und würde Followup+Serie des Tages blocken (Trace 06.07., Lücke 6).
     state.set_mode(sklave_chat, "stimmung")
     state.add_message(sklave_chat, "assistant", frage)  # s. Kommentar in start()
-    await _merke_frage(frage)
+    await _merke_frage(frage, richtung)
     logger.info("Stimmungsfrage gesendet.")
 
 

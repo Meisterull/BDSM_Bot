@@ -861,9 +861,10 @@ async def get_latest_stimmung(user_id: str, max_stunden: int | None = None) -> O
     return eintrag
 
 
-async def get_recent_stimmung_fragen(limit: int = 5) -> list[str]:
-    """Die zuletzt an den Sub gestellten Stimmungs-Fragen (typ=stimmung_frage) –
-    Sperr-Liste gegen die tägliche Wiederholungs-Formulierung (handlers/stimmung)."""
+async def get_recent_stimmung_eintraege(limit: int = 5) -> list[dict]:
+    """Die zuletzt an den Sub gestellten Stimmungs-Fragen als volle Payloads –
+    Sperr-Liste (`zusammenfassung`) UND zuletzt benutzte Richtungs-Stichworte
+    (`richtung`, seit 27.08.2026; Alt-Bestand hat das Feld nicht)."""
     results, _ = await _aio(client.scroll,
         collection_name="training",
         scroll_filter=qm.Filter(must=[
@@ -873,7 +874,12 @@ async def get_recent_stimmung_fragen(limit: int = 5) -> list[str]:
         limit=limit, order_by=qm.OrderBy(key="datum", direction="desc"),
         with_payload=True, with_vectors=False,
     )
-    return [r.payload.get("zusammenfassung", "") for r in results if r.payload]
+    return [r.payload for r in results if r.payload]
+
+
+async def get_recent_stimmung_fragen(limit: int = 5) -> list[str]:
+    """Nur die Fragetexte (handlers/stimmung)."""
+    return [p.get("zusammenfassung", "") for p in await get_recent_stimmung_eintraege(limit)]
 
 
 def _vorschlag_label(p: dict) -> str:
