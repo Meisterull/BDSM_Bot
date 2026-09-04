@@ -38,6 +38,38 @@ async def typing_action(bot: Bot, chat_id):
         task.cancel()
 
 
+TELEGRAM_MAX_ZEICHEN = 4096
+
+
+def nachricht_teilen(text: str, limit: int = TELEGRAM_MAX_ZEICHEN) -> list[str]:
+    """Teilt eine Nachricht in sendbare Stücke ≤ limit (Telegram: 4096 Zeichen).
+
+    Schnitt bevorzugt an Absatz-, dann Zeilen-, dann Satzgrenzen; harter Schnitt
+    nur als letzte Rettung. Kurze Texte kommen unverändert als Ein-Element-Liste
+    zurück (04.09.2026: 5893-Zeichen-Antwort → BadRequest 'Message is too long').
+    """
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return [text] if text else []
+    teile = []
+    while len(text) > limit:
+        fenster = text[:limit]
+        schnitt = -1
+        for muster in ("\n\n", "\n", ". "):
+            schnitt = fenster.rfind(muster)
+            if schnitt > limit // 2:
+                schnitt += len(muster.rstrip())  # Satzpunkt bleibt beim ersten Teil
+                break
+            schnitt = -1
+        if schnitt <= 0:
+            schnitt = limit
+        teile.append(text[:schnitt].strip())
+        text = text[schnitt:].strip()
+    if text:
+        teile.append(text)
+    return teile
+
+
 def escape_md(text: str) -> str:
     """Escape special characters for Telegram MarkdownV2."""
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', str(text))

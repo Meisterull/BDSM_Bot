@@ -503,7 +503,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # brauchen alle Grok und würden nur Retries verbrennen. Die Qdrant-
         # Persistenz dieses einen Notbetrieb-Austauschs opfern wir bewusst mit.
         state.add_message(chat_id, "assistant", response)
-        await update.message.reply_text(response)
+        for teil in telegram_helper.nachricht_teilen(response):
+            await update.message.reply_text(teil)
         if context.chat_data.get("voice_eingang"):
             await telegram_helper.voice_an(context.bot, chat_id, response,
                                            empfaenger_rolle=paare.ROLLE_SUB)
@@ -529,6 +530,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     "Wiederhole keinen deiner vorherigen Sätze und kein früheres Schlussbild.",
                     history,
                     temperature=1.1,
+                    # Deckel gegen Ausreißer: der Retry bei hoher Temperatur lieferte
+                    # am 04.09.2026 1568 Tokens (5893 Zeichen) in einem Rutsch.
+                    max_tokens=750,
                 )
         except Exception as e:
             logger.error("Anti-Echo-Neugenerierung fehlgeschlagen: %s", e)
@@ -563,6 +567,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     "ABSOLUT TABU (Hard Limits bzw. persönliche Grenzen). Antworte neu, "
                     "ohne diese Themen aufzugreifen.",
                     history,
+                    max_tokens=750,
                 )
     except Exception as e:
         logger.error("Limits-Post-Check fehlgeschlagen – Antwort geht unverändert raus: %s", e)
@@ -570,7 +575,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Antwort zur History hinzufügen
     state.add_message(chat_id, "assistant", response)
 
-    await update.message.reply_text(response)
+    # Ueberlange Antworten in Telegram-taugliche Stücke schneiden (04.09.2026:
+    # Anti-Echo-Retry lieferte 5893 Zeichen → BadRequest, Antwort ging verloren).
+    for teil in telegram_helper.nachricht_teilen(response):
+        await update.message.reply_text(teil)
     # „Telefonieren" (Flag aus handle_voice): gesprochene Nachricht → Antwort
     # zusätzlich als Voice-Bubble in der Herrin-Stimme (best-effort).
     if context.chat_data.get("voice_eingang"):

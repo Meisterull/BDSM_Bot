@@ -3,11 +3,14 @@ Zeiten-Helper – Validierung und Normalisierung von Zeitfenster-Eingaben
 (z.B. kinderfreie Zeiten im Onboarding und Profil-Edit) sowie Fenster-Checks
 (Blitzaufgaben senden nur in erlaubten Zeitfenstern).
 """
+import logging
 import re
 from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 
 from bot import config
+
+logger = logging.getLogger(__name__)
 
 # Eingaben, die explizit "keine Zeitfenster" bedeuten
 _VERNEINUNGEN = {
@@ -20,6 +23,17 @@ _ZEITFENSTER_RE = re.compile(
     r"^(\d{1,2})[:.](\d{2})\s*(?:uhr)?\s*[-–]\s*(\d{1,2})[:.](\d{2})\s*(?:uhr)?$",
     re.IGNORECASE,
 )
+
+# Halboffene Freitext-Formen, wie sie der Profil-Merge aus dem Gespräch
+# schreibt: "Täglich ab 20:00", "ab 20 Uhr", "bis 07:00". Der Live-Befund
+# 03.09.2026: 'Täglich ab 20:00' war nicht parsebar, ist_im_fenster damit
+# IMMER False – Spiel-Impuls und Blitz konnten nie senden (fail-closed).
+# Minuten optional; \b verhindert, dass "abends" als "ab" gelesen wird.
+_AB_RE = re.compile(r"\bab\s+(\d{1,2})(?:[:.](\d{2}))?\s*(?:uhr)?\b", re.IGNORECASE)
+_BIS_RE = re.compile(r"\bbis\s+(\d{1,2})(?:[:.](\d{2}))?\s*(?:uhr)?\b", re.IGNORECASE)
+
+# Je Wortlaut nur einmal warnen – der Fenster-Check läuft alle 30 Minuten.
+_unparsebar_gewarnt: set[str] = set()
 
 
 def alter_label(datum_iso: str) -> str:
@@ -92,15 +106,30 @@ def parse_kinderfreie_zeiten(text: str) -> list[str] | None:
 
 
 def _parse_fenster(fenster: str) -> tuple[time, time] | None:
-    """'HH:MM-HH:MM' → (start, ende) als time-Objekte; None bei Murks."""
-    m = _ZEITFENSTER_RE.match((fenster or "").strip())
-    if not m:
-        return None
-    h1, m1, h2, m2 = (int(x) for x in m.groups())
-    try:
-        return time(h1, m1), time(h2, m2)
-    except ValueError:
-        return None
+    """'HH:MM-HH:MM' → (start, ende); dazu die halboffenen Freitext-Formen
+    'ab HH[:MM]' → (start, 23:59) und 'bis HH[:MM]' → (00:00, ende).
+    None bei Murks."""
+    text = (fenster or "").strip()
+    m = _ZEITFENSTER_RE.match(text)
+    if m:
+        h1, m1, h2, m2 = (int(x) for x in m.groups())
+        try:
+            return time(h1, m1), time(h2, m2)
+        except ValueError:
+            return None
+    m = _AB_RE.search(text)
+    if m:
+        try:
+            return time(int(m.group(1)), int(m.group(2) or 0)), time(23, 59)
+        except ValueError:
+            return None
+    m = _BIS_RE.search(text)
+    if m:
+        try:
+            return time(0, 0), time(int(m.group(1)), int(m.group(2) or 0))
+        except ValueError:
+            return None
+    return None
 
 
 def ist_im_fenster(jetzt: datetime, fenster_liste: list[str]) -> bool:
@@ -114,6 +143,12 @@ def ist_im_fenster(jetzt: datetime, fenster_liste: list[str]) -> bool:
     for eintrag in fenster_liste:
         geparst = _parse_fenster(eintrag)
         if not geparst:
+            # Laut, nicht lautlos: Ein unverstandenes Fenster sperrt sonst
+            # unbemerkt alles (fail-closed) — genau so blieb der Spiel-Impuls
+            # stumm (Live-Befund 03.09.2026).
+            if eintrag not in _unparsebar_gewarnt:
+                _unparsebar_gewarnt.add(eintrag)
+                logger.warning("Zeitfenster nicht parsebar, wird ignoriert: %r", eintrag)
             continue
         start, ende = geparst
         if start <= ende:
