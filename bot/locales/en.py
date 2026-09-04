@@ -405,6 +405,7 @@ MESSAGES = {
     "WETTE_STATE_WEG": "These bet buttons are no longer valid. Start over with /wette.",
     "WETTE_VERLOREN": "🎰 *Bet lost.* Your stake of {einsatz} points is gone.",
     "WETTE_INFO_DOMINA": "🎰 By the way: your slave just bet *{einsatz} points* that he will complete his next task. Double or nothing.",
+    "SPIEL_IMPULS_WETTE": "I am in the mood for a game – and you get to play:",
 
     # --- Flash tasks ⚡ ----------------------------------------------------------
     "BLITZ_AN": (
@@ -501,11 +502,24 @@ MESSAGES = {
 
     # --- Quiz 🧠 ------------------------------------------------------------------
     "QUIZ_FRAGE": "🧠 *Quiz – how well do you know your Mistress?*\n\n{frage}\n\n_Answer freely – or /abbrechen._",
+    "SPIEL_IMPULS_QUIZ": "🧠 *Pop quiz* – I feel like testing you.\n\n{frage}\n\n_Answer freely – or /abbrechen._",
     "QUIZ_RICHTIG": "🧠 ✅ *Correct!* +{punkte} points.",
     "QUIZ_TEILWEISE": "🧠 🟡 *Half right.* +{punkte} points.\nThe answer was: _{antwort}_",
     "QUIZ_FALSCH": "🧠 ❌ *Wrong.* Correct would be: _{antwort}_",
     "QUIZ_ZU_WENIG_DATEN": "🧠 I don't know enough about her yet – the quiz needs a maintained profile/dossier.",
     "QUIZ_FEHLER": "⚠️ Quiz not possible right now – try again later.",
+
+    # --- Coach quiz 🧠 (dominant side) -------------------------------------------
+    "COACH_QUIZ_FRAGE_WISSEN": "🧠 *Quiz for you* – topic: {thema}\n\n{frage}\n\n_Answer freely – or /abbrechen._",
+    "COACH_QUIZ_FRAGE_SKLAVE": "🧠 *Quiz* – how well do you really know him?\n\n{frage}\n\n_Answer freely – or /abbrechen._",
+    "COACH_QUIZ_RICHTIG": "✅ *Nailed it.* Knew you had that one.",
+    "COACH_QUIZ_TEILWEISE": "🟡 *Close.* It was: _{antwort}_",
+    "COACH_QUIZ_FALSCH": "❌ *Off – happens.* It was: _{antwort}_",
+    "COACH_QUIZ_AUFLOESUNG": "📚 *Takeaway:* {aufloesung}",
+    "COACH_QUIZ_ZU_WENIG_DATEN": "🧠 I don't know enough about him yet – maintain profile/dossier first, then we can quiz.",
+    "COACH_QUIZ_FEHLER": "⚠️ Quiz not possible right now – try again later.",
+    "COACH_IMPULS_QUIZ_PREFIX": "☕ Quick question from me – just because I'm curious:",
+    "COACH_IMPULS_WETTE": "🎲 *Idea for you two* – in case you feel like a game:\n\n{idee}\n\n_Just an idea – pass it on if you like it._",
 
     # --- Advent calendar 🎄 ------------------------------------------------------
     "ADVENT_DEFAULT_THEMA": "Advent calendar",

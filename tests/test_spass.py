@@ -319,6 +319,44 @@ def test_wiederholte_phrase_und_frage():
     assert sk._ist_frage("gut") is False
 
 
+# --------------------------------------------------------------------------
+# Spiel-Impuls: Wett-Lage + Job-Gate
+# --------------------------------------------------------------------------
+
+def test_wette_angebots_lage():
+    from bot.handlers import wette
+
+    async def _tasks_regulaer(*_a, **_k):
+        return [{"quelle": "wochenplan"}]
+
+    async def _tasks_nur_blitz(*_a, **_k):
+        return [{"quelle": "blitz"}]
+
+    alt = qdrant.get_tasks_by_status
+    try:
+        qdrant.get_tasks_by_status = _tasks_regulaer
+        assert asyncio.run(wette._angebots_lage({"punkte": 50})) == "ok"
+        assert asyncio.run(wette._angebots_lage(
+            {"punkte": 50, "wette": {"einsatz": 10}})) == "aktiv"
+        assert asyncio.run(wette._angebots_lage({"punkte": 5})) == "zu_wenig"
+        qdrant.get_tasks_by_status = _tasks_nur_blitz
+        assert asyncio.run(wette._angebots_lage({"punkte": 50})) == "keine_aufgabe"
+    finally:
+        qdrant.get_tasks_by_status = alt
+
+
+def test_spiel_impuls_gate():
+    """Env-Gate aus → Job kehrt sofort um (und die Verdrahtung importiert sauber)."""
+    from bot import config
+    from bot.scheduler import followup
+    alt = config.SPIEL_IMPULS
+    try:
+        config.SPIEL_IMPULS = False
+        asyncio.run(followup.spiel_impuls_job(None))
+    finally:
+        config.SPIEL_IMPULS = alt
+
+
 def _run():
     test_ist_im_fenster()
     test_event_parse_datum()
@@ -331,6 +369,8 @@ def _run():
     test_wette_gewonnen_bei_erledigt()
     test_wette_bleibt_bei_blitz()
     test_wette_verloren_bei_nicht_erledigt()
+    test_wette_angebots_lage()
+    test_spiel_impuls_gate()
     print("✅ Alle Spaß-Feature-Tests bestanden")
 
 

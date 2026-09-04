@@ -784,6 +784,96 @@ async def blitz_check_job(bot: Bot) -> None:
 
 
 @_job_guard
+async def spiel_impuls_job(bot: Bot) -> None:
+    """Spiel-Impuls 🎲 (Env-Gate SPIEL_IMPULS): die Herrin startet von sich aus
+    ein Spiel Richtung Sklave – Quiz-Frage oder Wett-Angebot. Bewusst OHNE
+    Task-Erteilung (die bleibt Domina-Sache bzw. Blitz-Opt-in), darum auch ohne
+    Einzel-Freigabe. Fenster: SPIEL_IMPULS_FENSTER ∩ kinderfreie Zeiten;
+    Throttle über SPIEL_IMPULS_MIN_ABSTAND_TAGE (Anker im Sklaven-Profil)."""
+    if not config.SPIEL_IMPULS:
+        return
+    if _flow_aktiv(paare.sub_chat_id(), "Spiel-Impuls"):
+        return
+
+    jetzt_lokal = datetime.now(ZoneInfo(config.TIMEZONE))
+    if not zeiten.ist_im_fenster(jetzt_lokal, [config.SPIEL_IMPULS_FENSTER]):
+        return
+    domina_profile = await qdrant.get_user_profile("domina") or {}
+    # kinderfreie_zeiten wie beim Blitz respektieren – auch ein Quiz oder eine
+    # Wette soll nicht mitten in die Familienzeit platzen.
+    if not zeiten.ist_im_fenster(jetzt_lokal, domina_profile.get("kinderfreie_zeiten", []) or []):
+        return
+
+    sklave_profile = await qdrant.get_user_profile("sklave") or {}
+    jetzt = datetime.now(timezone.utc)
+    letzte = _parse_datum(sklave_profile.get("spiel_impuls_letzte_am", ""))
+    if jetzt - letzte < timedelta(days=config.SPIEL_IMPULS_MIN_ABSTAND_TAGE):
+        return
+    # Der Wurf wird geloggt (Owner-Wunsch 03.09.2026): Er fällt nur, wenn alle
+    # Gates offen sind — max. ein paar Zeilen am Abend, und man sieht beim
+    # Beobachten, DASS gewürfelt wurde, nicht nur die seltenen Treffer.
+    wurf = random.random()
+    if wurf >= config.SPIEL_IMPULS_CHANCE:
+        logger.info("Spiel-Impuls: Würfel dagegen (%.2f ≥ %.2f)",
+                    wurf, config.SPIEL_IMPULS_CHANCE)
+        return
+
+    from bot.handlers import quiz, wette  # lazy: zirkulären Import vermeiden
+    spiele = [("quiz", quiz.sende_spontane_frage)]
+    if await wette.angebot_moeglich(sklave_profile):
+        spiele.append(("wette", wette.sende_spontanes_angebot))
+    name, senden = random.choice(spiele)
+    if not await senden(bot):
+        return
+    # Throttle-Anker erst nach erfolgreichem Versand (Muster blitz_letzte_am).
+    await qdrant.patch_profile_fields(
+        "sklave", {"spiel_impuls_letzte_am": datetime.now(timezone.utc).isoformat()})
+    logger.info("Spiel-Impuls gesendet: %s", name)
+
+
+@_job_guard
+async def coach_impuls_job(bot: Bot) -> None:
+    """Coach-Impuls ☕ (Env-Gate COACH_IMPULS): der Coach meldet sich von sich
+    aus bei der Domina – spontane Quiz-Frage (Lern- oder Sklaven-Wissen) oder
+    eine fertige Wett-Idee zum Weitergeben. Spiegel des Spiel-Impulses:
+    Fenster ∩ kinderfreie Zeiten, Throttle-Anker coach_impuls_letzte_am im
+    Domina-Profil, Würfel-Log."""
+    if not config.COACH_IMPULS:
+        return
+    if _flow_aktiv(paare.dom_chat_id(), "Coach-Impuls"):
+        return
+
+    jetzt_lokal = datetime.now(ZoneInfo(config.TIMEZONE))
+    if not zeiten.ist_im_fenster(jetzt_lokal, [config.COACH_IMPULS_FENSTER]):
+        return
+    domina_profile = await qdrant.get_user_profile("domina") or {}
+    if not zeiten.ist_im_fenster(jetzt_lokal, domina_profile.get("kinderfreie_zeiten", []) or []):
+        return
+
+    jetzt = datetime.now(timezone.utc)
+    letzte = _parse_datum(domina_profile.get("coach_impuls_letzte_am", ""))
+    if jetzt - letzte < timedelta(days=config.COACH_IMPULS_MIN_ABSTAND_TAGE):
+        return
+    wurf = random.random()
+    if wurf >= config.COACH_IMPULS_CHANCE:
+        logger.info("Coach-Impuls: Würfel dagegen (%.2f ≥ %.2f)",
+                    wurf, config.COACH_IMPULS_CHANCE)
+        return
+
+    from bot.handlers import coach_quiz  # lazy: zirkulären Import vermeiden
+    name, senden = random.choice([
+        ("coach_quiz", coach_quiz.sende_spontane_frage),
+        ("wett_idee", coach_quiz.sende_wett_idee),
+    ])
+    if not await senden(bot):
+        return
+    await qdrant.patch_profile_fields(
+        "domina", {"coach_impuls_letzte_am": datetime.now(timezone.utc).isoformat()})
+    logger.info("Coach-Impuls gesendet: %s", name)
+
+
+
+@_job_guard
 async def blitz_ablauf_job(bot: Bot) -> None:
     """Markiert Blitzaufgaben mit abgelaufenem Countdown als verpasst –
     restart-sicher (Deadline liegt Qdrant-persistiert am Task).

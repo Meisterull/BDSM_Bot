@@ -49,6 +49,7 @@ def get(
     vertrauens_score: dict = None,
     stimmung: str = "",
     lerntagebuch_context: str = "",
+    quiz_wissen_context: str = "",
     coach_regeln: list = None,
     coach_notizen: list = None,
     domina_dossier: str = "",
@@ -180,6 +181,13 @@ def get(
         f"Verdichtetes Langzeit-Wissen (Wochen-Lerntagebuch):\n{lerntagebuch_context}\n\n"
         if lerntagebuch_context else ""
     )
+    # Aus dem Coach-Quiz gelerntes Fachwissen – darf beiläufig referenziert
+    # werden ("das hatten wir im Quiz"), FALSCH beantwortete Themen behutsam
+    # wieder aufgreifen.
+    if quiz_wissen_context:
+        lerntagebuch_block += (
+            f"Aus dem Wissens-Quiz mit ihr gelernt:\n{quiz_wissen_context}\n\n"
+        )
 
     # Gelernte Regeln/Notizen (vom User bestaetigt) – stehen direkt nach dem Intro,
     # also VOR Persona-Block und allem Kontext
@@ -320,3 +328,15 @@ def format_lerntagebuch(entries: list[dict]) -> str:
         inhalt = e.get("inhalt", "")
         blocks.append(f"📓 Lerntagebuch ({zeitraum}):\n{inhalt}")
     return "\n\n".join(blocks)
+
+
+def format_quiz_wissen(entries: list[dict]) -> str:
+    """Formatiert Coach-Quiz-Auflösungen (typ=quiz_wissen) für den Prompt –
+    kompakt, mit Kennzeichnung falsch beantworteter (= offener) Themen."""
+    if not entries:
+        return ""
+    zeilen = []
+    for e in entries:
+        marker = " (falsch beantwortet – behutsam wiederholen)" if e.get("status") == "offen" else ""
+        zeilen.append(f"• {e.get('thema', '?')}{marker}: {e.get('inhalt', '')[:300]}")
+    return "\n".join(zeilen)

@@ -18,12 +18,43 @@ from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper
+from bot.services import sticker_reaktionen
 from bot.prompts import persona
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
 
 EINSAETZE = (10, 25, 50)
+
+
+async def _angebots_lage(profil: dict) -> str:
+    """Prüft, ob dem Sklaven eine Wette angeboten werden kann.
+    'ok' | 'aktiv' (Wette läuft schon) | 'keine_aufgabe' | 'zu_wenig' (Punkte).
+    Blitzaufgaben zählen nicht als wettbare Aufgabe (Review D8/M10): sie sind
+    aus der Wett-Auflösung in punkte.task_erledigt/task_nicht_erledigt bewusst
+    ausgenommen – besteht das "offen" nur aus einem Blitz, hinge der Einsatz
+    sonst fest, bis irgendwann ein regulärer Task ausgeht."""
+    if (profil.get("wette") or {}).get("einsatz"):
+        return "aktiv"
+    offene = await qdrant.get_tasks_by_status(["offen", "gefragt"], limit=20)
+    if not any(task.get("quelle") != "blitz" for task in offene):
+        return "keine_aufgabe"
+    if not any(e <= profil.get("punkte", 0) for e in EINSAETZE):
+        return "zu_wenig"
+    return "ok"
+
+
+def _angebot_bauen(chat_id: str, punkte: int) -> tuple[str, InlineKeyboardMarkup]:
+    """Angebots-Text + Einsatz-Buttons. Nonce wie beim Würfel: ein liegen-
+    gebliebener Button darf später nicht unbemerkt eine neue Wette platzieren."""
+    nonce = uuid.uuid4().hex[:8]
+    state.get(chat_id)["wette_nonce"] = nonce
+    moeglich = [e for e in EINSAETZE if e <= punkte]
+    # Locale-Key statt Hardcoding (D9/A4) – EN-Betrieb zeigte deutsche Buttons.
+    buttons = [[InlineKeyboardButton(t("BUTTON_WETTE_EINSATZ", punkte=e),
+                                     callback_data=f"wette:setzen:{e}:{nonce}")
+                for e in moeglich]]
+    return t("WETTE_ANGEBOT", punkte=punkte), InlineKeyboardMarkup(buttons)
 
 
 async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -34,40 +65,46 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     profil = await qdrant.get_user_profile("sklave") or {}
     punkte = profil.get("punkte", 0)
-
-    wette = profil.get("wette") or {}
-    if wette.get("einsatz"):
+    lage = await _angebots_lage(profil)
+    if lage == "aktiv":
         await update.message.reply_text(
-            t("WETTE_SCHON_AKTIV", einsatz=wette["einsatz"]), parse_mode="Markdown")
+            t("WETTE_SCHON_AKTIV", einsatz=profil["wette"]["einsatz"]), parse_mode="Markdown")
         return
-
-    # Blitzaufgaben zählen nicht (Review D8/M10): sie sind aus der Wett-Auflösung
-    # in punkte.task_erledigt/task_nicht_erledigt bewusst ausgenommen – besteht
-    # das "offen" nur aus einem Blitz, hinge der Einsatz sonst fest, bis
-    # irgendwann ein regulärer Task ausgeht.
-    offene = await qdrant.get_tasks_by_status(["offen", "gefragt"], limit=20)
-    if not any(task.get("quelle") != "blitz" for task in offene):
+    if lage == "keine_aufgabe":
         await update.message.reply_text(t("WETTE_KEINE_AUFGABE"))
         return
-
-    moeglich = [e for e in EINSAETZE if e <= punkte]
-    if not moeglich:
+    if lage == "zu_wenig":
         await update.message.reply_text(
             t("WETTE_ZU_WENIG_PUNKTE", punkte=punkte, minimum=EINSAETZE[0]))
         return
 
-    # Nonce wie beim Würfel: ein liegengebliebener Button darf später nicht
-    # unbemerkt eine neue Wette platzieren.
-    nonce = uuid.uuid4().hex[:8]
-    state.get(chat_id)["wette_nonce"] = nonce
-    # Locale-Key statt Hardcoding (D9/A4) – EN-Betrieb zeigte deutsche Buttons.
-    buttons = [[InlineKeyboardButton(t("BUTTON_WETTE_EINSATZ", punkte=e),
-                                     callback_data=f"wette:setzen:{e}:{nonce}")
-                for e in moeglich]]
+    text, markup = _angebot_bauen(chat_id, punkte)
     await update.message.reply_text(
-        t("WETTE_ANGEBOT", punkte=punkte), parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(buttons),
+        text, parse_mode="Markdown", reply_markup=markup,
     )
+
+
+async def angebot_moeglich(profil: dict) -> bool:
+    """Für den Spiel-Impuls: kann die Herrin gerade eine Wette anbieten?"""
+    return await _angebots_lage(profil) == "ok"
+
+
+async def sende_spontanes_angebot(bot) -> bool:
+    """Spiel-Impuls 🎲 (scheduler.spiel_impuls_job): die Herrin bietet UNGEFRAGT
+    "Doppelt oder nichts" an – gleiche Buttons/Callbacks wie /wette. Lage wird
+    frisch geprüft (zwischen Job-Check und Send kann sich das Profil ändern).
+    True nur bei Versand."""
+    chat_id = paare.sub_chat_id()
+    profil = await qdrant.get_user_profile("sklave") or {}
+    if await _angebots_lage(profil) != "ok":
+        return False
+    text, markup = _angebot_bauen(chat_id, profil.get("punkte", 0))
+    # Schicksals-Sticker als Auftakt (Würfel/Roulette/Wette) – best-effort intern
+    await sticker_reaktionen.sende_sklave(bot, sticker_reaktionen.SCHICKSAL)
+    await telegram_helper.send_sklave(
+        bot, t("SPIEL_IMPULS_WETTE") + "\n\n" + text,
+        parse_mode="Markdown", reply_markup=markup)
+    return True
 
 
 async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

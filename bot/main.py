@@ -23,7 +23,7 @@ from bot.handlers import (
     stimmung, inspiration, ziele, rueckblick, training,
     stats, bewertung, rollenspiel, wochenplanung,
     wunsch, kommentar, geheimnis, strafen_protokoll, tinytask,
-    wuerfel, wunschkategorien, privileg, wette, blitz, arc, event_arc, roulette, dauer, quiz, advent, tiny_task_feedback, hilfe, resurface,
+    wuerfel, wunschkategorien, privileg, wette, blitz, arc, event_arc, roulette, dauer, quiz, coach_quiz, advent, tiny_task_feedback, hilfe, resurface,
     lerntagebuch, coach_regeln, skill, kette_adaptiv, dossier, namen, meine_aufgaben,
     einstellungen, luecke, pairing, admin, abwesenheit,
 )
@@ -38,6 +38,7 @@ from bot.scheduler.followup import (
     coach_reflexion_job, profil_pflege_job, backup_job, sklave_dossier_job,
     offene_faeden_job, luecken_check_job, luecken_zustellung_job,
     blitz_check_job, blitz_ablauf_job, event_check_job, dauer_job, kalender_job,
+    spiel_impuls_job, coach_impuls_job,
 )
 from bot.handlers.profil import abbrechen_command
 from bot.messages import t
@@ -472,6 +473,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if mode == "quiz_antwort":
             await quiz.handle_antwort(update, context)
             return
+        if mode == "coach_quiz_antwort":
+            await coach_quiz.handle_antwort(update, context)
+            return
 
     # 3. Normaler Chat
     if rolle == paare.ROLLE_DOM:
@@ -768,6 +772,10 @@ async def post_init(application: Application) -> None:
                       args=[application.bot], id="blitz_check", replace_existing=True)
     scheduler.add_job(_pro_paar(blitz_ablauf_job), "interval", minutes=5,
                       args=[application.bot], id="blitz_ablauf", replace_existing=True)
+    scheduler.add_job(_pro_paar(spiel_impuls_job), "interval", minutes=30,
+                      args=[application.bot], id="spiel_impuls", replace_existing=True)
+    scheduler.add_job(_pro_paar(coach_impuls_job), "interval", minutes=30,
+                      args=[application.bot], id="coach_impuls", replace_existing=True)
     scheduler.add_job(_pro_paar(event_check_job), "cron", hour=8, minute=30,
                       args=[application.bot], id="event_check", replace_existing=True)
     scheduler.add_job(_pro_paar(dauer_job), "interval", minutes=15,
@@ -846,7 +854,9 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler(ck.aliases("wunschkategorien"),    wunschkategorien.show))
     app.add_handler(CommandHandler(ck.aliases("privileg"),            privileg.show))
     app.add_handler(CommandHandler(ck.aliases("wette"),               wette.show))
-    app.add_handler(CommandHandler(ck.aliases("quiz"),                quiz.start))
+    # /quiz gibt es auf beiden Seiten: der Router verzweigt nach Rolle
+    # (Sub → Sklave-Quiz, Domina → Coach-Quiz).
+    app.add_handler(CommandHandler(ck.aliases("quiz"),                coach_quiz.quiz_router))
     app.add_handler(CommandHandler(ck.aliases("hilfe"),               hilfe.show))
     app.add_handler(CommandHandler(ck.aliases("help"),                hilfe.show))
     app.add_handler(CommandHandler(ck.aliases("abbrechen"),           abbrechen_command))

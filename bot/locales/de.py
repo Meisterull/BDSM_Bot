@@ -403,6 +403,7 @@ MESSAGES = {
     "WETTE_STATE_WEG": "Diese Wett-Buttons sind nicht mehr gültig. Starte neu mit /wette.",
     "WETTE_VERLOREN": "🎰 *Wette verloren.* Dein Einsatz von {einsatz} Punkten ist weg.",
     "WETTE_INFO_DOMINA": "🎰 Nebenbei: dein Sklave hat gerade *{einsatz} Punkte* darauf gewettet, dass er seine nächste Aufgabe schafft. Doppelt oder nichts.",
+    "SPIEL_IMPULS_WETTE": "Mir ist gerade nach einem Spiel – und du darfst mitspielen:",
 
     # --- Blitzaufgaben ⚡ --------------------------------------------------------
     "BLITZ_AN": (
@@ -499,11 +500,24 @@ MESSAGES = {
 
     # --- Quiz 🧠 ------------------------------------------------------------------
     "QUIZ_FRAGE": "🧠 *Quiz – wie gut kennst du deine Herrin?*\n\n{frage}\n\n_Antworte frei – oder /abbrechen._",
+    "SPIEL_IMPULS_QUIZ": "🧠 *Spontanes Quiz* – mir ist gerade danach, dich zu prüfen.\n\n{frage}\n\n_Antworte frei – oder /abbrechen._",
     "QUIZ_RICHTIG": "🧠 ✅ *Richtig!* +{punkte} Punkte.",
     "QUIZ_TEILWEISE": "🧠 🟡 *Halb richtig.* +{punkte} Punkte.\nGemeint war: _{antwort}_",
     "QUIZ_FALSCH": "🧠 ❌ *Daneben.* Richtig wäre: _{antwort}_",
     "QUIZ_ZU_WENIG_DATEN": "🧠 Dazu weiß ich noch zu wenig über sie – das Quiz braucht ein gepflegtes Profil/Dossier.",
     "QUIZ_FEHLER": "⚠️ Quiz gerade nicht möglich – versuch es später nochmal.",
+
+    # --- Coach-Quiz 🧠 (Domina-Seite) --------------------------------------------
+    "COACH_QUIZ_FRAGE_WISSEN": "🧠 *Quiz für dich* – Thema: {thema}\n\n{frage}\n\n_Antworte frei – oder /abbrechen._",
+    "COACH_QUIZ_FRAGE_SKLAVE": "🧠 *Quiz* – wie gut kennst du ihn wirklich?\n\n{frage}\n\n_Antworte frei – oder /abbrechen._",
+    "COACH_QUIZ_RICHTIG": "✅ *Sitzt.* Wusste ich doch, dass du das drauf hast.",
+    "COACH_QUIZ_TEILWEISE": "🟡 *Fast.* Gemeint war: _{antwort}_",
+    "COACH_QUIZ_FALSCH": "❌ *Daneben – passiert.* Gemeint war: _{antwort}_",
+    "COACH_QUIZ_AUFLOESUNG": "📚 *Zum Mitnehmen:* {aufloesung}",
+    "COACH_QUIZ_ZU_WENIG_DATEN": "🧠 Über ihn weiß ich noch zu wenig – pfleg erst Profil/Dossier, dann wird das ein Quiz.",
+    "COACH_QUIZ_FEHLER": "⚠️ Quiz gerade nicht möglich – versuch es später nochmal.",
+    "COACH_IMPULS_QUIZ_PREFIX": "☕ Kurze Zwischenfrage von mir – einfach weil's mich interessiert:",
+    "COACH_IMPULS_WETTE": "🎲 *Idee für euch zwei* – falls dir nach einem Spiel ist:\n\n{idee}\n\n_Nur eine Idee – gib sie weiter, wenn sie dir gefällt._",
 
     # --- Adventskalender 🎄 ------------------------------------------------------
     "ADVENT_DEFAULT_THEMA": "Adventskalender",

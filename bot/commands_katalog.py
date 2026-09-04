@@ -76,6 +76,7 @@ DOMINA_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
     ]),
     # Nur im Command-Menü sichtbar (historisch nicht Teil von /hilfe):
     ("🧠 Coach & Wissen", [
+        Eintrag("quiz",             "🧠 Coach-Quiz: Fachwissen lernen oder Sklaven-Wissen prüfen"),
         Eintrag("lerntagebuch",     "📓 Coach-Gespräche der letzten Tage verdichten", in_hilfe=False),
         Eintrag("dossier",          "🗒 Charakteristik des Sklaven (was der Bot über ihn weiß)", in_hilfe=False),
         Eintrag("botname",          "🏷 Namen der Bot-Herrin festlegen", in_hilfe=False),
@@ -154,7 +155,7 @@ _DOMINA_MENUE_REIHENFOLGE = [
     "loeschen", "vorlagen",
     "rollenspiel", "rollenspiel_beenden", "wochenplanung", "training",
     "ziele", "rueckblick",
-    "lerntagebuch", "dossier", "botname", "sklavenname", "setup",
+    "quiz", "lerntagebuch", "dossier", "botname", "sklavenname", "setup",
     "regel", "merken", "regeln", "vergessen", "profil_check",
     "lerne", "skills", "lerne_neu", "skill_bearbeiten",
     "strafen", "geheimnis", "profil",

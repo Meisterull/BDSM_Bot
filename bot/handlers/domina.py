@@ -183,7 +183,7 @@ async def _baue_system_prompt(
     # auf >30k Zeichen (plus Lerntagebücher, Dossier, Regeln).
     import asyncio
     (ctx_entries, lerntagebuch_entries, aktive_regeln, letzte_kategorien,
-     vertrauens_score, stimmung_entry) = await asyncio.gather(
+     vertrauens_score, stimmung_entry, quiz_wissen_entries) = await asyncio.gather(
         qdrant.get_hybrid_conversation_context("domina", query_vector, limit=6,
                                                felder=qdrant.KONTEXT_FELDER),
         qdrant.get_recent_lerntagebuch("domina", limit=3),
@@ -191,11 +191,13 @@ async def _baue_system_prompt(
         qdrant.get_recent_task_kategorien("sklave", limit=5),
         qdrant.get_vertrauens_score("sklave"),
         qdrant.get_latest_stimmung("sklave", max_stunden=48),  # D9/N13: nur frische Stimmung als "aktuell"
+        qdrant.get_recent_quiz_wissen("domina", limit=3),
     )
     context_str = domina_coach.format_context(ctx_entries)
 
-    # Langzeit-Wissen: letzte Lerntagebuch-Einträge
+    # Langzeit-Wissen: letzte Lerntagebuch-Einträge + Coach-Quiz-Auflösungen
     lerntagebuch_str = domina_coach.format_lerntagebuch(lerntagebuch_entries)
+    quiz_wissen_str = domina_coach.format_quiz_wissen(quiz_wissen_entries)
 
     # Gelernte Regeln + Notizen (bestaetigt) als harter Prompt-Block
     coach_regeln_texte = [r.get("text", "") for r in aktive_regeln if r.get("typ") == "regel"]
@@ -240,6 +242,7 @@ async def _baue_system_prompt(
         vertrauens_score=vertrauens_score,
         stimmung=stimmung,
         lerntagebuch_context=lerntagebuch_str,
+        quiz_wissen_context=quiz_wissen_str,
         coach_regeln=coach_regeln_texte,
         coach_notizen=coach_notiz_texte,
         domina_dossier=profile.get("domina_dossier", ""),

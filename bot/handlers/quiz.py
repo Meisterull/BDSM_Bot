@@ -15,6 +15,7 @@ from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper
+from bot.services import sticker_reaktionen
 from bot.prompts import persona
 from bot.messages import t
 
@@ -51,17 +52,9 @@ async def _wissens_kontext() -> str:
     return "\n".join(teile)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/quiz – eine Frage über die Herrin stellen."""
-    chat_id = str(update.effective_chat.id)
-    if chat_id != paare.sub_chat_id():
-        return
-
-    kontext = await _wissens_kontext()
-    if len(kontext) < 40:
-        await update.message.reply_text(t("QUIZ_ZU_WENIG_DATEN"))
-        return
-
+async def _generiere_frage(chat_id: str, kontext: str) -> tuple[str, str] | None:
+    """Erzeugt (frage, musterantwort) aus den belegbaren Daten – None bei
+    Generierungs-Fehler. Merkt sich die Frage in der Anti-Wiederholungs-Liste."""
     s = state.get(chat_id)
     letzte_fragen = s.get("quiz_letzte_fragen", [])
 
@@ -85,14 +78,72 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             raise ValueError("Frage/Antwort leer")
     except Exception:
         logger.exception("Quiz-Fragen-Generierung fehlgeschlagen")
-        await update.message.reply_text(t("QUIZ_FEHLER"))
-        return
+        return None
+    s["quiz_letzte_fragen"] = (letzte_fragen + [frage])[-5:]
+    return frage, antwort
 
+
+def _frage_scharf_schalten(chat_id: str, frage: str, antwort: str) -> None:
+    """Frage + Musterantwort in den State; die nächste Sklaven-Nachricht wird
+    als Quiz-Antwort gewertet (mode quiz_antwort → handle_antwort)."""
+    s = state.get(chat_id)
     s["quiz_frage"] = frage
     s["quiz_musterantwort"] = antwort
-    s["quiz_letzte_fragen"] = (letzte_fragen + [frage])[-5:]
     state.set_mode(chat_id, "quiz_antwort")
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/quiz – eine Frage über die Herrin stellen."""
+    chat_id = str(update.effective_chat.id)
+    if chat_id != paare.sub_chat_id():
+        return
+
+    kontext = await _wissens_kontext()
+    if len(kontext) < 40:
+        await update.message.reply_text(t("QUIZ_ZU_WENIG_DATEN"))
+        return
+
+    ergebnis = await _generiere_frage(chat_id, kontext)
+    if not ergebnis:
+        await update.message.reply_text(t("QUIZ_FEHLER"))
+        return
+    frage, antwort = ergebnis
+    _frage_scharf_schalten(chat_id, frage, antwort)
     await update.message.reply_text(t("QUIZ_FRAGE", frage=frage), parse_mode="Markdown")
+
+
+async def sende_spontane_frage(bot) -> bool:
+    """Spiel-Impuls 🎲 (scheduler.spiel_impuls_job): die Herrin stellt UNGEFRAGT
+    eine Quiz-Frage – gleiche Mechanik wie /quiz, andere Zustellung. True nur
+    bei echtem Versand (der Job setzt dann erst den Throttle-Anker)."""
+    chat_id = paare.sub_chat_id()
+    kontext = await _wissens_kontext()
+    if len(kontext) < 40:
+        logger.info("Spiel-Impuls-Quiz übersprungen – zu wenig belegbare Daten.")
+        return False
+    ergebnis = await _generiere_frage(chat_id, kontext)
+    if not ergebnis:
+        return False
+    # TOCTOU-Re-Check nach dem LLM-Await (Muster _nach_llm_verworfen): im
+    # Generierungs-Fenster kann ein Safeword oder ein UI-Flow gekommen sein.
+    if state.is_paused() or state.get_mode(chat_id) not in ("chat", None):
+        logger.info("Spiel-Impuls-Quiz nach Generierung verworfen – Pause/Mode geändert.")
+        return False
+    frage, antwort = ergebnis
+    _frage_scharf_schalten(chat_id, frage, antwort)
+    # Kontroll-Sticker als Auftakt ("ich sehe alles") – best-effort intern
+    await sticker_reaktionen.sende_sklave(bot, sticker_reaktionen.AUGE)
+    try:
+        await telegram_helper.send_sklave(
+            bot, t("SPIEL_IMPULS_QUIZ", frage=frage), parse_mode="Markdown")
+    except Exception:
+        # Nicht zugestellte Frage nicht scharf lassen – sonst würde die nächste
+        # Chat-Nachricht als Antwort auf eine nie gesehene Frage gewertet.
+        state.set_mode(chat_id, "chat")
+        state.get(chat_id).pop("quiz_frage", None)
+        state.get(chat_id).pop("quiz_musterantwort", None)
+        raise
+    return True
 
 
 async def handle_antwort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

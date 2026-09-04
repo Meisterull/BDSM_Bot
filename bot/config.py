@@ -144,6 +144,25 @@ BLITZ_CHANCE = float(os.getenv("BLITZ_CHANCE", "0.02"))
 BLITZ_COUNTDOWN_MINUTEN = int(os.getenv("BLITZ_COUNTDOWN_MINUTEN", "30"))
 BLITZ_MIN_ABSTAND_TAGE = int(os.getenv("BLITZ_MIN_ABSTAND_TAGE", "2"))
 
+# Spiel-Impuls 🎲: die Herrin startet von sich aus ein Spiel Richtung Sklave –
+# Quiz-Frage oder Wett-Angebot, bewusst OHNE Task-Erteilung (die bleibt Domina-
+# Sache bzw. Blitz-Opt-in), darum Env-Gate statt Domina-Kommando. Der Check
+# läuft alle 30 Min im Fenster ∩ kinderfreie Zeiten; Throttle-Anker
+# spiel_impuls_letzte_am im Sklaven-Profil.
+SPIEL_IMPULS = os.getenv("SPIEL_IMPULS", "") == "1"
+SPIEL_IMPULS_FENSTER = os.getenv("SPIEL_IMPULS_FENSTER", "09:00-21:00")
+SPIEL_IMPULS_CHANCE = float(os.getenv("SPIEL_IMPULS_CHANCE", "0.04"))    # pro 30-Min-Check
+SPIEL_IMPULS_MIN_ABSTAND_TAGE = int(os.getenv("SPIEL_IMPULS_MIN_ABSTAND_TAGE", "1"))
+
+# Coach-Impuls ☕: Spiegel des Spiel-Impulses auf der Domina-Seite – der Coach
+# stellt spontan eine Quiz-Frage (Coach-Quiz) oder schlägt eine Wett-Idee zum
+# Weitergeben vor. Gleiche Mechanik: 30-Min-Check im Fenster ∩ kinderfreie
+# Zeiten; Throttle-Anker coach_impuls_letzte_am im Domina-Profil.
+COACH_IMPULS = os.getenv("COACH_IMPULS", "") == "1"
+COACH_IMPULS_FENSTER = os.getenv("COACH_IMPULS_FENSTER", "09:00-21:00")
+COACH_IMPULS_CHANCE = float(os.getenv("COACH_IMPULS_CHANCE", "0.04"))    # pro 30-Min-Check
+COACH_IMPULS_MIN_ABSTAND_TAGE = int(os.getenv("COACH_IMPULS_MIN_ABSTAND_TAGE", "1"))
+
 # Sprachnachrichten der Herrin 🔊 (lokales Piper via Wyoming-Protokoll).
 # Leer = aus. Beispiel: tcp://192.0.2.10:10200 (wyoming-piper auf dem Host).
 # Aufgaben-Zustellungen kommen dann zusätzlich als Telegram-Voice (best-effort).
