@@ -95,7 +95,9 @@ async def _generiere_wissensfrage(thema: dict) -> tuple[str, str, str] | None:
         "als kleines Lern-Quiz. STRIKT:\n"
         "- Frage und Auflösung MÜSSEN sich vollständig aus den Fakten unten belegen "
         "lassen – erfinde NICHTS dazu.\n"
-        "- Keine Ja/Nein-Frage, keine Fangfrage; die Frage prüft EINEN Kernpunkt.\n"
+        "- Keine Ja/Nein-Frage, keine Fangfrage; die Frage prüft EINEN Kernpunkt – "
+        "keine Doppelfrage ('… und wie/warum …?').\n"
+        "- Die Frage darf die Antwort nicht enthalten oder nahelegen.\n"
         "- Die Auflösung erklärt in 3–6 Sätzen locker und konkret, was man sich "
         "merken sollte – auch das, was über die reine Antwort hinaus wissenswert ist.\n"
         'Antworte NUR als JSON: {"frage": "...", "musterantwort": "knapp", '
@@ -137,6 +139,12 @@ async def _sklave_kontext() -> str:
                         ("offene_faeden", "Offene Fäden")):
         wert = profil.get(feld)
         if isinstance(wert, list):
+            # DIV4-Analogon (Live-Befund 06.09., wie bei den Tiny-Tasks): die
+            # komplette Vorlieben-Liste ankert die Fragen auf denselben
+            # Top-Einträgen – subsampeln variiert den Fokus pro Quiz.
+            # Grenzen bleiben IMMER vollständig (Sicherheits-Wissen).
+            if feld == "vorlieben" and len(wert) > 8:
+                wert = random.sample(wert, 8)
             wert = ", ".join(str(w) for w in wert)
         if wert:
             teile.append(f"- {label}: {wert}")
@@ -155,7 +163,10 @@ async def _generiere_sklavenfrage(chat_id: str, kontext: str) -> tuple[str, str]
         "gut kennt sie ihren Sub wirklich? STRIKT:\n"
         "- Die Frage MUSS aus den Daten unten eindeutig beantwortbar sein – erfinde "
         "NICHTS, was dort nicht steht.\n"
-        "- Keine Ja/Nein-Frage, keine Fangfrage.\n"
+        "- Keine Ja/Nein-Frage, keine Fangfrage; GENAU EINE Frage zu EINEM Kernpunkt – "
+        "keine Doppelfrage ('… und wie/warum …?').\n"
+        "- Die Frage darf die Antwort nicht vorwegnehmen: zitiere in der Frage keine "
+        "Formulierung aus den Daten, die selbst die gesuchte Antwort ist.\n"
         + ("- NICHT diese kürzlich gestellten Fragen wiederholen: "
            + " | ".join(letzte) + "\n" if letzte else "")
         + 'Antworte NUR als JSON: {"frage": "...", "antwort": "knappe Musterantwort"}\n'

@@ -937,13 +937,35 @@ async def blitz_check_job(bot: Bot) -> None:
     await blitz.sende_blitz(bot)
 
 
+# Gegenseitige Kollisions-Sperre der beiden Impulse (Live-Befund 06.09.:
+# spiel_impuls_job und coach_impuls_job werden beim Start zeitgleich als
+# 30-Min-Interval-Jobs registriert, ticken also in derselben Sekunde und
+# feuerten beide – zwei Quizze gleichzeitig in beiden Kanälen). Persistente
+# Anker (spiel_/coach_impuls_letzte_am) decken Tick-übergreifend ab, der
+# In-Prozess-Claim das Rennen innerhalb EINES Ticks (Anker fällt erst nach
+# dem Send, dazwischen liegt die LLM-Generierung).
+_IMPULS_KOLLISION = timedelta(hours=2)
+_impuls_claim: datetime | None = None
+
+
+def _impuls_slot_frei(anderer_anker: str) -> bool:
+    """True, wenn weder der persistente Sende-Anker des ANDEREN Impulses noch
+    ein frischer In-Prozess-Claim jünger als _IMPULS_KOLLISION ist."""
+    jetzt = datetime.now(timezone.utc)
+    if _impuls_claim and jetzt - _impuls_claim < _IMPULS_KOLLISION:
+        return False
+    return jetzt - _parse_datum(anderer_anker or "") >= _IMPULS_KOLLISION
+
+
 @_job_guard
 async def spiel_impuls_job(bot: Bot) -> None:
     """Spiel-Impuls 🎲 (Env-Gate SPIEL_IMPULS): die Herrin startet von sich aus
     ein Spiel Richtung Sklave – Quiz-Frage oder Wett-Angebot. Bewusst OHNE
     Task-Erteilung (die bleibt Domina-Sache bzw. Blitz-Opt-in), darum auch ohne
     Einzel-Freigabe. Fenster: SPIEL_IMPULS_FENSTER ∩ kinderfreie Zeiten;
-    Throttle über SPIEL_IMPULS_MIN_ABSTAND_TAGE (Anker im Sklaven-Profil)."""
+    Throttle über SPIEL_IMPULS_MIN_ABSTAND_TAGE (Anker im Sklaven-Profil).
+    Gegenseitige Kollisions-Sperre mit dem Coach-Impuls (s. _impuls_slot_frei)."""
+    global _impuls_claim
     if not config.SPIEL_IMPULS:
         return
     if _flow_aktiv(paare.sub_chat_id(), "Spiel-Impuls"):
@@ -963,6 +985,10 @@ async def spiel_impuls_job(bot: Bot) -> None:
     letzte = _parse_datum(sklave_profile.get("spiel_impuls_letzte_am", ""))
     if jetzt - letzte < timedelta(days=config.SPIEL_IMPULS_MIN_ABSTAND_TAGE):
         return
+    if not _impuls_slot_frei(domina_profile.get("coach_impuls_letzte_am", "")):
+        logger.info("Spiel-Impuls ausgesetzt – Kollisions-Sperre (Coach-Impuls war vor < %s dran).",
+                    _IMPULS_KOLLISION)
+        return
     # Der Wurf wird geloggt (Owner-Wunsch 03.09.2026): Er fällt nur, wenn alle
     # Gates offen sind — max. ein paar Zeilen am Abend, und man sieht beim
     # Beobachten, DASS gewürfelt wurde, nicht nur die seltenen Treffer.
@@ -971,18 +997,71 @@ async def spiel_impuls_job(bot: Bot) -> None:
         logger.info("Spiel-Impuls: Würfel dagegen (%.2f ≥ %.2f)",
                     wurf, config.SPIEL_IMPULS_CHANCE)
         return
+    # In-Prozess-Claim SYNCHRON nach dem Würfel: beide Impuls-Jobs ticken als
+    # gleich registrierte 30-Min-Jobs in derselben Sekunde – die persistenten
+    # Anker fallen erst nach dem Send, die LLM-Generierung läuft dazwischen
+    # (Live-Befund 06.09.: beide Kanäle bekamen zeitgleich ein Quiz).
+    if _impuls_claim and datetime.now(timezone.utc) - _impuls_claim < _IMPULS_KOLLISION:
+        logger.info("Spiel-Impuls ausgesetzt – Coach-Impuls hat den Slot in diesem Tick beansprucht.")
+        return
+    mein_claim = datetime.now(timezone.utc)
+    _impuls_claim = mein_claim
 
     from bot.handlers import quiz, wette  # lazy: zirkulären Import vermeiden
     spiele = [("quiz", quiz.sende_spontane_frage)]
-    if await wette.angebot_moeglich(sklave_profile):
+    lage = await wette.angebots_lage(sklave_profile)
+    if lage == "ok":
         spiele.append(("wette", wette.sende_spontanes_angebot))
-    name, senden = random.choice(spiele)
-    if not await senden(bot):
+    else:
+        # Sichtbar machen statt still schrumpfen (Owner-Frage 06.09.: "Wetten
+        # kamen nie") – ohne offene reguläre Aufgabe gibt es nichts zu wetten.
+        logger.info("Spiel-Impuls: Wette nicht anbietbar (%s) – nur Quiz im Pool.", lage)
+    random.shuffle(spiele)
+    gesendet = None
+    for name, senden in spiele:
+        if await senden(bot):
+            gesendet = name
+            break
+    if not gesendet:
+        if _impuls_claim is mein_claim:
+            _impuls_claim = None  # Slot wieder freigeben – es ging nichts raus
         return
     # Throttle-Anker erst nach erfolgreichem Versand (Muster blitz_letzte_am).
     await qdrant.patch_profile_fields(
         "sklave", {"spiel_impuls_letzte_am": datetime.now(timezone.utc).isoformat()})
-    logger.info("Spiel-Impuls gesendet: %s", name)
+    logger.info("Spiel-Impuls gesendet: %s", gesendet)
+
+
+async def _quiz_verfall_nachreichen(bot: Bot) -> None:
+    """Verfallenes Fachwissen-Quiz auflösen statt still schlucken: clear_if_stale
+    parkt die Auflösung unter coach_quiz_verfallen (state.py), der nächste
+    30-Min-Tick liefert sie nach und legt das Thema als status=offen in die
+    knowledge_base (darf wie FALSCH nach >= 7 Tagen wiederkommen). Best-effort:
+    bei Fehler bleibt der Park-Key liegen -> Retry beim nächsten Tick."""
+    chat_id = paare.dom_chat_id()
+    s = state.get(chat_id)
+    daten = s.get("coach_quiz_verfallen")
+    if not daten:
+        return
+    if state.is_paused() or state.get_mode(chat_id) not in ("chat", None):
+        return  # nicht in einen aktiven Flow platzen – nächster Tick
+    try:
+        await telegram_helper.send_domina(
+            bot,
+            t("COACH_QUIZ_VERFALLEN",
+              frage=telegram_helper.md_einbett_sicher(daten.get("frage", "")),
+              muster=telegram_helper.md_einbett_sicher(daten.get("muster", "")),
+              aufloesung=telegram_helper.md_einbett_sicher(daten.get("aufloesung", ""))),
+            parse_mode="Markdown")
+        s.pop("coach_quiz_verfallen", None)
+        await qdrant.save_quiz_wissen("domina", {
+            "thema": daten.get("thema", ""), "frage": daten.get("frage", ""),
+            "inhalt": daten.get("aufloesung") or daten.get("muster", ""),
+            "urteil": "UNBEANTWORTET", "status": "offen",
+        })
+        logger.info("Verfallenes Coach-Quiz nachgereicht: %s", daten.get("thema", "?"))
+    except Exception:
+        logger.exception("Quiz-Verfall-Nachreichen fehlgeschlagen – Retry nächster Tick")
 
 
 @_job_guard
@@ -991,7 +1070,12 @@ async def coach_impuls_job(bot: Bot) -> None:
     aus bei der Domina – spontane Quiz-Frage (Lern- oder Sklaven-Wissen) oder
     eine fertige Wett-Idee zum Weitergeben. Spiegel des Spiel-Impulses:
     Fenster ∩ kinderfreie Zeiten, Throttle-Anker coach_impuls_letzte_am im
-    Domina-Profil, Würfel-Log."""
+    Domina-Profil, Würfel-Log, Kollisions-Sperre (s. _impuls_slot_frei)."""
+    global _impuls_claim
+    # Vor allen Gates: liegengebliebene Quiz-Auflösung nachreichen – auch ein
+    # manuelles /quiz kann verfallen, unabhängig vom COACH_IMPULS-Schalter.
+    await _quiz_verfall_nachreichen(bot)
+
     if not config.COACH_IMPULS:
         return
     if _flow_aktiv(paare.dom_chat_id(), "Coach-Impuls"):
@@ -1008,22 +1092,43 @@ async def coach_impuls_job(bot: Bot) -> None:
     letzte = _parse_datum(domina_profile.get("coach_impuls_letzte_am", ""))
     if jetzt - letzte < timedelta(days=config.COACH_IMPULS_MIN_ABSTAND_TAGE):
         return
+    sklave_profile = await qdrant.get_user_profile("sklave") or {}
+    if not _impuls_slot_frei(sklave_profile.get("spiel_impuls_letzte_am", "")):
+        logger.info("Coach-Impuls ausgesetzt – Kollisions-Sperre (Spiel-Impuls war vor < %s dran).",
+                    _IMPULS_KOLLISION)
+        return
     wurf = random.random()
     if wurf >= config.COACH_IMPULS_CHANCE:
         logger.info("Coach-Impuls: Würfel dagegen (%.2f ≥ %.2f)",
                     wurf, config.COACH_IMPULS_CHANCE)
         return
+    # In-Prozess-Claim synchron nach dem Würfel (s. Kommentar am Spiel-Impuls).
+    if _impuls_claim and datetime.now(timezone.utc) - _impuls_claim < _IMPULS_KOLLISION:
+        logger.info("Coach-Impuls ausgesetzt – Spiel-Impuls hat den Slot in diesem Tick beansprucht.")
+        return
+    mein_claim = datetime.now(timezone.utc)
+    _impuls_claim = mein_claim
 
     from bot.handlers import coach_quiz  # lazy: zirkulären Import vermeiden
-    name, senden = random.choice([
+    kandidaten = [
         ("coach_quiz", coach_quiz.sende_spontane_frage),
         ("wett_idee", coach_quiz.sende_wett_idee),
-    ])
-    if not await senden(bot):
+    ]
+    # Fallback statt stillem Ausfall (Owner-Frage 06.09.): schlägt der gewürfelte
+    # Zweig fehl (z.B. leere LLM-Antwort), kommt der andere dran.
+    random.shuffle(kandidaten)
+    gesendet = None
+    for name, senden in kandidaten:
+        if await senden(bot):
+            gesendet = name
+            break
+    if not gesendet:
+        if _impuls_claim is mein_claim:
+            _impuls_claim = None
         return
     await qdrant.patch_profile_fields(
         "domina", {"coach_impuls_letzte_am": datetime.now(timezone.utc).isoformat()})
-    logger.info("Coach-Impuls gesendet: %s", name)
+    logger.info("Coach-Impuls gesendet: %s", gesendet)
 
 
 

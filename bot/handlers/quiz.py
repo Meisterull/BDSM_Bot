@@ -8,6 +8,7 @@ die Antwort des Sklaven bewertet Grok mit temp=0 (RICHTIG/TEILWEISE/FALSCH):
 richtig +15 Punkte, teilweise +5, falsch 0 + Konter der Herrin.
 """
 import logging
+import random
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -34,6 +35,11 @@ async def _wissens_kontext() -> str:
                         ("erfahrungsstand", "Erfahrungsstand")):
         wert = profil.get(feld)
         if isinstance(wert, list):
+            # DIV4-Analogon (Live-Befund 06.09.): eine dominante Interessen-Zeile
+            # prägte die Quiz-Fragen als immergleiches Motiv – subsampeln
+            # variiert den Fokus pro Quiz. Grenzen bleiben IMMER vollständig.
+            if feld == "interessen" and len(wert) > 6:
+                wert = random.sample(wert, 6)
             wert = ", ".join(wert)
         if wert:
             teile.append(f"- {label}: {wert}")
@@ -63,7 +69,10 @@ async def _generiere_frage(chat_id: str, kontext: str) -> tuple[str, str] | None
         "er dich und eure Dynamik? STRIKT:\n"
         "- Die Frage MUSS aus den Daten unten eindeutig beantwortbar sein – erfinde "
         "NICHTS, was dort nicht steht.\n"
-        "- Keine Ja/Nein-Frage, keine Fangfrage.\n"
+        "- Keine Ja/Nein-Frage, keine Fangfrage; GENAU EINE Frage zu EINEM Kernpunkt – "
+        "keine Doppelfrage ('… und wie/warum …?').\n"
+        "- Die Frage darf die Antwort nicht vorwegnehmen: zitiere in der Frage keine "
+        "Formulierung aus den Daten, die selbst die gesuchte Antwort ist.\n"
         + ("- NICHT diese kürzlich gestellten Fragen wiederholen: "
            + " | ".join(letzte_fragen) + "\n" if letzte_fragen else "")
         + "Antworte NUR als JSON: {\"frage\": \"...\", \"antwort\": \"knappe Musterantwort\"}\n"

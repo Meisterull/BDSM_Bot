@@ -335,12 +335,12 @@ def test_wette_angebots_lage():
     alt = qdrant.get_tasks_by_status
     try:
         qdrant.get_tasks_by_status = _tasks_regulaer
-        assert asyncio.run(wette._angebots_lage({"punkte": 50})) == "ok"
-        assert asyncio.run(wette._angebots_lage(
+        assert asyncio.run(wette.angebots_lage({"punkte": 50})) == "ok"
+        assert asyncio.run(wette.angebots_lage(
             {"punkte": 50, "wette": {"einsatz": 10}})) == "aktiv"
-        assert asyncio.run(wette._angebots_lage({"punkte": 5})) == "zu_wenig"
+        assert asyncio.run(wette.angebots_lage({"punkte": 5})) == "zu_wenig"
         qdrant.get_tasks_by_status = _tasks_nur_blitz
-        assert asyncio.run(wette._angebots_lage({"punkte": 50})) == "keine_aufgabe"
+        assert asyncio.run(wette.angebots_lage({"punkte": 50})) == "keine_aufgabe"
     finally:
         qdrant.get_tasks_by_status = alt
 

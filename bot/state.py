@@ -139,6 +139,19 @@ def clear_if_stale(chat_id: str, max_age: int | None = None) -> bool:
         return False
     logger.info("Stale-Mode '%s' (%.0f min inaktiv) automatisch auf 'chat' zurückgesetzt für %s",
                 mode, (time.time() - since) / 60, chat_id)
+    # Verfallenes Fachwissen-Quiz nicht still schlucken (Live-Befund 05.09.:
+    # Coach-Quiz blieb unbeantwortet und verschwand kommentarlos – der
+    # Lerneffekt der Auflösung verpuffte). Daten für den Nachreich-Send des
+    # nächsten Scheduler-Ticks parken; der Key steht bewusst NICHT in
+    # FLOW_STATE_KEYS, damit clear_flow_keys ihn gleich nicht miträumt.
+    if mode == "coach_quiz_antwort" and s.get("coach_quiz_typ") == "wissen" \
+            and s.get("coach_quiz_aufloesung"):
+        s["coach_quiz_verfallen"] = {
+            "thema": s.get("coach_quiz_thema", ""),
+            "frage": s.get("coach_quiz_frage", ""),
+            "muster": s.get("coach_quiz_muster", ""),
+            "aufloesung": s.get("coach_quiz_aufloesung", ""),
+        }
     s["mode"] = "chat"
     s["mode_since"] = None
     # Flow-Leichen miträumen (Review D6): ein verfallener reaktion_pending ließ
@@ -164,6 +177,9 @@ FLOW_STATE_KEYS = (
     "loeschen_tasks", "loeschen_bestaetigung_id", "loeschen_serie_stopp",
     "training_typ", "training_uebung",
     "quiz_frage", "quiz_musterantwort",
+    # Coach-Quiz (fehlten hier: Stale-Reset ließ die Frage-Leichen liegen)
+    "coach_quiz_typ", "coach_quiz_frage", "coach_quiz_muster",
+    "coach_quiz_aufloesung", "coach_quiz_thema",
     # Rollenspiel / Wunsch / Kommentar / Geheimnis
     "szenario_name", "szenario_ton", "szenario_vokabular", "szenario_seit",
     "rollenspiel_intensitaet", "pending_szenario", "pending_szenario_custom",

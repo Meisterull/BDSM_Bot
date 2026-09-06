@@ -516,6 +516,7 @@ MESSAGES = {
     "COACH_QUIZ_TEILWEISE": "🟡 *Close.* It was: _{antwort}_",
     "COACH_QUIZ_FALSCH": "❌ *Off – happens.* It was: _{antwort}_",
     "COACH_QUIZ_AUFLOESUNG": "📚 *Takeaway:* {aufloesung}",
+    "COACH_QUIZ_VERFALLEN": "🕰 No stress – I'll let that quiz question slide. So you still get the takeaway:\n\n❓ {frage}\n➡️ _{muster}_\n\n📚 {aufloesung}\n\n_The topic will come around again some day._",
     "COACH_QUIZ_ZU_WENIG_DATEN": "🧠 I don't know enough about him yet – maintain profile/dossier first, then we can quiz.",
     "COACH_QUIZ_FEHLER": "⚠️ Quiz not possible right now – try again later.",
     "COACH_IMPULS_QUIZ_PREFIX": "☕ Quick question from me – just because I'm curious:",

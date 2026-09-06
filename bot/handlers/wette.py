@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 EINSAETZE = (10, 25, 50)
 
 
-async def _angebots_lage(profil: dict) -> str:
+async def angebots_lage(profil: dict) -> str:
     """Prüft, ob dem Sklaven eine Wette angeboten werden kann.
     'ok' | 'aktiv' (Wette läuft schon) | 'keine_aufgabe' | 'zu_wenig' (Punkte).
     Blitzaufgaben zählen nicht als wettbare Aufgabe (Review D8/M10): sie sind
@@ -65,7 +65,7 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     profil = await qdrant.get_user_profile("sklave") or {}
     punkte = profil.get("punkte", 0)
-    lage = await _angebots_lage(profil)
+    lage = await angebots_lage(profil)
     if lage == "aktiv":
         await update.message.reply_text(
             t("WETTE_SCHON_AKTIV", einsatz=profil["wette"]["einsatz"]), parse_mode="Markdown")
@@ -86,7 +86,7 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def angebot_moeglich(profil: dict) -> bool:
     """Für den Spiel-Impuls: kann die Herrin gerade eine Wette anbieten?"""
-    return await _angebots_lage(profil) == "ok"
+    return await angebots_lage(profil) == "ok"
 
 
 async def sende_spontanes_angebot(bot) -> bool:
@@ -96,7 +96,7 @@ async def sende_spontanes_angebot(bot) -> bool:
     True nur bei Versand."""
     chat_id = paare.sub_chat_id()
     profil = await qdrant.get_user_profile("sklave") or {}
-    if await _angebots_lage(profil) != "ok":
+    if await angebots_lage(profil) != "ok":
         return False
     text, markup = _angebot_bauen(chat_id, profil.get("punkte", 0))
     # Schicksals-Sticker als Auftakt (Würfel/Roulette/Wette) – best-effort intern
