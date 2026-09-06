@@ -335,6 +335,21 @@ _WIE_WAERS_RE = re.compile(r"^\W{0,8}wie\s+w[äa]r['’`]?s\b", re.IGNORECASE)
 # False Positive kostet nur einen harmlosen Retry.
 _WIE_LANGE_RE = re.compile(
     r"\bwie\s+lange\s+(willst|magst|l[äa]sst)\s+du\b", re.IGNORECASE)
+# Nachfolger-Schablonen (Live-Messung 06.09.): das Modell wich dem
+# „passt…weil"-Verbot in der Mehrzahl der gemessenen Vorschläge auf „Das
+# holt/zieht/drängt genau seine …-Rolle raus" aus und erzählte dabei die
+# Vorlieben-Liste UND seine interne Absetz-Logik nach („ohne dass es wieder
+# nur X wird") – obwohl beides im Prompt verboten ist. Gleiche Mechanik:
+# Detektor + Retry statt Prompt-Hoffnung.
+_TREFFER_RE = re.compile(
+    r"\b(das|es|was)\s+(holt|zieht|dr[äa]ngt|trifft|kippt|bringt)\b[^.!?\n]{0,80}\bgenau\b",
+    re.IGNORECASE)
+_GENAU_PROFIL_RE = re.compile(
+    r"\bgenau\b[^.!?\n]{0,40}\b(vorlieb\w*|ding|rolle|seite|ecke|lust|kink\w*|level|antreibt|braucht)\b",
+    re.IGNORECASE)
+_ABSETZ_META_RE = re.compile(
+    r"\bohne dass\b[^.!?\n]{0,80}\b(wieder|üblich\w*|alten?|abdriftet|versteck\w*)\b",
+    re.IGNORECASE)
 
 
 def _formel_verstoesse(text: str) -> list[str]:
@@ -345,7 +360,111 @@ def _formel_verstoesse(text: str) -> list[str]:
         funde.append('Einstieg „Wie wär\'s …"')
     if _WIE_LANGE_RE.search(text or ""):
         funde.append('Abschluss-Frage „Wie lange willst du …?"')
+    if _TREFFER_RE.search(text or "") or _GENAU_PROFIL_RE.search(text or ""):
+        funde.append('Profil-Treffer-Meldung („holt/trifft genau seine …")')
+    if _ABSETZ_META_RE.search(text or ""):
+        funde.append('Absetz-Meta-Kommentar („ohne dass es wieder …")')
     return funde
+
+
+# ---------------------------------------------------------------------------
+# Zutaten-Sperrliste (Live-Befund 06.09.): die Kategorien ROTIEREN sauber, aber
+# dieselben zwei, drei Beiwerk-Praktiken garnierten fast jeden der gemessenen
+# Vorschläge, egal welche Kategorie gewählt war. Die Label-/Kategorien-
+# Sperrlisten sehen nur das Hauptthema – Beiwerk erkennt nur ein Text-Scan der
+# letzten Volltexte. Je Zutat: Anzeige-Label, Erkennungs-Regex,
+# Kategorien, die sie als HAUPTthema legitimieren (heute gewählt → kein Verbot,
+# sonst stünden zwei Absolutanweisungen gegeneinander, Lektion D7/B4).
+_ZUTATEN_MUSTER: list[tuple[str, re.Pattern, frozenset]] = [
+    ("Facesitting / aufs Gesicht setzen",
+     re.compile(r"facesit|(auf|über) (sein|ihr|dein)e?m? gesicht|aufs gesicht|gesicht (sitz|setz)", re.I),
+     frozenset({"Facesitting", "Smothering", "Arschanbetung", "Muschianbetung"})),
+    ("Lecken/Auslecken",
+     re.compile(r"leck", re.I),
+     frozenset({"Arschanbetung", "Muschianbetung", "Facesitting", "Toiletten_Sklave", "Creampie_Cleanup"})),
+    ("Spucken/Speichel",
+     re.compile(r"spuck|speichel", re.I),
+     frozenset({"Speichelspiel"})),
+    ("Edging / kurz vorm Höhepunkt stoppen",
+     re.compile(r"\bedg|kurz vorm (abspritzen|kommen|h[öo]hepunkt)", re.I),
+     frozenset({"Orgasmusverweigerung", "Ruiniertes_Orgasmen"})),
+    ("Strapon/Pegging",
+     re.compile(r"strap.?on|pegg", re.I),
+     frozenset({"Strap_on", "Pegging"})),
+    ("Fesseln",
+     re.compile(r"fessel|hogtie|\bseil", re.I),
+     frozenset({"Klassische_Fesselspiele"})),
+    ("Plug",
+     re.compile(r"\bplug", re.I),
+     frozenset({"Buttplug_Tragen", "Analdehnung", "Analeingangstraining"})),
+    ("Jammern-Motiv",
+     re.compile(r"jammer", re.I),
+     frozenset()),
+]
+
+
+def _verbrauchte_zutaten(volltexte: list, heutige_kategorien: list,
+                         kombi_vorlieben: list | None = None) -> list[str]:
+    """Beiwerk-Praktiken, die in den letzten Vorschlags-Volltexten vorkamen –
+    als Sperrliste für den heutigen Prompt. Befreit sind Zutaten, deren
+    Kategorie heute bewusst gewählt ist oder die in einer Kombi-Vorliebe
+    stecken (kein Widerspruch zwischen Absolutanweisungen)."""
+    heutige = set(heutige_kategorien or [])
+    kombi = [k for k in (kombi_vorlieben or []) if k]
+    # Kombi-Zeilen befreien doppelt: direkter Text-Match UND ihre gemappten
+    # Kategorien (eine „Facesitting…"-Kombi impliziert Lecken – das darf dann
+    # nicht zugleich als Zutat gesperrt sein).
+    kombi_kats: set = set()
+    for k in kombi:
+        kombi_kats |= kategorie_logik.kategorien_in_text(k)
+    out = []
+    for label, rx, legitimiert in _ZUTATEN_MUSTER:
+        if legitimiert & (heutige | kombi_kats):
+            continue
+        if any(rx.search(k) for k in kombi):
+            continue
+        if any(rx.search(v or "") for v in volltexte):
+            out.append(label)
+    return out
+
+
+# Alltags-/Ritual-Anker in Freitext-Vorlieben (Zeilen der Form „beim …", „nach
+# dem …", „wenn sie …") – bevorzugte Bühne für die Kombi.
+_SITUATIV_RE = re.compile(
+    r"\b(beim|nach dem|wenn|während|dusch\w*|föhn\w*|frühstück\w*|abends?|morgens?)\b", re.I)
+
+
+def _vorlieben_cluster(text: str) -> set[int]:
+    """Themen-Cluster-Indizes, die eine Freitext-Vorliebe berührt."""
+    cluster: set[int] = set()
+    for k in kategorie_logik.kategorien_in_text(text):
+        cluster |= kategorie_logik.KATEGORIE_ZU_CLUSTER.get(k, set())
+    return cluster
+
+
+def _kombi_vorlieben_wahl(vorlieben: list, dislikes: list | None = None) -> list | None:
+    """Zwei Freitext-Vorlieben für den KOMBI-IMPULS (Nutzer-Wunsch 06.09.):
+    bevorzugt eine situative Zeile (Alltags-Ritual als Bühne) als Anker plus
+    einen Partner aus einem ANDEREN Themen-Cluster – die Kategorie-Rotation
+    erzeugt solche Querverbindungen sonst nie. Zeilen, die auf Dislike-
+    Kategorien mappen, sind ausgeschlossen. Zeilen bleiben wörtlich erhalten
+    (Richtungs-/Bedingungs-Zusätze dürfen nicht abhandenkommen)."""
+    dislikes_set = set(dislikes or [])
+    kandidaten = [
+        v for v in (vorlieben or [])
+        if isinstance(v, str) and len(v.strip()) >= 3
+        and not (kategorie_logik.kategorien_in_text(v) & dislikes_set)
+    ]
+    if len(kandidaten) < 2:
+        return None
+    situativ = [v for v in kandidaten if _SITUATIV_RE.search(v)]
+    anker = random.choice(situativ or kandidaten)
+    anker_cluster = _vorlieben_cluster(anker)
+    fremd = [v for v in kandidaten
+             if v != anker and not (_vorlieben_cluster(v) & anker_cluster)]
+    rest = [v for v in kandidaten if v != anker]
+    partner = random.choice(fremd or rest)
+    return [anker, partner]
 
 
 def _cos(a: list, b: list) -> float:
@@ -456,19 +575,51 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         sklave_profile, letzte_tiny_kategorien, langeweile, wunsch_aktiv,
         domina_praeferenzen=domina_profile.get("kategorie_praeferenzen", {}))
 
+    # KOMBI-IMPULS (Nutzer-Wunsch 06.09.): an ~jedem dritten Tag zwei Vorlieben
+    # aus verschiedenen Themen zu EINER Szene verweben (gern ein Alltags-Ritual
+    # als Bühne). Nicht am Wunsch-Privileg-Tag – der gehört den explizit
+    # gewünschten Kategorien.
+    kombi_vorlieben = None
+    if not wunsch_aktiv and random.random() < config.KOMBI_IMPULS_CHANCE:
+        kombi_vorlieben = _kombi_vorlieben_wahl(
+            sklave_profile.get("vorlieben", []),
+            dislikes=kategorie_logik.dislike_kategorien(sklave_profile),
+        )
+        if kombi_vorlieben:
+            logger.info("Kombi-Impuls aktiv: %s + %s",
+                        kombi_vorlieben[0][:40], kombi_vorlieben[1][:40])
+
+    # Beiwerk der letzten 3 Vorschläge sperren (Zutaten-Sperrliste, s. Detektor).
+    verbrauchte_zutaten = _verbrauchte_zutaten(
+        letzte_tiny_volltexte[:3], gewaehlte_kategorien, kombi_vorlieben)
+
     # D9/DIV4: Interessen pro Lauf subsampeln – das Modell ankerte sonst auf
-    # einer einzelnen dominanten Zeile („Mag es wenn er jammert …" prägte 11
-    # von 14 gemessenen Outputs als immergleiches Motiv). Max. 6 zufällige
-    # Einträge steuern weiter, variieren aber den täglichen Fokus.
+    # einer einzelnen dominanten Zeile, die fast jeden gemessenen Output als
+    # immergleiches Motiv prägte. Max. 6 zufällige Einträge steuern weiter,
+    # variieren aber den täglichen Fokus.
     interessen = list(domina_profile.get("interessen", []) or [])
     if len(interessen) > 6:
         interessen = random.sample(interessen, 6)
+
+    # DIV4-Analogon für die Vorlieben (Live-Befund 06.09.): die komplette Liste
+    # ankerte jeden Vorschlag auf denselben Top-Einträgen, egal welche
+    # Kategorie gewählt war. Max. 8 zufällige
+    # Zeilen pro Lauf variieren den Tagesfokus; Kombi-Zeilen bleiben immer drin,
+    # Original-Reihenfolge erhalten (Zeilen wörtlich, Richtungs-Zusätze intakt).
+    alle_vorlieben = list(sklave_profile.get("vorlieben", []) or [])
+    if len(alle_vorlieben) > 8:
+        muss = [v for v in (kombi_vorlieben or []) if v in alle_vorlieben]
+        rest = [v for v in alle_vorlieben if v not in muss]
+        auswahl = set(muss) | set(random.sample(rest, 8 - len(muss)))
+        vorlieben_anzeige = [v for v in alle_vorlieben if v in auswahl]
+    else:
+        vorlieben_anzeige = alle_vorlieben
 
     return dict(
         erfahrungsstand=domina_profile.get("erfahrungsstand", "Anfänger"),
         level=domina_profile.get("aktuelles_level", 1),
         interessen=interessen,
-        sklave_vorlieben=sklave_profile.get("vorlieben", []),
+        sklave_vorlieben=vorlieben_anzeige,
         sklave_hard_limits=sklave_profile.get("hard_limits", []),
         # Kategorie-Dislikes aus Persönlichkeitsprofil (zentrale Logik)
         sklave_dislike_kategorien=kategorie_logik.dislike_kategorien(sklave_profile),
@@ -496,6 +647,8 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         # Domina-Signal auch fürs LLM sichtbar machen – es steuert sonst nur die
         # Kategorie-Auswahl, ohne dass der Prompt es erklärt (Review D7, B7).
         domina_kategorie_praeferenzen=domina_profile.get("kategorie_praeferenzen", {}),
+        verbrauchte_zutaten=verbrauchte_zutaten,
+        kombi_vorlieben=kombi_vorlieben,
     )
 
 
@@ -593,9 +746,10 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
             retry_prompt = (
                 prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN "
                 "Schablonen benutzt: " + "; ".join(funde) + ". Formuliere den Vorschlag "
-                "neu – der Inhalt darf bleiben, aber Einstieg, Begründung und Schluss "
-                "müssen ohne diese Muster auskommen (Begründung ohne 'passt…weil'-Bau, "
-                "Schluss ohne 'Wie lange…?'-Frage)."
+                "neu – der Inhalt darf bleiben, aber ohne diese Muster: Begründung ohne "
+                "'passt…weil'-Bau und ohne Profil-Abgleich ('holt/trifft genau seine …'), "
+                "kein Kommentar, wovon du dich absetzt ('ohne dass es wieder …'), "
+                "Schluss ohne 'Wie lange…?'-Frage."
             )
             neu = await limits_check.generate_mit_limit_retry(
                 retry_prompt, sk_hl, do_gr, system=system, reasoning=ist_wochenende,

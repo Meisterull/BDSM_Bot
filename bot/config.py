@@ -208,6 +208,11 @@ STT_MAX_SEKUNDEN = int(os.getenv("STT_MAX_SEKUNDEN", "120"))
 DAUER_CHECK_ABSTAND_MIN = int(os.getenv("DAUER_CHECK_ABSTAND_MIN", "90"))  # Minuten zwischen Checks
 DAUER_CHECK_CHANCE = float(os.getenv("DAUER_CHECK_CHANCE", "0.4"))         # pro 15-Min-Tick
 
+# KOMBI-IMPULS: an manchen Tagen verwebt der Tages-Vorschlag gezielt ZWEI
+# Vorlieben aus verschiedenen Themen zu einer Szene (gern ein Alltags-Ritual
+# als Bühne), statt nur eine Kategorie zu bedienen.
+KOMBI_IMPULS_CHANCE = float(os.getenv("KOMBI_IMPULS_CHANCE", "0.33"))  # pro Tages-Vorschlag
+
 # Wortlimits für generierte Vorschläge (werden in den Prompts referenziert)
 TINY_TASK_WORTLIMIT = int(os.getenv("TINY_TASK_WORTLIMIT", "200"))
 AUSFUEHRLICH_WORTLIMIT = int(os.getenv("AUSFUEHRLICH_WORTLIMIT", "400"))

@@ -409,6 +409,8 @@ def _aufgaben_kontext(
     offene_faeden: list = None,
     kategorie_reaktionen: dict = None,
     domina_kategorie_praeferenzen: dict = None,
+    verbrauchte_zutaten: list = None,
+    kombi_vorlieben: list = None,
 ) -> str:
     """Gemeinsamer Kontext-Block für tiny_task_vorschlag und
     ausfuehrlicher_task_vorschlag – Profil-Daten + alle Hinweis-Bausteine.
@@ -485,6 +487,18 @@ def _aufgaben_kontext(
             f"Auswahl-Logik: erwähne in der Nachricht NICHT, wovon du dich absetzt "
             f"oder was es heute alles nicht gibt.\n"
         )
+    # Zutaten-Sperrliste (Live-Befund 06.09.): die Label-/Kategorien-Sperren oben
+    # dedupen nur das HAUPTTHEMA – dieselben zwei, drei Beiwerk-Praktiken
+    # garnierten trotzdem fast jeden der gemessenen Vorschläge.
+    zutaten_str = ""
+    if verbrauchte_zutaten:
+        zutaten_str = (
+            "\nVERBRAUCHTE ZUTATEN (kamen in den letzten Vorschlägen schon vor – heute "
+            "KOMPLETT weglassen, auch nicht als Beiwerk, Übergang oder Abschluss-Geste):\n"
+            + "\n".join(f"  • {z}" for z in verbrauchte_zutaten)
+            + "\nDie ABWECHSLUNG oben deckt nur das Hauptthema – diese Liste gilt für "
+            "JEDES Element der Szene.\n"
+        )
     kategorie_str = ""
     if gewaehlte_kategorien:
         # Cross-Cluster-Slot markieren: ohne die Markierung kann das Modell die
@@ -503,11 +517,32 @@ def _aufgaben_kontext(
                 f"Die markierte Kategorie liegt bewusst außerhalb der zuletzt bedienten Themen – "
                 f"nimm sie, wenn du schwankst; die anderen nur, wenn sie die ABWECHSLUNG oben wirklich erfüllen.\n"
             )
+        # Bei aktivem Kombi-Impuls darf die Kategorien-Pflicht nicht als zweite
+        # Absolutanweisung dagegenstehen (gleiche Lektion wie D7/B4).
+        pflicht_zeile = (
+            "Heute hat der KOMBI-IMPULS unten Vorrang – diese Kategorien sind nur "
+            "Inspiration. Nur falls die Kombi nicht umsetzbar ist, MUSS der Vorschlag "
+            "aus einer dieser Kategorien stammen.\n"
+            if kombi_vorlieben else
+            "Der Vorschlag MUSS aus mindestens einer dieser Kategorien stammen.\n"
+        )
         kategorie_str = (
             f"\nKATEGORIEN FÜR HEUTE (wähle eine oder kombiniere zwei davon):\n"
             f"{kat_liste}\n"
-            f"Der Vorschlag MUSS aus mindestens einer dieser Kategorien stammen.\n"
+            f"{pflicht_zeile}"
             f"{cross_hinweis}"
+        )
+    kombi_str = ""
+    if kombi_vorlieben and len(kombi_vorlieben) >= 2:
+        kombi_str = (
+            f"\nKOMBI-IMPULS (heute): Verwebe diese beiden Vorlieben zu EINER Szene, "
+            f"die es in den letzten Vorschlägen so nicht gab:\n"
+            f"  1. {kombi_vorlieben[0]}\n"
+            f"  2. {kombi_vorlieben[1]}\n"
+            f"Beide behalten EXAKT ihre Richtung, Rollen und Bedingungen. Nennt eine der "
+            f"beiden eine Alltags-Situation (Morgen-/Abendroutine, gemeinsame Rituale …), "
+            f"nutze sie als Bühne der Szene. Verrate nicht, dass du kombinierst oder dass beides von "
+            f"{s['poss']}er Vorlieben-Liste kommt – es soll wie dein spontaner Einfall wirken.\n"
         )
     wunsch_str = ""
     if sklave_wunsch_kategorien:
@@ -530,7 +565,8 @@ def _aufgaben_kontext(
             f"\nLieblings-Kategorien {s['label_gen']} (HINWEIS, KEINE PFLICHT):\n"
             + "\n".join(_lieblings_zeile(k) for k in sklave_wunsch_kategorien)
             + "\nFalls eine der Pflicht-Kategorien für heute mit einer Lieblings-Kategorie "
-            f"übereinstimmt, betone diese Verbindung.\n"
+            f"übereinstimmt, greif bevorzugt zu ihr – aber als dein eigener Einfall, ohne "
+            f"die Vorliebe in der Nachricht als Begründung zu nennen.\n"
         )
     rejected_str = ""
     if abgelehnte_tiny_tasks:
@@ -658,9 +694,9 @@ def _aufgaben_kontext(
   {coach_persona.level_zeile(level)}
   Interessen: {', '.join(interessen) if interessen else 'nicht angegeben'}
 Profil {s['label_gen']}:
-  Vorlieben (als Hebel, nicht direkt benennen):{vorlieben_block}
+  Vorlieben (verdecktes Steuerwissen – als Hebel nutzen, NIE als Liste oder Treffer erwähnen):{vorlieben_block}
   Absolute Grenzen (NIEMALS): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine'}
-{dossier_str}{reaktions_muster_str}{domina_praef_str}{faeden_str}{kontext_str}{stimmung_str}{bewertung_str}{vertrauens_str}{schwierigkeit_str}{kat_level_str}{dislike_str}{spannungs_str}{nicht_wiederholen_str}{anfaenge_str}{abwechslung_str}{kategorie_str}{wunsch_str}{rejected_str}"""
+{dossier_str}{reaktions_muster_str}{domina_praef_str}{faeden_str}{kontext_str}{stimmung_str}{bewertung_str}{vertrauens_str}{schwierigkeit_str}{kat_level_str}{dislike_str}{spannungs_str}{nicht_wiederholen_str}{anfaenge_str}{abwechslung_str}{zutaten_str}{kategorie_str}{kombi_str}{wunsch_str}{rejected_str}"""
 
 
 # Explizites Verbot der eingeschliffenen Vorschlags-Schablone (Review D7, B1):
@@ -671,7 +707,8 @@ def _formel_verbot() -> str:
     return f"""FORMULIERUNGS-VIELFALT (strikt): Baue die Nachricht anders auf als zuletzt – variiere Einstieg, Aufbau und Schluss.
 Diese abgenutzten Schablonen-Sätze sind VERBOTEN (auch leicht abgewandelt):
 - Einstieg: "Hey, wie wär's mit …" / "Wie wär's heute mal mit …" / "Wie wär's, wenn du …"
-- Begründung: "Das passt (genau) zu {s['dat']}, weil …"
+- Begründung: "Das passt (genau) zu {s['dat']}, weil …" / "Das holt/zieht/trifft genau {s['poss']}e … (Rolle/Seite/Lust) raus" / "Genau {s['poss']} Ding" – jede Treffer-Meldung, die den Task mit {s['poss']}em Profil abgleicht
+- Meta-Kommentar: "ohne dass es wieder … wird/abdriftet" / "ohne dass {s['nom']} sich hinter … verstecken kann" – erwähne NIE, wovon du dich absetzt
 - Abschluss: "Klingt das machbar?" / "Wie lange willst du das laufen/ihn so stehen lassen?" (jede "Wie lange willst du …?"-Variante)
 Der Inhalt (Aufgabe + kurze Begründung) bleibt – nur die Formulierung muss frisch sein."""
 
@@ -687,7 +724,7 @@ def tiny_task_vorschlag(**kwargs) -> tuple[str, str]:
 Der Vorschlag soll:
 - Einfach umsetzbar sein (Tiny: 5-15 Min)
 - Zu Level und Komplexität passen
-- Eine kurze Begründung dabeihaben (1 Satz), warum dieser Task konkret zu {s['dat'].upper()} passt – nicht "weil Abwechslung wichtig ist"
+- Eine kurze Begründung dabeihaben (1 Satz), warum das JETZT dran ist – aus Beobachtbarem (wie {s['nom']} zuletzt reagiert hat, Stimmung, was ansteht), nicht "weil Abwechslung wichtig ist" und NIE als Profil-Abgleich ("trifft/holt genau {s['poss']}e Vorliebe/Rolle") – verrate nicht, was auf {s['poss']}er Vorlieben-Liste steht
 - Sich von den letzten Vorschlägen klar absetzen, nicht nur Variation
 
 {_formel_verbot()}
@@ -708,7 +745,7 @@ def ausfuehrlicher_task_vorschlag(**kwargs) -> tuple[str, str]:
 Der Vorschlag soll:
 - Detailliert sein, darf 2-3 Phasen haben
 - Zu Level und Komplexität passen
-- Eine kurze Begründung dabeihaben warum dieser Task konkret zu {s['dat'].upper()} passt – nicht "weil Abwechslung wichtig ist"
+- Eine kurze Begründung dabeihaben (1 Satz), warum das JETZT dran ist – aus Beobachtbarem (wie {s['nom']} zuletzt reagiert hat, Stimmung, was ansteht), nicht "weil Abwechslung wichtig ist" und NIE als Profil-Abgleich ("trifft/holt genau {s['poss']}e Vorliebe/Rolle") – verrate nicht, was auf {s['poss']}er Vorlieben-Liste steht
 - Sich von den letzten Vorschlägen klar absetzen
 
 {_formel_verbot()}

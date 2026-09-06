@@ -84,6 +84,8 @@ _SPEZIAL_KWARGS = {
                               "Fisting": {"positiv": 0, "negativ": 2}},
         domina_kategorie_praeferenzen={"Anal": {"positiv": 2, "negativ": 0},
                                        "Fisting": {"positiv": 0, "negativ": 1}},
+        verbrauchte_zutaten=["Spucken/Speichel"],
+        kombi_vorlieben=["Wachs (nur die Domina gießt)", "Spanking"],
     ),
     "format_context": dict(entries=[{"beschreibung": "K1", "datum": "2026-07-01",
                                      "wichtige_punkte": ["P1"], "zusammenfassung": "Z1"}]),

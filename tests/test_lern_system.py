@@ -1252,6 +1252,74 @@ def test_aufgaben_kontext_b3_b4_b7():
     assert "Klingt das machbar?" in system, "Formel-Verbot fehlt im System-Prompt"
 
 
+def test_vorschlag_tarnung_kombi_zutaten():
+    """06.09.: Kombi-Impuls + Zutaten-Sperrliste im Prompt, Kategorien-Pflicht
+    weicht bei aktivem Kombi auf, Formel-Verbot um Profil-Treffer erweitert."""
+    from bot.prompts import followup as fpb
+    system, user = fpb.tiny_task_vorschlag(
+        erfahrungsstand="x", level=1, interessen=[],
+        sklave_vorlieben=["A", "B"], sklave_hard_limits=[],
+        gewaehlte_kategorien=["Dienst"],
+        kombi_vorlieben=["Massage am Abend", "Wachs (nur die Domina gießt)"],
+        verbrauchte_zutaten=["Spucken/Speichel"],
+    )
+    assert "KOMBI-IMPULS" in user and "Massage am Abend" in user, user
+    assert "VERBRAUCHTE ZUTATEN" in user and "Spucken/Speichel" in user, user
+    assert "KOMBI-IMPULS unten Vorrang" in user, "Kategorien-Pflicht muss bei Kombi aufweichen"
+    assert "Treffer-Meldung" in system, "Formel-Verbot muss Profil-Abgleich verbieten"
+    assert "verdecktes Steuerwissen" in user, "Vorlieben-Label muss Tarnung fordern"
+    # ohne Kombi bleibt die Pflicht hart und die Blöcke fehlen
+    _, user2 = fpb.tiny_task_vorschlag(
+        erfahrungsstand="x", level=1, interessen=[], sklave_vorlieben=[],
+        sklave_hard_limits=[], gewaehlte_kategorien=["Dienst"])
+    assert "MUSS aus mindestens einer dieser Kategorien" in user2, user2
+    assert "KOMBI-IMPULS" not in user2 and "VERBRAUCHTE ZUTATEN" not in user2
+
+
+def test_formel_verstoesse_profil_abgleich():
+    """06.09.: Detektor erkennt die Nachfolger-Schablonen der Live-Messung –
+    Profil-Treffer-Meldungen und den Absetz-Meta-Kommentar."""
+    from bot.scheduler import followup as _sched
+    f = _sched._formel_verstoesse
+    # Muster der Live-Messung 06.09. NACHGESTELLT (Audit-Regel: nie reale Texte)
+    assert f("Das holt genau seine verspielte Seite raus.")
+    assert f("Das drängt ihn genau in seine devote Rolle.")
+    assert f("Genau sein Ding, weil er dabei weich wird.")
+    assert f("Das zieht ihn rein, ohne dass es wieder nur um Kniebeugen geht.")
+    assert f("Schön streng, ohne dass er sich hinter dem üblichen Zeilen-Schreiben verstecken kann.")
+    assert f("Frisch und genau sein Level.")
+    # Legitime Sätze ohne Schablone
+    assert not f("Er darf heute nicht kommen, ohne dass du es erlaubst.")
+    assert not f("Lass ihn genau zehn Minuten knien und beobachte ihn dabei.")
+
+
+def test_zutaten_und_kombi_helfer():
+    """06.09.: Zutaten-Scan über Volltexte + Kombi-Wahl (situativer Anker,
+    Partner aus anderem Cluster, Dislike-Zeilen ausgeschlossen)."""
+    from bot.scheduler import followup as _sched
+    texte = ["Setz dich auf sein Gesicht, lass ihn dich lecken und spuck ihm in den Mund."]
+    labels = " | ".join(_sched._verbrauchte_zutaten(texte, ["Dienst"]))
+    assert "Facesitting" in labels and "Spucken" in labels and "Lecken" in labels, labels
+    # Heute gewählte Kategorie legitimiert ihre Zutat (kein Widerspruch)
+    labels2 = " | ".join(_sched._verbrauchte_zutaten(texte, ["Facesitting"]))
+    assert "Facesitting" not in labels2 and "Lecken" not in labels2, labels2
+    # Kombi-Zeile legitimiert die Zutat ebenfalls
+    labels3 = " | ".join(_sched._verbrauchte_zutaten(
+        texte, ["Dienst"], ["Facesitting als Belohnung", "Wachs"]))
+    assert "Facesitting" not in labels3, labels3
+    # Kombi-Wahl: situative Zeile wird Anker, Partner kommt aus fremdem Cluster
+    vorlieben = ["Wachs (nur die Domina gießt)",
+                 "Spanking morgens nach dem Frühstück", "Verbale Demütigung"]
+    kombi = _sched._kombi_vorlieben_wahl(vorlieben, dislikes=[])
+    assert kombi and kombi[0] == "Spanking morgens nach dem Frühstück", kombi
+    # Wachs teilt den Impact/Schmerz-Cluster mit Spanking → einziger Fremd-Partner
+    assert kombi[1] == "Verbale Demütigung", kombi
+    # Dislike-Kategorie schließt die Zeile aus
+    kombi2 = _sched._kombi_vorlieben_wahl(vorlieben, dislikes=["Spanking"])
+    assert kombi2 and set(kombi2) == {"Wachs (nur die Domina gießt)", "Verbale Demütigung"}, kombi2
+    assert _sched._kombi_vorlieben_wahl(["nur eine Zeile"], dislikes=[]) is None
+
+
 def test_dossier_gekuerzt_satzgrenze():
     """B5: Dossier wird an der Satzgrenze gekürzt, nicht mitten im Wort."""
     from bot.prompts import coach_persona as cp
@@ -1390,6 +1458,9 @@ def _run():
     test_heuristik_label()
     test_gewichtete_auswahl_cross_info()
     test_aufgaben_kontext_b3_b4_b7()
+    test_vorschlag_tarnung_kombi_zutaten()
+    test_formel_verstoesse_profil_abgleich()
+    test_zutaten_und_kombi_helfer()
     test_dossier_gekuerzt_satzgrenze()
     test_format_context_dedup()
     test_eintrag_alter_tage()
