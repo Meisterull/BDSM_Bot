@@ -1291,6 +1291,16 @@ def test_formel_verstoesse_profil_abgleich():
     # Legitime Sätze ohne Schablone
     assert not f("Er darf heute nicht kommen, ohne dass du es erlaubst.")
     assert not f("Lass ihn genau zehn Minuten knien und beobachte ihn dabei.")
+    # Ausweich-Varianten der Live-Beobachtung 07.09. (nachgestellt): „passt …
+    # zu …" ohne „weil" und der Profil-Verrat „…, den du magst".
+    assert f("Passt perfekt zu deiner Laune, wenn du ihn heute nur benutzen willst.")
+    assert f("Das passt genau zu ihm.")
+    assert f("Das gibt dir den Rahmen, den du magst.")
+    assert f("Die Härte, die er so braucht.")
+    assert not f("Lass ihn so lange knien, wie du magst.")
+    assert not f("Das passt gut. Er zögert, weil er müde ist.")
+    # „passt zu …, weil" bleibt EIN Fund (kein Doppel-Eintrag)
+    assert len(f("Das passt zu ihm, weil er bei Schmerz sofort reagiert.")) == 1
 
 
 def test_zutaten_und_kombi_helfer():

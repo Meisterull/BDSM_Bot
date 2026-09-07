@@ -350,12 +350,24 @@ _GENAU_PROFIL_RE = re.compile(
 _ABSETZ_META_RE = re.compile(
     r"\bohne dass\b[^.!?\n]{0,80}\b(wieder|üblich\w*|alten?|abdriftet|versteck\w*)\b",
     re.IGNORECASE)
+# Ausweich-Varianten (Live-Beobachtung 07.09.): das „passt…weil"-Verbot wurde
+# mit „Passt perfekt zu deiner … , wenn …" umgangen (kein „weil" → Regex oben
+# griff nicht), und die Tarnung des Steuerwissens mit „…, den du magst".
+_PASST_ZU_RE = re.compile(
+    r"\bpasst\b\s+(?:\w+\s+){0,2}zu\s+(dir|dein\w*|ihm|ihr\w*|sein\w*|euch|eure\w*)\b",
+    re.IGNORECASE)
+_MAGST_RE = re.compile(
+    r"\b(den|die|das|was)\s+(du|er|sie)\s+(?:so\s+|ja\s+)?"
+    r"(magst|mag|liebst|liebt|brauchst|braucht|genie[ßs]t)\b",
+    re.IGNORECASE)
 
 
 def _formel_verstoesse(text: str) -> list[str]:
     funde = []
     if _PASST_WEIL_RE.search(text or ""):
         funde.append('Begründungs-Formel „passt …, weil"')
+    elif _PASST_ZU_RE.search(text or ""):
+        funde.append('Begründungs-Formel „passt (perfekt) zu dir/ihm …"')
     if _WIE_WAERS_RE.search(text or ""):
         funde.append('Einstieg „Wie wär\'s …"')
     if _WIE_LANGE_RE.search(text or ""):
@@ -364,6 +376,8 @@ def _formel_verstoesse(text: str) -> list[str]:
         funde.append('Profil-Treffer-Meldung („holt/trifft genau seine …")')
     if _ABSETZ_META_RE.search(text or ""):
         funde.append('Absetz-Meta-Kommentar („ohne dass es wieder …")')
+    if _MAGST_RE.search(text or ""):
+        funde.append('Profil-Treffer-Meldung („…, den du/er magst")')
     return funde
 
 
@@ -747,7 +761,8 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
                 prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN "
                 "Schablonen benutzt: " + "; ".join(funde) + ". Formuliere den Vorschlag "
                 "neu – der Inhalt darf bleiben, aber ohne diese Muster: Begründung ohne "
-                "'passt…weil'-Bau und ohne Profil-Abgleich ('holt/trifft genau seine …'), "
+                "'passt…weil'/'passt (perfekt) zu …'-Bau und ohne Profil-Abgleich "
+                "('holt/trifft genau seine …', '…, den du magst'), "
                 "kein Kommentar, wovon du dich absetzt ('ohne dass es wieder …'), "
                 "Schluss ohne 'Wie lange…?'-Frage."
             )

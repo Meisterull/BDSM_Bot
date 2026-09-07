@@ -14,6 +14,7 @@ eine fertige Wett-Idee zum Weitergeben – Spiegel des Spiel-Impulses.
 """
 import logging
 import random
+import re
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -352,30 +353,91 @@ async def sende_spontane_frage(bot) -> bool:
     return True
 
 
+# Nachsatz-Detektor (Live-Befund 07.09.): trotz „kein Vorwort, keine Erklärung"
+# hängte das Modell eine Rückfrage auf einen Flow an, den es nicht gibt
+# („… so abschicken oder noch was ändern?") – direkt darüber steht schon die
+# Template-Zeile „Nur eine Idee – gib sie weiter …". Deterministisch
+# abschneiden statt auf die Prompt-Regel hoffen (Lernmuster Detektor > Regel).
+_NACHSATZ_RE = re.compile(
+    r"(abschick|weitergeb|weiterleit|so\s+(rüber|raus)|ändern|anpass|soll ich|"
+    r"willst du (das|es|die|sie) so|passt (das|dir das|dir so)|was meinst du|"
+    r"was sagst du|einverstanden)", re.IGNORECASE)
+_LETZTER_FRAGESATZ_RE = re.compile(r"(?:^|(?<=[.!?…])\s+)([^.!?…\n]*\?)\s*$")
+
+
+def _nachsatz_entfernen(text: str) -> str:
+    """Schneidet abschließende Rückfrage-Sätze ab (nur wenn davor noch Text steht)."""
+    t = (text or "").strip()
+    while True:
+        m = _LETZTER_FRAGESATZ_RE.search(t)
+        if not m or m.start(1) == 0 or not _NACHSATZ_RE.search(m.group(1)):
+            return t
+        t = t[:m.start()].rstrip()
+
+
 async def sende_wett_idee(bot) -> bool:
     """Coach-Impuls: fertige Wett-Idee im Coach-Ton – zum Weitergeben an den
-    Sub, bewusst OHNE eigenen Bestätigungs-Flow. True nur bei Versand."""
+    Sub, bewusst OHNE eigenen Bestätigungs-Flow. True nur bei Versand.
+
+    Dieselben Bausteine wie der Tiny-Task (Live-Befund 07.09.: die erste
+    Wett-Idee verdrehte die Rollen – Vorlieben in Ich-Perspektive ohne
+    Rollen-Rahmen – und garnierte mit den Zutaten des Tipps vom selben Abend):
+    Rollen-Frame + Richtungs-Regel (Prompt), Vorlieben-Subsample,
+    Zutaten-Sperrliste, Schablonen-Detektor mit einem Retry, Nachsatz-Schnitt."""
+    # lazy: der Scheduler importiert coach_quiz selbst lazy (zirkulärer Import)
+    from bot.scheduler.followup import _formel_verstoesse, _verbrauchte_zutaten
+    from bot.prompts import followup as followup_prompts, rollen
+
     sklave_profil = await qdrant.get_user_profile("sklave") or {}
     domina_profil = await qdrant.get_user_profile("domina") or {}
-    vorlieben = sklave_profil.get("vorlieben", []) or []
-    system = (
-        coach_persona.fuer_coach_prompt()
-        + "\n\nSchlag deiner Freundin (der dominanten Seite) EINE konkrete Wette vor, "
-        "die sie ihrem Sub anbieten kann. STRIKT:\n"
-        "- Format: 2–4 lockere Sätze – die Wett-Bedingung (messbar, in den nächsten "
-        "1–3 Tagen entscheidbar) und was jede Seite bei Sieg bekommt.\n"
-        "- Einsätze bleiben im Rahmen der Vorlieben unten, nichts Neues einführen.\n"
-        "- Kein Vorwort, keine Erklärung – nur der Vorschlag selbst."
+    # Subsample wie beim Tiny-Task (DIV4-Analogon): die volle Liste ankert auf
+    # denselben Top-Einträgen. Zeilen wörtlich, Original-Reihenfolge erhalten.
+    vorlieben = list(sklave_profil.get("vorlieben", []) or [])
+    if len(vorlieben) > 8:
+        auswahl = set(random.sample(range(len(vorlieben)), 8))
+        vorlieben = [v for i, v in enumerate(vorlieben) if i in auswahl]
+    interessen = list(domina_profil.get("interessen", []) or [])
+    if len(interessen) > 6:
+        interessen = random.sample(interessen, 6)
+    try:
+        _, _, volltexte = await qdrant.get_recent_tiny_tasks(limit=3)
+    except Exception:
+        logger.exception("Wett-Idee: letzte Vorschläge nicht lesbar – ohne Zutaten-Sperre")
+        volltexte = []
+    zutaten = _verbrauchte_zutaten(list(volltexte or [])[:3], [], None)
+
+    sk_hl = sklave_profil.get("hard_limits", []) or []
+    do_gr = domina_profil.get("grenzen", []) or []
+    system, prompt = followup_prompts.wett_idee(
+        sklave_vorlieben=vorlieben, sklave_hard_limits=sk_hl,
+        domina_interessen=interessen, verbrauchte_zutaten=zutaten,
     )
-    prompt = "Seine Vorlieben:\n" + "\n".join(f"- {v}" for v in vorlieben)
-    idee = await limits_check.generate_mit_limit_retry(
-        prompt,
-        sklave_hard_limits=sklave_profil.get("hard_limits", []),
-        domina_grenzen=domina_profil.get("grenzen", []),
-        system=system, temperature=0.9, max_tokens=400,
-    )
+
+    async def _generiere(p: str) -> str | None:
+        return await limits_check.generate_mit_limit_retry(
+            p, sklave_hard_limits=sk_hl, domina_grenzen=do_gr,
+            system=system, temperature=0.9, max_tokens=400,
+        )
+
+    idee = await _generiere(prompt)
     if not idee:
         return False
+    idee = _nachsatz_entfernen(idee)
+    funde = _formel_verstoesse(idee)
+    if funde:
+        logger.info("Wett-Idee nutzt verbotene Schablonen (%s) – generiere einmal neu.",
+                    "; ".join(funde))
+        s = rollen.sub()
+        neu = await _generiere(
+            prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN Schablonen "
+            "benutzt: " + "; ".join(funde) + ". Formuliere die Wette neu – der Inhalt "
+            "darf bleiben, aber ohne Profil-Abgleich ('passt zu …', 'genau "
+            f"{s['poss']}e …', '…, den du magst') und ohne Kommentar, wovon du dich absetzt."
+        )
+        if neu:
+            neu = _nachsatz_entfernen(neu)
+            if len(_formel_verstoesse(neu)) <= len(funde):
+                idee = neu
     chat_id = paare.dom_chat_id()
     if state.is_paused() or state.get_mode(chat_id) not in ("chat", None):
         logger.info("Coach-Impuls-Wette nach Generierung verworfen – Pause/Mode geändert.")

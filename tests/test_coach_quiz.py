@@ -257,6 +257,61 @@ def test_frage_prompts_gehaertet():
         coach_quiz.qdrant.get_user_profile = orig_profil
 
 
+def test_wett_idee_rahmen_und_nachsatz():
+    """07.09.: Die Wett-Idee bekommt Rollen-Rahmen, Richtungs-Regel und die
+    Zutaten-Sperre aus den letzten Vorschlägen; angehängte Rückfragen fallen
+    vor dem Versand weg. (Muster nachgestellt, keine Live-Texte.)"""
+    from unittest.mock import AsyncMock
+    from bot.prompts import followup as fp
+    # Nachsatz-Schnitt
+    assert coach_quiz._nachsatz_entfernen(
+        "Wer zuerst lacht, verliert. Gewinnt er, darf er wählen.\n\n"
+        "Willst du das so abschicken oder noch was ändern?"
+    ) == "Wer zuerst lacht, verliert. Gewinnt er, darf er wählen."
+    assert coach_quiz._nachsatz_entfernen(
+        "Wer schafft heute mehr Liegestütze?") == "Wer schafft heute mehr Liegestütze?"
+    assert coach_quiz._nachsatz_entfernen(
+        "Wer gewinnt, bestimmt den Abend. Wer schafft mehr?") == "Wer gewinnt, bestimmt den Abend. Wer schafft mehr?"
+    # Prompt-Bausteine
+    system, prompt = fp.wett_idee(["Kaffee ans Bett, wenn sie es befiehlt"], ["Blut"],
+                                  ["Lesen"], ["Fesseln"])
+    assert "ROLLEN UND ANREDE" in system and "NIEMALS UMKEHREN" in system
+    assert "VERBRAUCHTE ZUTATEN" in system and "Fesseln" in system and "Rückfrage" in system
+    assert "Kaffee ans Bett" in prompt and "Blut" in prompt and "Lesen" in prompt
+    assert "VERBRAUCHTE ZUTATEN" not in fp.wett_idee([], [], [], [])[0]
+    # Ende-zu-Ende mit Stubs: Zutat aus dem letzten Tiny-Task-Volltext wird
+    # gesperrt, der Nachsatz fällt weg, der Rest geht raus.
+    captured, gesendet = {}, []
+
+    async def fake_retry(p, sklave_hard_limits=None, domina_grenzen=None, system="", **kw):
+        captured["system"], captured["prompt"] = system, p
+        return "Wer bis Freitag öfter pünktlich ist, gewinnt. Soll ich noch was ändern?"
+
+    async def fake_send(bot, text, **kw):
+        gesendet.append(text)
+
+    orig = (coach_quiz.limits_check.generate_mit_limit_retry, coach_quiz.qdrant.get_user_profile,
+            coach_quiz.qdrant.get_recent_tiny_tasks, coach_quiz.telegram_helper.send_domina,
+            coach_quiz.state.is_paused, coach_quiz.state.get_mode)
+    coach_quiz.limits_check.generate_mit_limit_retry = fake_retry
+    coach_quiz.qdrant.get_user_profile = AsyncMock(return_value={
+        "vorlieben": ["Fesseln mag ich"], "hard_limits": [], "interessen": [], "grenzen": []})
+    coach_quiz.qdrant.get_recent_tiny_tasks = AsyncMock(
+        return_value=([], [], ["Fessel ihn heute an den Stuhl."]))
+    coach_quiz.telegram_helper.send_domina = fake_send
+    coach_quiz.state.is_paused = lambda: False
+    coach_quiz.state.get_mode = lambda cid: "chat"
+    try:
+        assert asyncio.run(coach_quiz.sende_wett_idee(None)) is True
+        assert "Fesseln" in captured["system"] and "ROLLEN UND ANREDE" in captured["system"]
+        assert "Fesseln mag ich" in captured["prompt"]
+        assert gesendet and "pünktlich" in gesendet[0] and "ändern" not in gesendet[0]
+    finally:
+        (coach_quiz.limits_check.generate_mit_limit_retry, coach_quiz.qdrant.get_user_profile,
+         coach_quiz.qdrant.get_recent_tiny_tasks, coach_quiz.telegram_helper.send_domina,
+         coach_quiz.state.is_paused, coach_quiz.state.get_mode) = orig
+
+
 def _run():
     test_katalog_integritaet()
     test_thema_wahl_limits_und_vorlieben()
@@ -267,6 +322,7 @@ def _run():
     test_impuls_slot_frei()
     test_quiz_verfall_nachreichen()
     test_frage_prompts_gehaertet()
+    test_wett_idee_rahmen_und_nachsatz()
     print("✅ Alle Coach-Quiz-Tests bestanden")
 
 

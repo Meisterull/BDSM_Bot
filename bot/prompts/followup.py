@@ -703,11 +703,11 @@ Profil {s['label_gen']}:
 # die drei Sätze standen 29.06.–01.07. dreimal identisch in den Tiny-Tasks.
 # Funktion statt Modul-Konstante: die Rollen-Konstellation ist Laufzeit-Config.
 def _formel_verbot() -> str:
-    s = rollen.sub()
+    s, d = rollen.sub(), rollen.dom()
     return f"""FORMULIERUNGS-VIELFALT (strikt): Baue die Nachricht anders auf als zuletzt – variiere Einstieg, Aufbau und Schluss.
 Diese abgenutzten Schablonen-Sätze sind VERBOTEN (auch leicht abgewandelt):
 - Einstieg: "Hey, wie wär's mit …" / "Wie wär's heute mal mit …" / "Wie wär's, wenn du …"
-- Begründung: "Das passt (genau) zu {s['dat']}, weil …" / "Das holt/zieht/trifft genau {s['poss']}e … (Rolle/Seite/Lust) raus" / "Genau {s['poss']} Ding" – jede Treffer-Meldung, die den Task mit {s['poss']}em Profil abgleicht
+- Begründung: "Das passt (genau) zu {s['dat']}, weil …" / "Passt (perfekt) zu dir/{s['dat']} …" (auch ohne "weil") / "Das holt/zieht/trifft genau {s['poss']}e … (Rolle/Seite/Lust) raus" / "Genau {s['poss']} Ding" / "…, den/die du magst" – jede Treffer-Meldung, die den Task mit {s['poss']}em Profil oder dem Profil {d['real_gen']} abgleicht
 - Meta-Kommentar: "ohne dass es wieder … wird/abdriftet" / "ohne dass {s['nom']} sich hinter … verstecken kann" – erwähne NIE, wovon du dich absetzt
 - Abschluss: "Klingt das machbar?" / "Wie lange willst du das laufen/ihn so stehen lassen?" (jede "Wie lange willst du …?"-Variante)
 Der Inhalt (Aufgabe + kurze Begründung) bleibt – nur die Formulierung muss frisch sein."""
@@ -753,3 +753,41 @@ Der Vorschlag soll:
 Formuliere die Nachricht direkt an {d['real_akk']} (du-Form). Maximal {config.AUSFUEHRLICH_WORTLIMIT} Wörter.
 KEIN [AUFGABE: ...] Tag – das ist nur ein Vorschlag, keine automatische Aufgabe."""
     return system, _aufgaben_kontext(ausfuehrlich=True, **kwargs)
+
+
+def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
+              domina_interessen: list = None, verbrauchte_zutaten: list = None) -> tuple[str, str]:
+    """Coach-Impuls: fertige Wett-Idee für die Domina, zum Weitergeben an den Sub.
+    Dieselben Bausteine wie die Aufgaben-Vorschläge (Live-Befund 07.09.: der
+    erste Generator kannte weder Rollen-Rahmen noch Richtungs-Regel noch
+    Zutaten-Sperre – die Ich-Perspektive der Vorlieben wurde 1:1 übernommen,
+    der Sub wurde zur dritten Person und die Domina zugleich „du" und „sie")."""
+    from bot.prompts import coach_persona
+    s, d = rollen.sub(), rollen.dom()
+    sub_nom_gross = s["label_nom"][0].upper() + s["label_nom"][1:]
+    zutaten_str = ""
+    if verbrauchte_zutaten:
+        zutaten_str = (
+            "\nVERBRAUCHTE ZUTATEN (kamen in den letzten Aufgaben-Vorschlägen schon vor – "
+            "heute in KEINEM Einsatz, auch nicht als Beiwerk):\n"
+            + "\n".join(f"  • {z}" for z in verbrauchte_zutaten) + "\n"
+        )
+    system = f"""Schlag {d['real_dat']} EINE konkrete Wette vor, die {d['nom']} {s['label_dat']} anbieten kann – als Coach, der {d['akk']} wie eine vertraute Freundin begleitet.
+
+{coach_persona.fuer_aufgaben_vorschlag()}
+
+ROLLEN UND ANREDE (strikt):
+- Du sprichst {d['real_akk']} direkt mit „du" an. {sub_nom_gross} ist in deinem Text immer „{s['nom']}"/„{s['dat']}" bzw. {s['poss']}e Anrede – NIE „du", und NIE mit {d['real_dat']} verwechselt.
+- Die Vorlieben unten sind aus {s['poss']}er Sicht notiert: „ich/mich/mein" = {s['nom']}, „{d['nom']}" bzw. „{d['real']}" = dein „du". Übersetze das konsequent in deine Anrede – aus „… wenn {d['nom']} Kaffee trinkt" wird „… während du Kaffee trinkst".
+- Die Interessen {d['real_gen']} sind aus {d['poss'][:-1] if d['poss'].endswith('e') else d['poss']}er Sicht notiert: dort ist „ich/mein" = dein „du", und „{s['poss']}/{s['akk']}" = {s['label_nom']}.
+
+DIE WETTE (strikt):
+- 2–4 lockere Sätze: die Wett-Bedingung (messbar, in den nächsten 1–3 Tagen entscheidbar) und was jede Seite bei Sieg bekommt.
+- Einsätze nur aus den Vorlieben {s['label_gen']} und den Interessen {d['real_gen']} unten – nichts Neues einführen; Richtung, Rollen und Bedingungen jeder Vorliebe EXAKT übernehmen.
+- Kein Vorwort, keine Erklärung und KEINE Rückfrage am Ende („Willst du das so abschicken?", „Soll ich noch was ändern?") – die Weitergabe regelt der Bot. Nur der Vorschlag selbst.
+{zutaten_str}"""
+    vorlieben_block = ("\n" + "\n".join(f"  - {v}" for v in sklave_vorlieben)) if sklave_vorlieben else " nicht angegeben"
+    prompt = f"""Vorlieben {s['label_gen']} (verdecktes Steuerwissen, aus {s['poss']}er Sicht notiert – NIE als Liste oder Treffer erwähnen):{vorlieben_block}
+Absolute Grenzen {s['label_gen']} (NIEMALS): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine'}
+Interessen {d['real_gen']}: {', '.join(domina_interessen) if domina_interessen else 'nicht angegeben'}"""
+    return system, prompt
