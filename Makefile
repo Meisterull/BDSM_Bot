@@ -18,6 +18,7 @@ test:
 	python3 tests/test_stimmung.py
 	python3 tests/test_coach_quiz.py
 	python3 tests/test_stille_checkin.py
+	python3 tests/test_readme_commands.py
 
 # Image bauen – nur wenn die Tests grün sind.
 build: test
