@@ -137,6 +137,16 @@ def _flow_aktiv(chat_id: str, job_name: str) -> bool:
     if state.is_paused():
         logger.info("%s übersprungen – System per Safeword pausiert", job_name)
         return True
+    # Coach-Ruhe / Zuschauer-Modus (Stille-Check-in, 09.09.): ALLE proaktiven
+    # Dom-Jobs laufen über diesen Guard – zentral statt 13 Einzel-Gates.
+    # Berichte an die Domina (Aufgaben-Ergebnis, Gefühl, Wünsche) gehen nicht
+    # hier durch und laufen weiter. Sub-seitige Jobs sind nicht betroffen.
+    if chat_id == paare.dom_chat_id():
+        ruhe = state.coach_ruhe()
+        if ruhe:
+            logger.info("%s übersprungen – Coach-%s aktiv (Stille-Check-in)", job_name,
+                        "Ruhe" if ruhe.get("modus") == "ruhe" else "Zuschauer-Modus")
+            return True
     state.clear_if_stale(chat_id)
     mode = state.get_mode(chat_id)
     if mode not in ("chat", None):
@@ -849,6 +859,61 @@ async def luecken_check_job(bot: Bot) -> None:
     tage = (jetzt - letzte_aktivitaet).days if letzte_aktivitaet else config.LUECKEN_INTERVALL_TAGE
     from bot.handlers import luecke  # lazy: zirkulären Import vermeiden
     await luecke.sende_vorschlag(bot, max(tage, config.LUECKEN_INTERVALL_TAGE))
+
+
+@_job_guard
+async def stille_checkin_job(bot: Bot) -> None:
+    """Stille-Check-in 🔕 (täglich STILLE_CHECKIN_TIME): fragt die Domina nach
+    STILLE_CHECKIN_TAGE Tagen ohne jede Eingabe selbst, was gerade los ist.
+    Phasen-Logik in handlers/stille_checkin (gleiche_phase): pro Stille-Phase
+    max. 2 Fragen, die Antwort selbst zählt nicht als neue Aktivität."""
+    if config.STILLE_CHECKIN_TAGE <= 0:
+        return
+    from bot.handlers import stille_checkin  # lazy: zirkulären Import vermeiden
+    from bot.services import persona_config
+    dom_chat = paare.dom_chat_id()
+    if state.coach_ruhe():
+        return  # sie hat schon geantwortet (Ruhe/Zuschauer) – nicht nachbohren
+    if persona_config.abwesenheit():
+        return  # angekündigte Abwesenheit ist keine Stille
+    if _flow_aktiv(dom_chat, "Stille-Check-in"):
+        return
+
+    letzte = await stille_checkin.letzte_domina_eingabe()
+    if letzte is None:
+        return  # nie eine Eingabe (frisches Paar) – nichts, woran Stille messbar wäre
+    jetzt = datetime.now(timezone.utc)
+    still = jetzt - letzte
+    # 1h-Toleranz (Millisekunden-Kanten-Klasse, s. luecken_check_job).
+    if still < timedelta(days=config.STILLE_CHECKIN_TAGE) - timedelta(hours=1):
+        return
+
+    domina_profile = await qdrant.get_user_profile("domina") or {}
+    ci = domina_profile.get("stille_checkin") or {}
+    anzahl = 0
+    tage_seit_frage = 0
+    if ci.get("gefragt_am") and stille_checkin.gleiche_phase(letzte, ci):
+        if ci.get("antwort_am"):
+            return  # beantwortet – in dieser Phase nie wieder fragen
+        anzahl = int(ci.get("anzahl", 0) or 0)
+        if anzahl >= 2:
+            return  # zweimal gefragt, keine Antwort – Ruhe bis sie sich rührt
+        seit_frage = jetzt - _parse_datum(ci.get("gefragt_am", ""))
+        if seit_frage < timedelta(days=config.STILLE_ZWEITE_FRAGE_TAGE) - timedelta(hours=1):
+            return
+        tage_seit_frage = seit_frage.days
+
+    tage = still.days
+    if not await stille_checkin.frage_stellen(bot, tage, zweite=(anzahl == 1),
+                                              tage_seit_frage=tage_seit_frage):
+        return
+    # Neue Phase ersetzt den Eintrag komplett (alte antwort_* fallen weg).
+    await qdrant.patch_profile_fields("domina", {"stille_checkin": {
+        "phase_anker": letzte.isoformat(),
+        "gefragt_am": datetime.now(timezone.utc).isoformat(),
+        "anzahl": anzahl + 1,
+        "tage_still": tage,
+    }})
 
 
 @_job_guard

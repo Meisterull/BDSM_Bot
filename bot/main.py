@@ -23,7 +23,7 @@ from bot.handlers import (
     stimmung, inspiration, ziele, rueckblick, training,
     stats, bewertung, rollenspiel, wochenplanung,
     wunsch, kommentar, geheimnis, strafen_protokoll, tinytask,
-    wuerfel, wunschkategorien, privileg, wette, blitz, arc, event_arc, roulette, dauer, quiz, coach_quiz, advent, tiny_task_feedback, hilfe, resurface,
+    wuerfel, wunschkategorien, privileg, wette, blitz, arc, event_arc, roulette, dauer, quiz, coach_quiz, advent, tiny_task_feedback, hilfe, resurface, stille_checkin,
     lerntagebuch, coach_regeln, skill, kette_adaptiv, dossier, namen, meine_aufgaben,
     einstellungen, luecke, pairing, admin, abwesenheit,
 )
@@ -36,7 +36,7 @@ from bot.scheduler.followup import (
     kommentar_analyse_job, training_erinnerung_job, tiny_task_feedback_job,
     tiny_task_vorschlag_job, resurface_job, lerntagebuch_job,
     coach_reflexion_job, profil_pflege_job, backup_job, sklave_dossier_job,
-    offene_faeden_job, luecken_check_job, luecken_zustellung_job,
+    offene_faeden_job, luecken_check_job, luecken_zustellung_job, stille_checkin_job,
     blitz_check_job, blitz_ablauf_job, event_check_job, dauer_job, kalender_job,
     spiel_impuls_job, coach_impuls_job,
 )
@@ -128,6 +128,10 @@ async def paar_kontext_setzen(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def log_incoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Loggt JEDE eingehende Nachricht/Callback zentral (group=-2, blockiert nicht)."""
     try:
+        # Eingangsstempel (Stille-Check-in): JEDE Eingabe eines Paar-Mitglieds –
+        # Text, Medien oder Button – zählt als Lebenszeichen.
+        if update.effective_chat and paare.resolve(update.effective_chat.id) is not None:
+            state.touch_eingang(update.effective_chat.id)
         if update.callback_query:
             logger.info("EMPFANGEN ← %s | [button] %s",
                         _rolle(update.effective_chat.id), update.callback_query.data)
@@ -161,6 +165,7 @@ _CALLBACK_ROLLEN = (
     ("ketteanpass:",        paare.ROLLE_DOM),
     ("kettefail:",          paare.ROLLE_DOM),
     ("wochenplan:",         paare.ROLLE_DOM),
+    ("stille:",             paare.ROLLE_DOM),
     ("wette:",              paare.ROLLE_SUB),
     ("blitz:",              paare.ROLLE_SUB),
     ("followup:",           paare.ROLLE_SUB),
@@ -431,6 +436,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
         if mode == "tiny_task_feedback":
             await tiny_task_feedback.handle(update, context)
+            return
+        if mode == stille_checkin.MODE:
+            await stille_checkin.handle(update, context)
             return
         if mode == "aufgabe_kommentar":
             await kommentar.handle(update, context)
@@ -768,6 +776,11 @@ async def post_init(application: Application) -> None:
     # (der tägliche Check läuft pro Paar in plane_zeit_jobs).
     scheduler.add_job(_pro_paar(luecken_zustellung_job), "interval", minutes=15,
                       args=[application.bot], id="luecken_zustellung", replace_existing=True)
+    # Stille-Check-in 🔕: täglich – fragt die Domina nach STILLE_CHECKIN_TAGE
+    # Tagen ohne jede Eingabe selbst nach dem Grund (Env-Zeit, nicht pro Paar).
+    _sc_h, _sc_m = config.hm(config.STILLE_CHECKIN_TIME)
+    scheduler.add_job(_pro_paar(stille_checkin_job), "cron", hour=_sc_h, minute=_sc_m,
+                      args=[application.bot], id="stille_checkin", replace_existing=True)
     scheduler.add_job(_pro_paar(blitz_check_job), "interval", minutes=30,
                       args=[application.bot], id="blitz_check", replace_existing=True)
     scheduler.add_job(_pro_paar(blitz_ablauf_job), "interval", minutes=5,
@@ -879,6 +892,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(privileg.callback_einloesen,     pattern=r"^privileg:einloesen:"))
     app.add_handler(CallbackQueryHandler(privileg.callback_entscheidung,  pattern=r"^privileg:(bestaetigen|verweigern):"))
     app.add_handler(CallbackQueryHandler(tiny_task_feedback.callback_button, pattern=r"^tinyfb:"))
+    app.add_handler(CallbackQueryHandler(stille_checkin.callback,           pattern=r"^stille:"))
     app.add_handler(CallbackQueryHandler(wuerfel.callback,                pattern=r"^wuerfel:"))
     app.add_handler(CallbackQueryHandler(wette.callback,                  pattern=r"^wette:"))
     app.add_handler(CallbackQueryHandler(blitz.callback_fertig,           pattern=r"^blitz:fertig:"))

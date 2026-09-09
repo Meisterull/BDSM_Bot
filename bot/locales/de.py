@@ -1025,6 +1025,48 @@ MESSAGES = {
         "als Text (z.B. 'zu komplex', 'falsche Stimmung')."
     ),
     "TINYFB_KEIN_OFFENER": "Kein offener Tiny-Task-Vorschlag der letzten 72h gefunden.",
+    # --- Stille-Check-in 🔕 (handlers/stille_checkin) ------------------------
+    # Fallback-Frage, wenn die Coach-Stimme (LLM) ausfällt oder unbrauchbar ist.
+    "STILLE_FRAGE_FALLBACK": (
+        "Hey du – seit {tage} Tagen kein Wort von dir, nicht mal ein Antippen. Kein Vorwurf, "
+        "ich frag nur ehrlich: Was ist gerade los? Fehlt die Zeit, passen die Vorschläge nicht, "
+        "läuft's gerade einfach ohne mich, oder nervt dich was? Tipp unten an oder schreib mir "
+        "kurz – und wenn du gerade Pause brauchst, ist das auch völlig okay."
+    ),
+    "STILLE_FRAGE_ZWEITE_FALLBACK": (
+        "Ich hatte vor {tage} Tagen schon mal gefragt – und lass dich danach in Ruhe, versprochen. "
+        "Nur einmal noch, ganz leicht: Was bräuchtest du gerade von mir – Pause, andere Vorschläge, "
+        "oder einfach nichts? Ein Tipp unten reicht."
+    ),
+    "BUTTON_STILLE_KEINE_ZEIT": "⏳ Gerade keine Zeit / kein Kopf",
+    "BUTTON_STILLE_AUFGABEN": "🎯 Die Vorschläge passen nicht",
+    "BUTTON_STILLE_OHNE_BOT": "🤷 Läuft gerade ohne dich",
+    "BUTTON_STILLE_NERVT": "😬 Irgendwas nervt mich",
+    "BUTTON_STILLE_OHNE_BOT_JA": "👀 Ja, nur noch Berichte",
+    "STILLE_ANTWORT_KEINE_ZEIT": (
+        "Alles klar, danke fürs Bescheidsagen. 💛 Ich halte mich bis zum {bis} zurück – keine "
+        "Vorschläge, Fragen oder Impulse von mir. Was beim Sklaven passiert, bekommst du weiter. "
+        "Früher wieder loslegen: /einstellungen → 9."
+    ),
+    "STILLE_ANTWORT_OHNE_BOT": (
+        "Verstanden – dann schaue ich ab jetzt nur noch zu: 👀 du bekommst nur, was beim Sklaven "
+        "passiert, sonst halte ich die Klappe. Wenn du mich wieder brauchst: /einstellungen → 9."
+    ),
+    "STILLE_RUECKFRAGE_AUFGABEN": (
+        "Danke, das hilft mir. Was passt nicht – Richtung, Härte, Länge, Themen? "
+        "Schreib's mir in einem Satz, ich merk's mir für alle künftigen Vorschläge."
+    ),
+    "STILLE_RUECKFRAGE_NERVT": (
+        "Okay, raus damit – was nervt? Zu viel, falscher Ton, Technik? "
+        "Ein Satz reicht, ich merk's mir."
+    ),
+    "STILLE_NOTIERT": "Notiert und gemerkt. 💛 Danke, dass du's mir gesagt hast.",
+    "STILLE_FREITEXT_DANKE": "Danke, dass du's mir sagst – ich hab's mir gemerkt. 💛",
+    "STILLE_OHNE_BOT_ANGEBOT": (
+        "Klingt, als läuft's gerade ohne mich – völlig okay. Soll ich in den Zuschauer-Modus "
+        "gehen? Dann bekommst du nur noch Berichte über den Sklaven und sonst nichts von mir. "
+        "Zurück jederzeit über /einstellungen → 9."
+    ),
     "TINYFB_ANTWORT_UEBERNOMMEN": "✅ Notiert als _übernommen_.",
     "TINYFB_ANTWORT_GUT": "👌 Notiert. Wird positiv für zukünftige Vorschläge gewertet.",
     "TINYFB_NOTIERT": "📝 Notiert: _{grund}_\nWird in zukünftigen Vorschlägen berücksichtigt.",

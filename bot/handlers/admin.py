@@ -81,6 +81,7 @@ async def paar_loeschen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     bericht = await qdrant.loesche_paar_daten(paar_id)
 
     state.set_paused(False, paar_id=paar_id)
+    state.set_coach_ruhe(None, paar_id=paar_id)
     state.vergiss_chat(paar.dom_chat_id)
     state.vergiss_chat(paar.sub_chat_id)
     persona_config.vergiss_paar(paar_id)

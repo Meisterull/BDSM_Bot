@@ -163,6 +163,19 @@ COACH_IMPULS_FENSTER = os.getenv("COACH_IMPULS_FENSTER", "09:00-21:00")
 COACH_IMPULS_CHANCE = float(os.getenv("COACH_IMPULS_CHANCE", "0.04"))    # pro 30-Min-Check
 COACH_IMPULS_MIN_ABSTAND_TAGE = int(os.getenv("COACH_IMPULS_MIN_ABSTAND_TAGE", "1"))
 
+# Stille-Check-in 🔕 (handlers/stille_checkin.py): hat die dominante Seite
+# STILLE_CHECKIN_TAGE Tage weder geschrieben noch etwas angetippt, fragt der
+# Coach sie selbst, was gerade los ist (Buttons: keine Zeit / Vorschläge passen
+# nicht / läuft ohne Bot / nervt; Freitext geht auch). Die Antwort bleibt beim
+# Coach und steuert sanft: "keine Zeit" → STILLE_RUHE_TAGE Coach-Ruhe,
+# "läuft ohne Bot" → Zuschauer-Modus (beides gatet die proaktiven Dom-Jobs,
+# Rücknahme /einstellungen → 9). Pro Stille-Phase max. 2 Fragen, die zweite
+# nach STILLE_ZWEITE_FRAGE_TAGE ohne Antwort. 0 = aus.
+STILLE_CHECKIN_TAGE = int(os.getenv("STILLE_CHECKIN_TAGE", "7"))
+STILLE_CHECKIN_TIME = os.getenv("STILLE_CHECKIN_TIME", "20:30")
+STILLE_ZWEITE_FRAGE_TAGE = int(os.getenv("STILLE_ZWEITE_FRAGE_TAGE", "14"))
+STILLE_RUHE_TAGE = int(os.getenv("STILLE_RUHE_TAGE", "14"))
+
 # Sprachnachrichten der Herrin 🔊 (lokales Piper via Wyoming-Protokoll).
 # Leer = aus. Beispiel: tcp://192.0.2.10:10200 (wyoming-piper auf dem Host).
 # Aufgaben-Zustellungen kommen dann zusätzlich als Telegram-Voice (best-effort).
@@ -371,6 +384,7 @@ def validate() -> None:
         ("LUECKEN_CHECK_TIME", LUECKEN_CHECK_TIME),
         ("LUECKEN_ABEND_TIME", LUECKEN_ABEND_TIME),
         ("TERMIN_ZUSTELLUNG_TIME", TERMIN_ZUSTELLUNG_TIME),
+        ("STILLE_CHECKIN_TIME", STILLE_CHECKIN_TIME),
     ):
         # Stunden strikt 00-23: "[0-2]?\d" hätte auch 24-29 akzeptiert und der
         # Crash käme dann doch erst beim Job-Scheduling in post_init.

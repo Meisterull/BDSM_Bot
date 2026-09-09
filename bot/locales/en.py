@@ -1027,6 +1027,47 @@ MESSAGES = {
         "as text (e.g. 'too complex', 'wrong mood')."
     ),
     "TINYFB_KEIN_OFFENER": "No open tiny-task suggestion found within the last 72h.",
+    # --- Silence check-in 🔕 (handlers/stille_checkin) ------------------------
+    "STILLE_FRAGE_FALLBACK": (
+        "Hey you – {tage} days without a word from you, not even a tap. No reproach, "
+        "I'm just asking honestly: what's going on? No time, the suggestions don't fit, "
+        "things are simply running without me right now, or is something bugging you? "
+        "Tap below or drop me a line – and if you need a break right now, that's totally fine."
+    ),
+    "STILLE_FRAGE_ZWEITE_FALLBACK": (
+        "I asked {tage} days ago already – and after this I'll leave you alone, promise. "
+        "Just once more, lightly: what would you need from me right now – a break, different "
+        "suggestions, or simply nothing? One tap below is enough."
+    ),
+    "BUTTON_STILLE_KEINE_ZEIT": "⏳ No time / no headspace right now",
+    "BUTTON_STILLE_AUFGABEN": "🎯 The suggestions don't fit",
+    "BUTTON_STILLE_OHNE_BOT": "🤷 Running without you right now",
+    "BUTTON_STILLE_NERVT": "😬 Something's bugging me",
+    "BUTTON_STILLE_OHNE_BOT_JA": "👀 Yes, reports only",
+    "STILLE_ANTWORT_KEINE_ZEIT": (
+        "Got it, thanks for telling me. 💛 I'll hold back until {bis} – no suggestions, "
+        "questions or impulses from me. You'll still get what happens with the sub. "
+        "Want to start earlier: /einstellungen → 9."
+    ),
+    "STILLE_ANTWORT_OHNE_BOT": (
+        "Understood – from now on I'll just watch: 👀 you only get what happens with the sub, "
+        "otherwise I keep quiet. When you need me again: /einstellungen → 9."
+    ),
+    "STILLE_RUECKFRAGE_AUFGABEN": (
+        "Thanks, that helps. What doesn't fit – direction, intensity, length, topics? "
+        "One sentence is enough, I'll keep it in mind for all future suggestions."
+    ),
+    "STILLE_RUECKFRAGE_NERVT": (
+        "Okay, out with it – what's bugging you? Too much, wrong tone, tech? "
+        "One sentence is enough, I'll remember it."
+    ),
+    "STILLE_NOTIERT": "Noted and remembered. 💛 Thanks for telling me.",
+    "STILLE_FREITEXT_DANKE": "Thanks for telling me – I've made a note of it. 💛",
+    "STILLE_OHNE_BOT_ANGEBOT": (
+        "Sounds like things are running without me right now – totally fine. Shall I switch to "
+        "spectator mode? Then you only get reports about the sub and nothing else from me. "
+        "Back anytime via /einstellungen → 9."
+    ),
     "TINYFB_ANTWORT_UEBERNOMMEN": "✅ Noted as _adopted_.",
     "TINYFB_ANTWORT_GUT": "👌 Noted. Will count positively for future suggestions.",
     "TINYFB_NOTIERT": "📝 Noted: _{grund}_\nWill be taken into account in future suggestions.",

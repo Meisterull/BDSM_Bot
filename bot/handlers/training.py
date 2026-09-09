@@ -217,6 +217,11 @@ async def daily_training(bot: Bot) -> None:
     """Sendet täglich eine kurze Mindset-Frage oder Challenge."""
     if not config.TRAINING_ENABLED:
         return
+    # Coach-Ruhe/Zuschauer-Modus (Stille-Check-in): proaktiver Dom-Content
+    # pausiert – dieser Pfad läuft nicht über scheduler._flow_aktiv.
+    if state.coach_ruhe():
+        logger.info("Training übersprungen – Coach-Ruhe/Zuschauer-Modus aktiv")
+        return
 
     domina_chat = paare.dom_chat_id()
     state.clear_if_stale(domina_chat)  # liegengebliebenen UI-Flow nicht ewig blockieren lassen

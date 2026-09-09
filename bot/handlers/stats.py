@@ -10,6 +10,7 @@ from bot.services import paare
 from bot.services import qdrant, kategorie_logik
 from bot.services.punkte import format_abzeichen, SKLAVE_ABZEICHEN
 from bot.messages import t
+from bot.handlers import stille_checkin
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,16 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if naechstes:
         text += f"\n🎯 *Nächstes Abzeichen:*\n{naechstes['emoji']} {naechstes['name']} – {naechstes['hinweis']}"
+
+    # Stille-Check-in / Coach-Ruhe: nur DASS gefragt/geantwortet wurde, nie was
+    # (Owner-Entscheid 09.09.: die Antwort bleibt beim Coach).
+    try:
+        stille = await stille_checkin.status_zeilen()
+    except Exception:
+        logger.exception("Stille-Status für /stats nicht ladbar")
+        stille = []
+    if stille:
+        text += "\n\n" + "\n".join(stille)
 
     await update.message.reply_text(text, parse_mode="Markdown")
 

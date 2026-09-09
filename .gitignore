@@ -29,3 +29,5 @@ scripts/.export_blockliste
 ssl-miniapp/
 # Telegram-WebApp-Bootstrap (vendored, s. MINIAPP.md): nicht committen
 bot/webapp/telegram-web-app.js
+.env.bak*
+.env.*.bak

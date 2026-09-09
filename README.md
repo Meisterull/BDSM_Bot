@@ -47,7 +47,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 ### Learning & coaching
 
 - **Learning system** — category reactions, personality tags, preference detection from chat, dislike thresholds, difficulty auto-adjustment, trust score, level system, exploration of adjacent categories with a 60/30/10 mix of favourites / mid / fresh topics.
-- **Coach side** — task inspiration, weekly planning, psycho training, bi-weekly learning-curve analysis, curated knowledge notes (`/lerne`) that feed generators, a proactive "gap filler" (opt-in, double confirmation) when no task was given for a while.
+- **Coach side** — task inspiration, weekly planning, psycho training, bi-weekly learning-curve analysis, curated knowledge notes (`/lerne`) that feed generators, a proactive "gap filler" (opt-in, double confirmation) when no task was given for a while, and a **silence check-in**: after a week without any input from the dominant side the coach asks what is going on (one-tap answers) and adapts – coach quiet for two weeks, or a spectator mode that only reports.
 
 ### Safety
 

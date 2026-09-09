@@ -15,6 +15,7 @@ from bot import config, state
 from bot.services import paare
 from bot.services import persona_config, telegram_helper
 from bot.prompts import persona_presets, rollen
+from bot.handlers import stille_checkin
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ FELDER = {
           "Text eingeben – oder `-` zum Entfernen."),
     "7": ("zeitplan", "Tages-Zeiten", ""),               # Hinweis wird dynamisch gebaut
     "8": ("safeword", "Safeword", ""),                   # Hinweis wird dynamisch gebaut
+    "9": ("coach_ruhe", "Coach-Ruhe / Zuschauer-Modus", ""),  # Hinweis wird dynamisch gebaut
 }
 
 # Reihenfolge + Labels der pro Paar konfigurierbaren Zeiten (persona_config.ZEIT_FELDER)
@@ -103,9 +105,10 @@ def _menu_text() -> str:
         f"6️⃣ Setup\\-Kontext: {esc(setup_kurz or '—')}",
         f"7️⃣ Tages\\-Zeiten: Follow\\-up {esc(persona_config.zeit('followup_time'))} u\\.a\\.",
         f"8️⃣ Safeword: {esc(persona_config.safeword())} / {esc(persona_config.resume_wort())}",
+        f"9️⃣ Coach\\-Ruhe: {esc(stille_checkin.ruhe_status_text() or 'aus')}",
         "",
         "✏️ Was möchtest du ändern\\?",
-        "Schreibe die Nummer \\(1\\-8\\) oder /abbrechen",
+        "Schreibe die Nummer \\(1\\-9\\) oder /abbrechen",
     ]
     return "\n".join(zeilen)
 
@@ -144,6 +147,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             hinweis = _zeitplan_hinweis()
         elif feld_key == "safeword":
             hinweis = _safeword_hinweis()
+        elif feld_key == "coach_ruhe":
+            hinweis = stille_checkin.einstellungs_hinweis()
         await update.message.reply_text(
             t("EINSTELLUNGEN_FELD_PROMPT", label=label, hinweis=hinweis), parse_mode="Markdown"
         )
@@ -216,6 +221,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     )
                     return
                 await persona_config.set_safeword(teile[0], teile[1])
+        elif feld_key == "coach_ruhe":
+            if not stille_checkin.einstellung_anwenden(text):
+                await update.message.reply_text(
+                    t("EINSTELLUNGEN_STIL_UNBEKANNT", hinweis=stille_checkin.einstellungs_hinweis()),
+                    parse_mode="Markdown",
+                )
+                return
         elif feld_key == "zeitplan":
             teile = text.split()
             nummern = {str(i): feld for i, (feld, _) in enumerate(ZEIT_REIHENFOLGE, 1)}

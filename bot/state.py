@@ -48,7 +48,13 @@ STALE_REAKTION_SECONDS = int(os.getenv("STALE_REAKTION_SECONDS", "10800"))  # 3 
 # zählt ab der LETZTEN Rollenspiel-Nachricht (touch_mode in main.py) – ein
 # eingeschlafenes Spiel verfällt also 3 Tage nach der letzten Aktivität.
 STALE_ROLLENSPIEL_SECONDS = int(os.getenv("STALE_ROLLENSPIEL_SECONDS", str(3 * 86400)))  # 3 Tage
+# Die Stille-Check-in-Frage (handlers/stille_checkin) geht an eine Dom-Seite,
+# die seit Tagen nichts tippt – eine Antwort kommt, wenn überhaupt, irgendwann.
+# Der Mode blockiert nur proaktive Dom-Jobs, die in der Stille ohnehin ins
+# Leere liefen; Fremd-Anliegen im Fenster routet die Klassifikation weiter.
+STALE_STILLE_SECONDS = int(os.getenv("STALE_STILLE_SECONDS", str(48 * 3600)))  # 2 Tage
 _MODE_MAX_AGE = {"stimmung": STALE_STIMMUNG_SECONDS,
+                 "stille_checkin": STALE_STILLE_SECONDS,
                  "tiny_task_feedback": STALE_TINYFB_SECONDS,
                  "reaktion_pending": STALE_REAKTION_SECONDS,
                  "rollenspiel_aktiv": STALE_ROLLENSPIEL_SECONDS}
@@ -193,6 +199,8 @@ FLOW_STATE_KEYS = (
     "skill_edit_kategorie",
     "tiny_task_feedback_id",
     "privileg_aktiv_id",
+    # Stille-Check-in: offene Rückfrage (aufgaben/nervt)
+    "stille_rueckfrage",
     # Würfel / Roulette / Wette / Lücke (inkl. Nonces – Review D6: wuerfel_nonce blieb liegen)
     "wuerfel_kategorie", "wuerfel_aufgabe", "wuerfel_nonce",
     "roulette_nonce", "roulette_strafe", "roulette_stufe",
@@ -287,6 +295,60 @@ def vergiss_chat(chat_id: str) -> None:
     und die Persistenz nachziehen – Teil der Paar-Löschung (handlers/admin.py)."""
     with _persist_lock:
         _state.pop(str(chat_id), None)
+        (_state.get("__eingang__") or {}).pop(str(chat_id), None)
+    _persist(immediate=True)
+
+
+# ---------------------------------------------------------------------------
+# Eingangsstempel + Coach-Ruhe (Stille-Check-in, handlers/stille_checkin.py)
+# ---------------------------------------------------------------------------
+
+def touch_eingang(chat_id: str) -> None:
+    """Merkt sich den Zeitpunkt der letzten Eingabe eines Chats – Text ODER
+    Button (main.log_incoming). Persistiert (debounced): Basis der Stille-
+    Erkennung, weil Button-Taps in keiner Qdrant-Collection landen."""
+    with _persist_lock:
+        _state.setdefault("__eingang__", {})[str(chat_id)] = time.time()
+    _persist()
+
+
+def letzter_eingang(chat_id: str) -> float | None:
+    """time.time() der letzten Eingabe des Chats, None = seit dem Stempel-Start nie."""
+    return (_state.get("__eingang__") or {}).get(str(chat_id))
+
+
+def coach_ruhe(paar_id: str | None = None) -> dict | None:
+    """Aktive Coach-Ruhe DES PAARES: {"modus": "ruhe"|"zuschauer", "bis": iso|None,
+    "seit": iso} oder None. Gatet alle proaktiven Dom-Jobs (scheduler._flow_aktiv);
+    Berichte laufen weiter. Eine befristete Ruhe läuft von selbst aus."""
+    eintrag = (_state.get("__coach_ruhe__") or {}).get(_pause_paar_id(paar_id))
+    if not eintrag:
+        return None
+    bis = eintrag.get("bis")
+    if bis:
+        from datetime import datetime, timezone
+        try:
+            abgelaufen = datetime.fromisoformat(bis) <= datetime.now(timezone.utc)
+        except (ValueError, TypeError):
+            abgelaufen = True
+        if abgelaufen:
+            set_coach_ruhe(None, paar_id=paar_id)
+            return None
+    return eintrag
+
+
+def set_coach_ruhe(modus: str | None, bis: str | None = None, paar_id: str | None = None) -> None:
+    """modus None = aufheben; 'ruhe' (mit bis) oder 'zuschauer' (unbefristet).
+    Sofort persistiert – die Schaltung ist eine Nutzer-Entscheidung, kein Cache."""
+    from datetime import datetime, timezone
+    pid = _pause_paar_id(paar_id)
+    with _persist_lock:
+        alle = _state.setdefault("__coach_ruhe__", {})
+        if modus is None:
+            alle.pop(pid, None)
+        else:
+            alle[pid] = {"modus": modus, "bis": bis,
+                         "seit": datetime.now(timezone.utc).isoformat()}
     _persist(immediate=True)
 
 
@@ -399,6 +461,9 @@ def _persist_now() -> None:
                     for cid, s in _state.items()
                     if isinstance(s, dict) and s.get("message_history")
                 },
+                # Stille-Check-in: Eingangsstempel je Chat + Coach-Ruhe je Paar
+                "eingang": dict(_state.get("__eingang__") or {}),
+                "coach_ruhe": dict(_state.get("__coach_ruhe__") or {}),
             }
             pfad = config.STATE_FILE
             os.makedirs(os.path.dirname(pfad) or ".", exist_ok=True)
@@ -434,6 +499,12 @@ def load_persisted() -> None:
         for cid, history in (daten.get("histories") or {}).items():
             s = get(cid)
             s["message_history"] = history[-MAX_HISTORY:] if history else []
+        if isinstance(daten.get("eingang"), dict):
+            _state["__eingang__"] = {str(k): float(v) for k, v in daten["eingang"].items()
+                                     if isinstance(v, (int, float))}
+        if isinstance(daten.get("coach_ruhe"), dict):
+            _state["__coach_ruhe__"] = {str(k): v for k, v in daten["coach_ruhe"].items()
+                                        if isinstance(v, dict) and v.get("modus")}
         logger.info("State geladen: %d Chats, pausierte Paare=%s",
                     len(daten.get("histories") or {}),
                     sorted(_state.get("__paused_paare__", set())) or "keine")
