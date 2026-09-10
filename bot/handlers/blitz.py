@@ -72,6 +72,12 @@ async def _generiere_blitz(domina_profile: dict, sklave_profile: dict) -> tuple[
         f"Pflicht-Kategorie: {kategorie}\n"
         f"{coach_persona.sklaven_kontext_block(sklave_profile, domina_profile.get('grenzen', []) or [])}"
     )
+    # Ausstattungs-Impuls (Inventar): sofort greifbares Gerät gelegentlich
+    # tragend einbauen; passt es nicht zur Pflicht-Kategorie, weglassen.
+    from bot.services import inventar
+    impuls = await inventar.impuls_wahl()
+    if impuls:
+        prompt += "\n" + coach_persona.inventar_impuls_block(impuls, kategorie_gebunden=True)
     try:
         sk_hl = sklave_profile.get("hard_limits", []) or []
         do_gr = domina_profile.get("grenzen", []) or []

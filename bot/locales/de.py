@@ -757,9 +757,11 @@ MESSAGES = {
         "👤 *Dein Profil*\n\n"
         "1️⃣ Absolute Grenzen: {hard_limits}\n"
         "2️⃣ Vorlieben: {vorlieben}\n"
-        "3️⃣ Erfahrungsstand: {erfahrungsstand}\n\n"
+        "3️⃣ Erfahrungsstand: {erfahrungsstand}\n"
+        "4️⃣ Inventar \\(da\\): {inventar}\n"
+        "5️⃣ Wunschliste: {inventar_wunsch}\n\n"
         "✏️ Was möchtest du ändern\\?\n"
-        "Schreibe die Nummer \\(1\\-3\\) oder /abbrechen"
+        "Schreibe die Nummer \\(1\\-5\\) oder /abbrechen"
     ),
     "PROFIL_WUNSCH_WARTET": (
         "\n\n📬 Es wartet noch ein Wunsch deines Sklaven auf deine Entscheidung.\n"
@@ -866,6 +868,32 @@ MESSAGES = {
     "ABWESEND_UNVERSTANDEN": "⚠️ Zeitraum nicht verstanden. Beispiele: /abwesend 20.07.-02.08. Dienstreise · /abwesend 2 wochen · /abwesend bis Sonntag · /abwesend ende",
     "ABWESEND_PARTNER_GESETZT": "📆 Info: Abwesenheit wurde eingetragen – {zeitraum}{grund}. Aufgaben und Vorschläge berücksichtigen das; ändern jederzeit mit /abwesend.",
     "ABWESEND_PARTNER_AUFGEHOBEN": "📆 Info: Die Abwesenheit wurde aufgehoben – gilt wieder als zu Hause.",
+
+    # --- Inventar 🧰 (/inventar, beide Rollen) ------------------------------
+    # MarkdownV2: Listen kommen escaped rein (handlers/inventar._liste_senden)
+    "INVENTAR_ANZEIGE": (
+        "🧰 *Inventar – was bei euch da ist*\n{vorhanden}\n\n"
+        "🛒 *Wunschliste \\(noch nicht da\\)*\n{wuensche}\n\n"
+        "✏️ Pflegen:\n"
+        "`+ Gerte (hart, nur Po)` – eintragen\n"
+        "`+ wunsch: Käfig` – Wunsch eintragen\n"
+        "`- 3` oder `- w1` – entfernen\n"
+        "`da w1` – Wunsch erfüllt, jetzt vorhanden\n\n"
+        "Schreib deine Änderung, *fertig* oder /abbrechen"
+    ),
+    "INVENTAR_HINZUGEFUEGT": "✅ Eingetragen: {eintrag}",
+    "INVENTAR_WUNSCH_HINZUGEFUEGT": "🛒 Auf die Wunschliste: {eintrag}",
+    "INVENTAR_ENTFERNT": "🗑 Entfernt: {eintrag}",
+    "INVENTAR_ANGESCHAFFT": "🎉 Angeschafft – ab jetzt vorhanden: {eintrag}",
+    "INVENTAR_DOPPELT": "Das steht schon drin.",
+    "INVENTAR_VOLL": "Die Liste ist voll (max. {max} Einträge). Erst etwas entfernen.",
+    "INVENTAR_UNBEKANNTE_NUMMER": "Diese Nummer gibt es nicht – nimm die Nummer aus der Liste (1, 2, … bzw. w1, w2, …).",
+    "INVENTAR_KEIN_WUNSCH": "„da“ geht nur mit einem Wunsch-Eintrag (w1, w2, …).",
+    "INVENTAR_UNVERSTANDEN": (
+        "Das habe ich nicht verstanden. Formen: `+ Text`, `+ wunsch: Text`, `- 3`, `da w1` – "
+        "oder *fertig* / /abbrechen."
+    ),
+    "INVENTAR_FERTIG": "✅ Inventar gespeichert.",
 
     # --- Gefühl-/Erledigungs-Mechanik ---------------------------------------------------
     "GEFUEHL_BEWERTUNG_FRAGE": "⭐ Wie fandest du, wie er das gemacht hat? Gib ihm 1-5.",

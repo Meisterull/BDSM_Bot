@@ -617,6 +617,14 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     verbrauchte_zutaten = _verbrauchte_zutaten(
         letzte_tiny_volltexte[:3], gewaehlte_kategorien, kombi_vorlieben)
 
+    # AUSSTATTUNGS-IMPULS (Inventar, /inventar): an manchen Tagen gezielt EIN
+    # vorhandenes Spielzeug tragend einbauen. Der Kombi-Impuls hat Vorrang (nie
+    # zwei Impulse in einem Prompt), am Wunsch-Privileg-Tag ebenfalls nicht.
+    inventar_impuls = None
+    if not wunsch_aktiv and not kombi_vorlieben:
+        from bot.services import inventar  # lazy wie kategorie_logik-Nachbarn
+        inventar_impuls = await inventar.impuls_wahl()
+
     # D9/DIV4: Interessen pro Lauf subsampeln – das Modell ankerte sonst auf
     # einer einzelnen dominanten Zeile, die fast jeden gemessenen Output als
     # immergleiches Motiv prägte. Max. 6 zufällige Einträge steuern weiter,
@@ -673,6 +681,7 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         domina_kategorie_praeferenzen=domina_profile.get("kategorie_praeferenzen", {}),
         verbrauchte_zutaten=verbrauchte_zutaten,
         kombi_vorlieben=kombi_vorlieben,
+        inventar_impuls=inventar_impuls,
     )
 
 

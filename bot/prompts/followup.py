@@ -411,6 +411,7 @@ def _aufgaben_kontext(
     domina_kategorie_praeferenzen: dict = None,
     verbrauchte_zutaten: list = None,
     kombi_vorlieben: list = None,
+    inventar_impuls: str = None,
 ) -> str:
     """Gemeinsamer Kontext-Block für tiny_task_vorschlag und
     ausfuehrlicher_task_vorschlag – Profil-Daten + alle Hinweis-Bausteine.
@@ -519,13 +520,22 @@ def _aufgaben_kontext(
             )
         # Bei aktivem Kombi-Impuls darf die Kategorien-Pflicht nicht als zweite
         # Absolutanweisung dagegenstehen (gleiche Lektion wie D7/B4).
-        pflicht_zeile = (
-            "Heute hat der KOMBI-IMPULS unten Vorrang – diese Kategorien sind nur "
-            "Inspiration. Nur falls die Kombi nicht umsetzbar ist, MUSS der Vorschlag "
-            "aus einer dieser Kategorien stammen.\n"
-            if kombi_vorlieben else
-            "Der Vorschlag MUSS aus mindestens einer dieser Kategorien stammen.\n"
-        )
+        if kombi_vorlieben:
+            pflicht_zeile = (
+                "Heute hat der KOMBI-IMPULS unten Vorrang – diese Kategorien sind nur "
+                "Inspiration. Nur falls die Kombi nicht umsetzbar ist, MUSS der Vorschlag "
+                "aus einer dieser Kategorien stammen.\n"
+            )
+        elif inventar_impuls:
+            # Gleiche Lektion wie beim Kombi-Impuls: Pflicht-Kategorie UND Pflicht-
+            # Gegenstand wären zwei Absolutanweisungen gegeneinander.
+            pflicht_zeile = (
+                "Heute hat der AUSSTATTUNGS-IMPULS unten Vorrang – diese Kategorien sind "
+                "nur Inspiration. Nur falls der Gegenstand nicht stimmig einzubauen ist, MUSS "
+                "der Vorschlag aus einer dieser Kategorien stammen.\n"
+            )
+        else:
+            pflicht_zeile = "Der Vorschlag MUSS aus mindestens einer dieser Kategorien stammen.\n"
         kategorie_str = (
             f"\nKATEGORIEN FÜR HEUTE (wähle eine oder kombiniere zwei davon):\n"
             f"{kat_liste}\n"
@@ -544,6 +554,13 @@ def _aufgaben_kontext(
             f"nutze sie als Bühne der Szene. Verrate nicht, dass du kombinierst oder dass beides von "
             f"{s['poss']}er Vorlieben-Liste kommt – es soll wie dein spontaner Einfall wirken.\n"
         )
+    from bot.prompts import coach_persona
+    inventar_impuls_str = coach_persona.inventar_impuls_block(inventar_impuls) if inventar_impuls else ""
+    # Ausstattung (Wissen + Verbot) gehört zu den Profil-Fakten unten – gleicher
+    # Baustein wie in sklaven_kontext_block, damit alle Generatoren dasselbe wissen.
+    inventar_str = coach_persona.inventar_block(perspektive="coach")
+    if inventar_str:
+        inventar_str = "\n" + inventar_str + "\n"
     wunsch_str = ""
     if sklave_wunsch_kategorien:
         # Widerspruchs-Abgleich (D9/DIV6): steht dieselbe Kategorie zugleich in
@@ -696,7 +713,7 @@ def _aufgaben_kontext(
 Profil {s['label_gen']}:
   Vorlieben (verdecktes Steuerwissen – als Hebel nutzen, NIE als Liste oder Treffer erwähnen):{vorlieben_block}
   Absolute Grenzen (NIEMALS): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine'}
-{dossier_str}{reaktions_muster_str}{domina_praef_str}{faeden_str}{kontext_str}{stimmung_str}{bewertung_str}{vertrauens_str}{schwierigkeit_str}{kat_level_str}{dislike_str}{spannungs_str}{nicht_wiederholen_str}{anfaenge_str}{abwechslung_str}{zutaten_str}{kategorie_str}{kombi_str}{wunsch_str}{rejected_str}"""
+{inventar_str}{dossier_str}{reaktions_muster_str}{domina_praef_str}{faeden_str}{kontext_str}{stimmung_str}{bewertung_str}{vertrauens_str}{schwierigkeit_str}{kat_level_str}{dislike_str}{spannungs_str}{nicht_wiederholen_str}{anfaenge_str}{abwechslung_str}{zutaten_str}{kategorie_str}{kombi_str}{inventar_impuls_str}{wunsch_str}{rejected_str}"""
 
 
 # Explizites Verbot der eingeschliffenen Vorschlags-Schablone (Review D7, B1):

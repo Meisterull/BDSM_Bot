@@ -26,7 +26,12 @@ SKLAVE_FELDER = {
     "1": ("hard_limits",     "Absolute Grenzen (kommagetrennt)"),
     "2": ("vorlieben",       "Vorlieben (kommagetrennt)"),
     "3": ("erfahrungsstand", "Erfahrungsstand (Freitext)"),
+    # Inventar 🧰: Paar-Listen (services/inventar), kein Sklaven-Profil-Feld –
+    # gleiche Klammer-Logik wie die Vorlieben ("Gerte (hart, nur Po)").
+    "4": ("inventar",        "Inventar – Spielsachen, die da sind (kommagetrennt)"),
+    "5": ("inventar_wunsch", "Wunschliste – noch nicht da (kommagetrennt)"),
 }
+_INVENTAR_FELDER = {"inventar", "inventar_wunsch"}
 
 # Aus der Profil-Anzeige zurückkopierte Nummerierungs-/Label-Prefixe
 # ("1️⃣ Absolute Grenzen: ..., ..." / "2. Vorlieben: ...") – landeten sonst
@@ -72,11 +77,14 @@ def _format_profil(profile: dict, rolle: str) -> str:
             level=profile.get("aktuelles_level", 1),
         )
     else:
+        from bot.services import inventar
         return t(
             "PROFIL_SKLAVE",
             hard_limits=esc(", ".join(profile.get("hard_limits", [])) or "–"),
             vorlieben=esc(", ".join(profile.get("vorlieben", [])) or "–"),
             erfahrungsstand=esc(profile.get("erfahrungsstand", "–")),
+            inventar=esc(", ".join(inventar.vorhanden()) or "–"),
+            inventar_wunsch=esc(", ".join(inventar.wuensche()) or "–"),
         )
 
 
@@ -164,7 +172,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         profile = await qdrant.get_user_profile(rolle) or {}
 
-        listen_felder = {"interessen", "grenzen", "hard_limits", "vorlieben"}
+        listen_felder = {"interessen", "grenzen", "hard_limits", "vorlieben"} | _INVENTAR_FELDER
         int_felder = {"kind_anzahl"}
         if feld_key == "kinderfreie_zeiten":
             neuer_wert = zeiten.parse_kinderfreie_zeiten(text)
@@ -185,10 +193,18 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             neuer_wert = text
 
         profile[feld_key] = neuer_wert  # lokales Abbild für den Anzeige-Fallback unten
-        # Gezielt patchen (kein Full-Upsert mit dem stale Read von oben);
-        # erlaube_geschuetzt: der manuelle Owner-Edit darf auch hard_limits/
-        # kinderfreie_zeiten setzen – automatische Schreiber weiterhin nicht.
-        await qdrant.patch_profile_fields(rolle, {feld_key: neuer_wert}, erlaube_geschuetzt=True)
+        if feld_key in _INVENTAR_FELDER:
+            # Paar-Listen im Inventar-Service (liegen im Dom-Profil, gecacht)
+            from bot.services import inventar
+            await inventar.setze(
+                vorhanden_neu=neuer_wert if feld_key == "inventar" else None,
+                wuensche_neu=neuer_wert if feld_key == "inventar_wunsch" else None,
+            )
+        else:
+            # Gezielt patchen (kein Full-Upsert mit dem stale Read von oben);
+            # erlaube_geschuetzt: der manuelle Owner-Edit darf auch hard_limits/
+            # kinderfreie_zeiten setzen – automatische Schreiber weiterhin nicht.
+            await qdrant.patch_profile_fields(rolle, {feld_key: neuer_wert}, erlaube_geschuetzt=True)
 
         state.set_mode(chat_id, "profil_wahl")
         s.pop("profil_edit_feld", None)

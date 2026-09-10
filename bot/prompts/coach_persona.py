@@ -85,8 +85,11 @@ def _liebesleben_impuls() -> str:
 
 
 def fuer_coach_prompt() -> str:
-    """Voller Chat-Baustein: Stimme + Liebesleben-Impuls + Chat-Format. Für freie Coach-Antworten."""
-    return coach_stil() + _namen_block() + "\n\n" + _liebesleben_impuls() + "\n\n" + _chat_format()
+    """Voller Chat-Baustein: Stimme + Liebesleben-Impuls + Inventar-Wissen + Chat-Format.
+    Für freie Coach-Antworten."""
+    inventar = inventar_block(perspektive="coach", geschenkidee=True)
+    inventar_teil = ("\n\n" + inventar) if inventar else ""
+    return coach_stil() + _namen_block() + "\n\n" + _liebesleben_impuls() + inventar_teil + "\n\n" + _chat_format()
 
 
 def fuer_strukturierten_output() -> str:
@@ -117,6 +120,77 @@ def _aufgaben_anti_klischee() -> str:
 def fuer_aufgaben_vorschlag() -> str:
     """Coach-Stil + Anti-Klischee-Block. Für alle Aufgaben-Vorschlags-Prompts."""
     return coach_stil() + _namen_block() + "\n\n" + _aufgaben_anti_klischee()
+
+
+# Inventar 🧰 (services/inventar.py): Wissen + Verbot für alle Prompts, die auch den
+# Setup-Kontext bekommen. Die Listen sind Fakten über den Haushalt – wie die
+# Abwesenheit deterministisch eingespeist, nicht über Retrieval.
+_ALLTAG_BEISPIELE = "Wäscheklammern, Eiswürfel, Schal, Holzlöffel, Handtuch, Gürtel"
+
+
+def inventar_block(perspektive: str = "coach", kompakt: bool = False,
+                   mit_wuenschen: bool = True, geschenkidee: bool = False) -> str:
+    """Prompt-Baustein Ausstattung: vorhandene Spielsachen (nur diese einsetzen,
+    Alltagsgegenstände bleiben erlaubt) + Wunschliste (nie voraussetzen).
+    perspektive "coach" (über das Paar) oder "herrin" (zum Sub sprechend);
+    kompakt = nur Kurznamen in einer Zeile (für die vielen Sub-seitigen
+    Kurz-Prompts). Leer, wenn beide Listen leer sind – ohne Liste kein Verbot."""
+    from bot.services import inventar
+    vorhanden = inventar.vorhanden()
+    wuensche = inventar.wuensche() if mit_wuenschen else []
+    if not vorhanden and not wuensche:
+        return ""
+    d = rollen.dom()
+    bei = "bei euch" if perspektive == "herrin" else "bei den beiden"
+    zeilen: list[str] = []
+    if vorhanden:
+        if kompakt:
+            namen = ", ".join(inventar.name(e) for e in vorhanden)
+            zeilen.append(
+                f"AUSSTATTUNG ({bei} wirklich vorhanden): {namen}. Verlange kein Spielzeug, "
+                f"das hier nicht steht – Alltagsgegenstände ({_ALLTAG_BEISPIELE} …) sind "
+                f"zusätzlich okay. Erwähne die Aufzählung nie als Liste."
+            )
+        else:
+            zeilen.append(
+                f"AUSSTATTUNG ZU HAUSE (Fakt – diese Spielsachen/Hilfsmittel sind {bei} "
+                f"vorhanden; Klammer = Hinweis zur Nutzung, den du beachtest):"
+            )
+            zeilen.extend(f"  - {e}" for e in vorhanden)
+            zeilen.append(
+                f"Setze nur Spielsachen aus dieser Liste ein – nichts erfinden und nichts "
+                f"verlangen, das hier fehlt. Alltagsgegenstände ({_ALLTAG_BEISPIELE} …) sind "
+                f"zusätzlich erlaubt. Vorlieben beschreiben Neigungen, diese Liste beschreibt "
+                f"Besitz: nennt eine Vorliebe ein Spielzeug, das hier fehlt, formuliere ohne es. "
+                f"Verrate nie, dass es eine Liste gibt."
+            )
+    if wuensche:
+        if geschenkidee:
+            kopf = (f"NOCH NICHT VORHANDEN (Wunschliste – für dich eine Geschenk-/Belohnungsidee, "
+                    f"die du {d['real_dat']} nebenbei nahelegen kannst; nie als vorhanden behandeln):")
+        else:
+            kopf = ("NOCH NICHT VORHANDEN (Wunschliste – NIE für eine Aufgabe voraussetzen; "
+                    "höchstens als Aussicht oder Belohnung andeuten):")
+        zeilen.append(kopf)
+        zeilen.extend(f"  - {e}" for e in wuensche)
+    return "\n".join(zeilen)
+
+
+def inventar_impuls_block(gegenstand: str, kategorie_gebunden: bool = False) -> str:
+    """AUSSTATTUNGS-IMPULS für einen Generator-Lauf (services/inventar.impuls_wahl):
+    EIN Gegenstand tragend einbauen, ohne die Liste zu verraten."""
+    if not gegenstand:
+        return ""
+    text = (
+        f"\nAUSSTATTUNGS-IMPULS (heute): Baue „{gegenstand}“ gezielt und tragend ein – "
+        f"nicht als Deko, sondern so, dass die Szene daran hängt. Beachte den Klammer-Hinweis, "
+        f"falls einer dabeisteht. Verrate nicht, dass der Gegenstand von einer Liste kommt – "
+        f"es soll wie dein spontaner Einfall wirken.\n"
+    )
+    if kategorie_gebunden:
+        text += ("Lässt er sich nicht stimmig mit der Pflicht-Kategorie verbinden, lass ihn "
+                 "weg, statt ihn zu erzwingen.\n")
+    return text
 
 
 def dossier_gekuerzt(dossier: str, limit: int = 1200) -> str:
@@ -170,6 +244,10 @@ def sklaven_kontext_block(sklave_profile: dict, domina_grenzen: list | None = No
     dislikes = kategorie_logik.dislike_kategorien(sklave_profile)
     if dislikes:
         zeilen.append(f"  Kategorien, die {s['nom']} wiederholt ablehnt (NIEMALS vorschlagen): {', '.join(dislikes)}")
+    # Inventar (Fakten über den Haushalt) nach den Profil-Zeilen, vor Fäden/Dossier
+    inventar_teil = inventar_block(perspektive="coach")
+    if inventar_teil:
+        zeilen.append(inventar_teil)
     faeden = sklave_profile.get("offene_faeden") or []
     if faeden:
         zeilen.append(

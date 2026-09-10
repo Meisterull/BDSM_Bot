@@ -226,6 +226,12 @@ DAUER_CHECK_CHANCE = float(os.getenv("DAUER_CHECK_CHANCE", "0.4"))         # pro
 # als Bühne), statt nur eine Kategorie zu bedienen.
 KOMBI_IMPULS_CHANCE = float(os.getenv("KOMBI_IMPULS_CHANCE", "0.33"))  # pro Tages-Vorschlag
 
+# AUSSTATTUNGS-IMPULS (Inventar, /inventar): an manchen Tagen bekommt ein
+# Aufgaben-Generator den Auftrag, gezielt EIN vorhandenes Spielzeug/Hilfsmittel
+# tragend einzubauen. Wissen + Verbot (nichts verlangen, was nicht da ist)
+# gelten immer – die Chance steuert nur den aktiven Impuls. 0 = aus.
+INVENTAR_IMPULS_CHANCE = float(os.getenv("INVENTAR_IMPULS_CHANCE", "0.30"))
+
 # Wortlimits für generierte Vorschläge (werden in den Prompts referenziert)
 TINY_TASK_WORTLIMIT = int(os.getenv("TINY_TASK_WORTLIMIT", "200"))
 AUSFUEHRLICH_WORTLIMIT = int(os.getenv("AUSFUEHRLICH_WORTLIMIT", "400"))

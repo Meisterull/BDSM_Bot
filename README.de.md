@@ -97,7 +97,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 <!-- commands:start -->
 
 <details>
-<summary><b>Dominante Seite</b> – 47 Befehle</summary>
+<summary><b>Dominante Seite</b> – 48 Befehle</summary>
 
 **📋 Aufgaben & Vorlagen**
 
@@ -168,6 +168,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 | Befehl | Was er tut |
 |---|---|
 | `/einstellungen` | Sprache, Persönlichkeits-Stil, Namen und Setup einstellen |
+| `/inventar` | Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Aufgaben ein) + Wunschliste |
 | `/abwesend` | Abwesenheit eintragen: /abwesend 20.07.-02.08. Grund – Aufgaben & Vorschläge berücksichtigen den Zeitraum; /abwesend ende hebt auf |
 | `/luecken` | Bei längerer Aufgaben-Ruhe automatisch einen Task-Vorschlag bekommen (du gibst frei) |
 | `/blitz` | Unangekündigte Mini-Aufgaben mit Countdown für den Sklaven (gehen direkt raus) |
@@ -179,7 +180,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 </details>
 
 <details>
-<summary><b>Devote Seite</b> – 14 Befehle</summary>
+<summary><b>Devote Seite</b> – 15 Befehle</summary>
 
 **📊 Status & Statistik**
 
@@ -196,6 +197,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 | `/wunsch` | Wunsch oder Vorschlag einreichen |
 | `/meinewuensche` | Gesammelte Wünsche ansehen/aufräumen |
 | `/wunschkategorien` | Lieblings-Kategorien wählen (max 3) |
+| `/inventar` | Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Aufgaben ein) + Wunschliste |
 
 **🎁 Belohnungen**
 

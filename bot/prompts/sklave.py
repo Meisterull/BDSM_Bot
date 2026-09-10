@@ -157,7 +157,7 @@ def get(
 
 {_zeit_zeile()}
 
-{persona.fuer_sklaven_prompt()}
+{persona.fuer_sklaven_prompt(inventar_voll=True)}
 
 GRENZEN – beide gelten gleich absolut, du überschreitest sie NIEMALS:
 - {s["poss"].capitalize()}e Hard Limits: {', '.join(hard_limits) if hard_limits else 'keine angegeben'}

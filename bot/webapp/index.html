@@ -300,7 +300,7 @@ async function laden() {
   // Vorlieben/Grenzen-Editor (eigene Listen) + Abwesenheit
   listen = d.profil_listen || {};
   el("editor-titel").textContent =
-    d.rolle === "domina" ? "Deine Interessen & Grenzen" : "Deine Vorlieben & Limits";
+    d.rolle === "domina" ? "Deine Interessen & Grenzen · Inventar" : "Deine Vorlieben & Limits · Inventar";
   editorRender();
   const a = d.abwesenheit;
   el("abwesenheit-status").textContent = a
@@ -316,6 +316,8 @@ async function laden() {
 const FELD_LABELS = {
   interessen: "Interessen", grenzen: "Grenzen",
   vorlieben: "Vorlieben", hard_limits: "Absolute Grenzen (Hard Limits)",
+  inventar: "🧰 Inventar – Spielsachen, die da sind (Klammer = Hinweis)",
+  inventar_wunsch: "🛒 Wunschliste – noch nicht da",
 };
 let listen = {};
 let kategorien = [];

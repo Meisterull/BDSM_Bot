@@ -95,6 +95,8 @@ DOMINA_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
     ("⚙️ System", [
         Eintrag("einstellungen", "⚙️ Sprache & Persönlichkeit einstellen",
                 lang="Sprache, Persönlichkeits-Stil, Namen und Setup einstellen"),
+        Eintrag("inventar",      "🧰 Inventar: Spielsachen zu Hause + Wunschliste",
+                lang="Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Aufgaben ein) + Wunschliste"),
         Eintrag("abwesend",      "📆 Abwesenheit eintragen (fließt in Vorschläge ein)",
                 lang="Abwesenheit eintragen: /abwesend 20.07.-02.08. Grund – Aufgaben & Vorschläge berücksichtigen den Zeitraum; /abwesend ende hebt auf"),
         Eintrag("luecken",       "🕊 Lücken-Füller an/aus", in_hilfe=False,
@@ -123,6 +125,8 @@ SKLAVE_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
         Eintrag("meinewuensche",    "Gesammelte Wünsche ansehen/aufräumen", in_hilfe=False),
         Eintrag("wunschkategorien", "Lieblings-Kategorien wählen",
                 lang="Lieblings-Kategorien wählen (max 3)"),
+        Eintrag("inventar",         "🧰 Inventar: Spielsachen zu Hause + Wunschliste",
+                lang="Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Aufgaben ein) + Wunschliste"),
     ]),
     ("🎁 Belohnungen", [
         Eintrag("privileg", "🎁 Privilegien einlösen",
@@ -159,12 +163,12 @@ _DOMINA_MENUE_REIHENFOLGE = [
     "regel", "merken", "regeln", "vergessen", "profil_check",
     "lerne", "skills", "lerne_neu", "skill_bearbeiten",
     "strafen", "geheimnis", "profil",
-    "einstellungen", "abwesend", "luecken", "blitz", "ueberspringen", "app", "hilfe", "abbrechen",
+    "einstellungen", "inventar", "abwesend", "luecken", "blitz", "ueberspringen", "app", "hilfe", "abbrechen",
 ]
 
 _SKLAVE_MENUE_REIHENFOLGE = [
     "stats", "meineaufgaben",
-    "stimmung", "wunsch", "meinewuensche", "wunschkategorien",
+    "stimmung", "wunsch", "meinewuensche", "wunschkategorien", "inventar",
     "privileg", "wette", "quiz", "profil",
     "abwesend", "app", "hilfe", "abbrechen",
 ]

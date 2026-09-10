@@ -97,7 +97,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 <!-- commands:start -->
 
 <details>
-<summary><b>Dominant partner</b> – 47 commands</summary>
+<summary><b>Dominant partner</b> – 48 commands</summary>
 
 **📋 Tasks & Templates**
 
@@ -168,6 +168,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 | Command | What it does |
 |---|---|
 | `/settings` | Set language, personality style, names and setup |
+| `/inventory` | Maintain the inventory: which toys/tools are really at home (feeds into tasks) + wish list |
 | `/away` | Record an absence: /away 20.07.-02.08. reason – tasks & suggestions take the period into account; /away end clears it |
 | `/gap_filler` | Automatically get a task suggestion after a longer task lull (you approve it) |
 | `/flash` | Unannounced mini tasks with a countdown for the slave (sent directly) |
@@ -179,7 +180,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 </details>
 
 <details>
-<summary><b>Submissive partner</b> – 14 commands</summary>
+<summary><b>Submissive partner</b> – 15 commands</summary>
 
 **📊 Status & Statistics**
 
@@ -196,6 +197,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 | `/wish` | Submit a wish or suggestion |
 | `/mywishes` | View/clean up collected wishes |
 | `/wish_categories` | Pick favorite categories (max 3) |
+| `/inventory` | Maintain the inventory: which toys/tools are really at home (feeds into tasks) + wish list |
 
 **🎁 Rewards**
 

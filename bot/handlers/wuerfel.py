@@ -78,6 +78,12 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Pflicht-Kategorie: {kategorie}\n"
         f"{coach_persona.sklaven_kontext_block(sklave_profile, domina_grenzen)}"
     )
+    # Ausstattungs-Impuls (Inventar): gelegentlich ein vorhandenes Gerät tragend
+    # einbauen – kategorie_gebunden: passt es nicht zur Pflicht-Kategorie, weglassen.
+    from bot.services import inventar
+    impuls = await inventar.impuls_wahl()
+    if impuls:
+        prompt += "\n" + coach_persona.inventar_impuls_block(impuls, kategorie_gebunden=True)
     skill_block = await coach_persona.skill_kontext_block([kategorie])
     if skill_block:
         prompt += "\n\n" + skill_block

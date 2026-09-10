@@ -179,12 +179,14 @@ async def _handle_no(
             )
             label = t("BESTRAFUNG_LABEL_ESKALATION")
         else:
+            from bot.services import inventar
             prompt_bestrafung = bp.bestrafungsvorschlag(
                 aufgabe, streak_vorher, sklave_hard_limits,
                 sklave_vorlieben=sklave_vorlieben,
                 kategorie_reaktionen=kategorie_reaktionen,
                 letzte_strafen=letzte_strafen,
                 dossier=sklave_profil.get("dossier", ""),
+                inventar_impuls=await inventar.impuls_wahl(),
             )
             label = t("BESTRAFUNG_LABEL_VORSCHLAG")
         # Limits-Check inkl. Domina-Grenzen, mit einmaliger Re-Generierung

@@ -12,6 +12,7 @@ def bestrafungsvorschlag(
     kategorie_reaktionen: dict = None,
     letzte_strafen: list = None,
     dossier: str = "",
+    inventar_impuls: str = None,
 ) -> tuple[str, str]:
     s, d = rollen.sub(), rollen.dom()
     streak_info = (
@@ -57,6 +58,12 @@ def bestrafungsvorschlag(
     dossier_str = ""
     if dossier:
         dossier_str = f"\nWas du über {s['label_akk']} weißt (Dossier):\n{dossier[:600]}\n"
+    # Inventar: Wissen + Verbot wie bei den Aufgaben-Generatoren, optional der
+    # Ausstattungs-Impuls (eine Strafe mit vorhandenem Gerät statt erfundenem).
+    inventar_str = coach_persona.inventar_block(perspektive="coach")
+    if inventar_str:
+        inventar_str = "\n" + inventar_str + "\n"
+    impuls_str = coach_persona.inventar_impuls_block(inventar_impuls) if inventar_impuls else ""
     system = f"""{coach_persona.fuer_aufgaben_vorschlag()}
 
 {'Eine' if s['label'].endswith('in') else 'Ein'} {s['label']} hat eine Aufgabe nicht erledigt. Schlage {d['real_dat']} eine angemessene Bestrafung vor.
@@ -73,7 +80,7 @@ Frage am Ende ob {d['nom']} diese Bestrafung anordnen möchte oder eine andere b
 KEIN [AUFGABE: ...] Tag. Kein Markdown."""
     user = (
         f"{streak_info}Nicht erledigte Aufgabe: {aufgabe}\n"
-        f"{limits_str}{vorlieben_str}{reaktionen_str}{historie_str}{dossier_str}"
+        f"{limits_str}{vorlieben_str}{reaktionen_str}{historie_str}{dossier_str}{inventar_str}{impuls_str}"
     )
     return system, user
 

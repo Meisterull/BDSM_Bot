@@ -11,11 +11,13 @@ followup-Fragen, Befehle, Reaktionen auf Gefühle. Konsistente Stimme
 # weil der LLM diese sonst kopiert.
 
 
-def fuer_sklaven_prompt() -> str:
+def fuer_sklaven_prompt(inventar_voll: bool = False) -> str:
     """Block der in jeden Sub-seitigen Prompt eingebettet wird. Name der
     dominanten Rolle und Anrede des Subs kommen (optional) aus persona_config;
     Labels/Pronomen/Anatomie-Grundierung liefert rollen.py (Rollen-Konstellation
-    konfigurierbar, Default Herrin/Sklave = Bestandsverhalten)."""
+    konfigurierbar, Default Herrin/Sklave = Bestandsverhalten).
+    inventar_voll: Ausstattung mit Klammer-Notizen (Herrin-Chat) statt der
+    kompakten Namensliste (die vielen Kurz-Prompts: Follow-up, Reaktion …)."""
     from bot.services import persona_config
     from bot.prompts import rollen
     name = persona_config.bot_name()
@@ -47,10 +49,16 @@ def fuer_sklaven_prompt() -> str:
     setup = persona_config.setup_kontext()
     setup_block = f"\n\nSETUP/KONTEXT (so ist es bei euch wirklich – halte dich daran):\n{setup}" if setup else ""
 
+    # Inventar (services/inventar.py): nur vorhandene Spielsachen verlangen –
+    # wandert überall hin, wo auch der Setup-Kontext hinwandert.
+    from bot.prompts import coach_persona
+    inventar = coach_persona.inventar_block(perspektive="herrin", kompakt=not inventar_voll)
+    inventar_block = f"\n\n{inventar}" if inventar else ""
+
     # Sprach-Anweisung (zentraler i18n-Hebel: deckt alle Sklaven-seitigen Prompts ab)
     sprache = persona_config.sprache()
     sprache_block = f"\n\nSPRACHE: Antworte ausschließlich auf {sprache}." if sprache else ""
 
     from bot.prompts import persona_presets
     preset = persona_presets.aktuelles_preset()
-    return f"{preset['stil_kopf']}\n{identitaet}{anrede_zeile}{grundierung}{setup_block}{sprache_block}\n\n{preset['stil_fuss']}"
+    return f"{preset['stil_kopf']}\n{identitaet}{anrede_zeile}{grundierung}{setup_block}{inventar_block}{sprache_block}\n\n{preset['stil_fuss']}"

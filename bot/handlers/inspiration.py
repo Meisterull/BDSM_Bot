@@ -97,11 +97,19 @@ async def _lade_generierungs_kontext(level: int) -> dict:
     stimmung_entry = await qdrant.get_latest_stimmung("sklave", max_stunden=48)  # D9/N13
     return {
         "ctx_entries": ctx_entries,
+        # Ausstattungs-Impuls (Inventar) – gewürfelt im async Loader, der
+        # Builder bleibt rein (kein I/O).
+        "inventar_impuls": await _inventar_impuls(),
         "letzte_inspirationen": await qdrant.get_recent_inspirationen(limit=5),
         "stimmung": stimmung_entry.get("zusammenfassung", "") if stimmung_entry else "",
         "bewertungs_kontext": await qdrant.get_bewertungs_kontext("sklave"),
         "sklave_profile": await qdrant.get_user_profile("sklave") or {},
     }
+
+
+async def _inventar_impuls() -> str | None:
+    from bot.services import inventar
+    return await inventar.impuls_wahl()
 
 
 def _baue_vorschlags_prompt(
@@ -122,6 +130,7 @@ def _baue_vorschlags_prompt(
     letzte_inspirationen = kontext["letzte_inspirationen"]
     stimmung = kontext["stimmung"]
     bewertungs_kontext = kontext["bewertungs_kontext"]
+    inventar_impuls = kontext.get("inventar_impuls")
 
     feedback_str = ""
     if feedback:
@@ -166,6 +175,10 @@ def _baue_vorschlags_prompt(
     bewertung_str = f"\n{bewertungs_kontext}" if bewertungs_kontext else ""
 
     from bot.prompts import coach_persona
+    impuls_str = ""
+    if inventar_impuls:
+        impuls_str = (coach_persona.inventar_impuls_block(inventar_impuls)
+                      + "Gilt für EINE der drei Ideen, nicht für alle.\n")
 
     system = f"""Du sprichst mit der Domina – schlag ihr drei konkrete, unterschiedliche Aufgaben-Ideen für ihren Sklaven vor.
 
@@ -199,7 +212,7 @@ Profil der Domina:
   Interessen: {', '.join(domina_profile.get('interessen', [])) or 'nicht angegeben'}
   Ziele: {domina_profile.get('ziele', 'nicht angegeben')}
 {coach_persona.sklaven_kontext_block(sklave_profile, domina_profile.get('grenzen', []) or [])}
-{nicht_wiederholen_str}{stimmung_str}{feedback_str}{abwechslung_str}"""
+{nicht_wiederholen_str}{stimmung_str}{feedback_str}{abwechslung_str}{impuls_str}"""
     return system, user
 
 

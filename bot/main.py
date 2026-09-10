@@ -25,7 +25,7 @@ from bot.handlers import (
     wunsch, kommentar, geheimnis, strafen_protokoll, tinytask,
     wuerfel, wunschkategorien, privileg, wette, blitz, arc, event_arc, roulette, dauer, quiz, coach_quiz, advent, tiny_task_feedback, hilfe, resurface, stille_checkin,
     lerntagebuch, coach_regeln, skill, kette_adaptiv, dossier, namen, meine_aufgaben,
-    einstellungen, luecke, pairing, admin, abwesenheit,
+    einstellungen, luecke, pairing, admin, abwesenheit, inventar,
 )
 
 
@@ -388,6 +388,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await einstellungen.handle(update, context)
         return
 
+    # Inventar-Pflege (/inventar) – beide Rollen, gleiche Paar-Listen
+    if mode == inventar.MODE:
+        await inventar.handle(update, context)
+        return
+
     if rolle == paare.ROLLE_DOM:
         if mode == "wochenplanung_thema":
             await wochenplanung.handle(update, context)
@@ -695,6 +700,8 @@ async def post_init(application: Application) -> None:
     try:
         from bot.services import persona_config
         await persona_config.load()    # Persona-Felder ALLER Paare in die Caches
+        from bot.services import inventar as inventar_service
+        await inventar_service.load()  # Inventar-Listen ALLER Paare (gleiches Cache-Muster)
         state.load_persisted()   # message_history + Pause-Flag aus STATE_FILE
         await restore_state()          # Modi/Tasks aus Qdrant
     except Exception as e:
@@ -857,6 +864,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler(ck.aliases("dauer"),               dauer.starten))
     app.add_handler(CommandHandler(ck.aliases("luecken"),             luecke.toggle))
     app.add_handler(CommandHandler(ck.aliases("abwesend"),            abwesenheit.command))
+    app.add_handler(CommandHandler(ck.aliases("inventar"),            inventar.command))
     app.add_handler(CommandHandler(ck.aliases("blitz"),               blitz.toggle))
     app.add_handler(CommandHandler(ck.aliases("arc"),                 arc.show))
     app.add_handler(CommandHandler(ck.aliases("arc_starten"),         arc.starten))

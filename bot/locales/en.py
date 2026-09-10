@@ -759,9 +759,11 @@ MESSAGES = {
         "👤 *Your profile*\n\n"
         "1️⃣ Hard limits: {hard_limits}\n"
         "2️⃣ Preferences: {vorlieben}\n"
-        "3️⃣ Experience level: {erfahrungsstand}\n\n"
+        "3️⃣ Experience level: {erfahrungsstand}\n"
+        "4️⃣ Inventory \\(at home\\): {inventar}\n"
+        "5️⃣ Wish list: {inventar_wunsch}\n\n"
         "✏️ What would you like to change\\?\n"
-        "Write the number \\(1\\-3\\) or /abbrechen"
+        "Write the number \\(1\\-5\\) or /abbrechen"
     ),
     "PROFIL_WUNSCH_WARTET": (
         "\n\n📬 A wish from your slave is still waiting for your decision.\n"
@@ -868,6 +870,32 @@ MESSAGES = {
     "ABWESEND_UNVERSTANDEN": "⚠️ Couldn't understand the period. Examples: /away 20.07.-02.08. work trip · /away 2 weeks · /away until Sunday · /away end",
     "ABWESEND_PARTNER_GESETZT": "📆 Info: an absence was recorded – {zeitraum}{grund}. Tasks and suggestions take it into account; change it anytime with /away.",
     "ABWESEND_PARTNER_AUFGEHOBEN": "📆 Info: the absence was cleared – counts as being home again.",
+
+    # --- Inventory 🧰 (/inventar, both roles) --------------------------------
+    # MarkdownV2: lists arrive escaped (handlers/inventar._liste_senden)
+    "INVENTAR_ANZEIGE": (
+        "🧰 *Inventory – what you have at home*\n{vorhanden}\n\n"
+        "🛒 *Wish list \\(not there yet\\)*\n{wuensche}\n\n"
+        "✏️ Maintain:\n"
+        "`+ crop (hard, butt only)` – add\n"
+        "`+ wunsch: cage` – add a wish\n"
+        "`- 3` or `- w1` – remove\n"
+        "`da w1` – wish fulfilled, now at home\n\n"
+        "Write your change, *fertig* or /abbrechen"
+    ),
+    "INVENTAR_HINZUGEFUEGT": "✅ Added: {eintrag}",
+    "INVENTAR_WUNSCH_HINZUGEFUEGT": "🛒 On the wish list: {eintrag}",
+    "INVENTAR_ENTFERNT": "🗑 Removed: {eintrag}",
+    "INVENTAR_ANGESCHAFFT": "🎉 Purchased – at home from now on: {eintrag}",
+    "INVENTAR_DOPPELT": "That's already on the list.",
+    "INVENTAR_VOLL": "The list is full (max. {max} entries). Remove something first.",
+    "INVENTAR_UNBEKANNTE_NUMMER": "There is no such number – use the number from the list (1, 2, … or w1, w2, …).",
+    "INVENTAR_KEIN_WUNSCH": "\"da\" only works with a wish entry (w1, w2, …).",
+    "INVENTAR_UNVERSTANDEN": (
+        "I didn't understand that. Forms: `+ text`, `+ wunsch: text`, `- 3`, `da w1` – "
+        "or *fertig* / /abbrechen."
+    ),
+    "INVENTAR_FERTIG": "✅ Inventory saved.",
 
     # --- Gefühl-/Erledigungs-Mechanik ---------------------------------------------------
     "GEFUEHL_BEWERTUNG_FRAGE": "⭐ How do you think he did? Give him 1-5.",

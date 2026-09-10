@@ -94,6 +94,10 @@ async def _uebersicht_daten(paar_id: str, rolle: str) -> dict:
         # Eigene editierbare Listen (Editor) + Abwesenheits-Zustand (Kalender)
         eigenes = profil if rolle == "sklave" else (await qdrant.get_user_profile("domina") or {})
         profil_listen = {f: list(eigenes.get(f, []) or []) for f in _PROFIL_LISTEN[rolle]}
+        # Inventar 🧰: Paar-Listen, beide Rollen editieren dieselben (Service-Cache)
+        from bot.services import inventar
+        profil_listen["inventar"] = inventar.vorhanden()
+        profil_listen["inventar_wunsch"] = inventar.wuensche()
         a = persona_config.abwesenheit()
         abwesenheit = ({"von": a[0].isoformat(), "bis": a[1].isoformat(), "grund": a[2]}
                        if a else None)
@@ -480,6 +484,15 @@ async def _profil_liste_setzen(paar_id: str, rolle: str, feld: str, werte: list)
     wie der /profil-Edit: patch_profile_fields mit erlaube_geschuetzt (der Owner
     darf die eigenen hard_limits pflegen, automatische Schreiber nicht)."""
     from bot.services import paare, qdrant
+    if feld in ("inventar", "inventar_wunsch"):
+        # Paar-Listen (beide Rollen dürfen) – Deckel/Dedupe macht der Service
+        from bot.services import inventar
+        with paare.kontext(paar_id):
+            v, w = await inventar.setze(
+                vorhanden_neu=werte if feld == "inventar" else None,
+                wuensche_neu=werte if feld == "inventar_wunsch" else None,
+            )
+        return {"ok": True, "werte": v if feld == "inventar" else w}
     if feld not in _PROFIL_LISTEN.get(rolle, ()):
         return {"fehler": f"Feld '{feld}' ist für diese Rolle nicht editierbar"}
     sauber = []

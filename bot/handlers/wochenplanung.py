@@ -197,6 +197,13 @@ Interessen der Domina: {', '.join(interessen) if interessen else 'nicht angegebe
 Letzte Aufgaben-Kategorien (zur Abwechslung): {', '.join(letzte_kategorien) if letzte_kategorien else 'keine'}
 Was der Domina gut gefiel: {bewertungs_kontext if bewertungs_kontext else 'keine Daten'}
 {coach_persona.sklaven_kontext_block(sklave_profile, domina_grenzen)}"""
+    # Ausstattungs-Impuls (Inventar): an EINEM Tag der Woche ein vorhandenes
+    # Gerät tragend einbauen – nicht die ganze Woche damit bestücken.
+    from bot.services import inventar
+    impuls = await inventar.impuls_wahl()
+    if impuls:
+        prompt += ("\n" + coach_persona.inventar_impuls_block(impuls)
+                   + "Setze ihn an genau EINEM Tag der Woche ein, nicht an mehreren.\n")
     # Kategorien wählt das LLM erst beim Generieren → alle vorhandenen Wissens-Briefe beilegen.
     skill_block = await coach_persona.skill_kontext_block()
     if skill_block:
