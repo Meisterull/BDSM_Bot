@@ -54,6 +54,9 @@ def test_zeitraum_zwei_daten():
 def test_zeitraum_ein_datum():
     # EIN künftiges Datum = bis, ab heute
     assert de.finde_zeitraum("bis 02.08.") == (HEUTE, date(2026, 8, 2))
+    # zweistelliges Jahr (Live-Befund 13.09.2026) = 20xx
+    assert de.finde_zeitraum("bis 02.08.26") == (HEUTE, date(2026, 8, 2))
+    assert de.finde_zeitraum("27.07.26-02.08.26") == (date(2026, 7, 27), date(2026, 8, 2))
     # heutiges Datum allein ist kein Zeitraum
     assert de.finde_zeitraum("25.07.") is None
 
@@ -80,6 +83,7 @@ def test_zeitraum_unverstanden():
 
 def test_grund_extraktion():
     assert abwesenheit._grund_aus("27.07.-02.08. Dienstreise") == "Dienstreise"
+    assert abwesenheit._grund_aus("bis 02.08.26 Dienstreise") == "Dienstreise"
     assert abwesenheit._grund_aus("ab 27.07. für 2 wochen auf Dienstreise") == "auf Dienstreise"
     assert abwesenheit._grund_aus("bis Sonntag") == ""
 

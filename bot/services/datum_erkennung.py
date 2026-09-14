@@ -31,9 +31,11 @@ _WIEDERKEHREND = {"jeden", "jedem", "jede", "alle", "immer", "every", "each"}
 # Vorwörter, nach denen "morgen" der Tageszeit-Morgen ist ("am Morgen", "guten Morgen").
 _MORGEN_TAGESZEIT = {"guten", "jeden", "am", "jedem", "zum", "vom"}
 
-# "26.07." / "26.07.2026" – der Punkt nach dem Monat ist Pflicht, sonst würden
-# Dezimalzahlen ("1.5 Liter") und Uhrzeiten als Datum durchgehen.
-_DATUM_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})?(?!\d)")
+# "26.07." / "26.07.2026" / "26.07.26" – der Punkt nach dem Monat ist Pflicht,
+# sonst würden Dezimalzahlen ("1.5 Liter") und Uhrzeiten als Datum durchgehen.
+# Zweistelliges Jahr (Live-Befund 13.09.2026: "bis 30.09.26" in /einstellungen
+# → 9 wurde gar nicht als Datum erkannt) zählt als 20xx.
+_DATUM_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})?(?!\d)")
 _UEBERMORGEN_RE = re.compile(
     r"\b(?:übermorgen|uebermorgen|day\s+after\s+tomorrow)\b", re.IGNORECASE)
 # matcht NICHT "morgens" (Wortgrenze) – "morgen früh" ergibt korrekt morgen.
@@ -50,6 +52,13 @@ def _heute() -> date:
     return datetime.now(ZoneInfo(config.TIMEZONE)).date()
 
 
+def _jahr(jahr: str | None) -> int | None:
+    """Jahres-Gruppe aus _DATUM_RE → int; zweistellig = 2000er ('26' → 2026)."""
+    if not jahr:
+        return None
+    return int(jahr) if len(jahr) == 4 else 2000 + int(jahr)
+
+
 def _vorwort(text: str, start: int) -> str:
     """Letztes Wort vor Position `start` (lowercase, '' wenn keins)."""
     m = re.search(r"([\wäöüß]+)\W*$", text[:start].lower())
@@ -58,10 +67,10 @@ def _vorwort(text: str, start: int) -> str:
 
 def _datum_treffer(text: str, heute: date) -> tuple[date, str] | None:
     for m in _DATUM_RE.finditer(text):
-        tag, monat, jahr = int(m.group(1)), int(m.group(2)), m.group(3)
+        tag, monat, jahr = int(m.group(1)), int(m.group(2)), _jahr(m.group(3))
         try:
             if jahr:
-                kandidat = date(int(jahr), monat, tag)
+                kandidat = date(jahr, monat, tag)
             else:
                 kandidat = date(heute.year, monat, tag)
                 if kandidat < heute:
@@ -123,10 +132,10 @@ def _datum_aus_match(m: re.Match, basis: date, toleranz_tage: int = 0) -> date |
     Folgejahr zu rollen (Review D8/M2: wer mitten in der Abwesenheit
     '/abwesend 20.07.-02.08.' setzt, meint das laufende Jahr – vorher landete
     der Zeitraum komplett im nächsten Jahr und der Prompt-Hinweis blieb aus)."""
-    tag, monat, jahr = int(m.group(1)), int(m.group(2)), m.group(3)
+    tag, monat, jahr = int(m.group(1)), int(m.group(2)), _jahr(m.group(3))
     try:
         if jahr:
-            return date(int(jahr), monat, tag)
+            return date(jahr, monat, tag)
         kandidat = date(basis.year, monat, tag)
         if kandidat < basis - timedelta(days=toleranz_tage):
             kandidat = date(basis.year + 1, monat, tag)

@@ -27,17 +27,20 @@ Pro Stille-Phase höchstens zwei Fragen (die zweite nach STILLE_ZWEITE_FRAGE_TAG
 ohne Antwort), danach Ruhe, bis sie wieder aktiv war und erneut verstummt.
 Coach-Ruhe/Zuschauer-Modus gaten alle proaktiven Dom-Jobs zentral in
 scheduler._flow_aktiv (+ training.daily_training); Rücknahme: /einstellungen → 9.
+Dort geht neben `ruhe 7` (Tage) auch ein Datum/eine Dauer als Ruhe-Ende
+(`bis 30.09.`, `30.09.26`, `2 Wochen`, `bis Sonntag` – Live-Befund 13.09.2026:
+die Dom-Seite tippte intuitiv ein Datum, das nur abgewiesen wurde).
 """
 import logging
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from bot import config, state
-from bot.services import paare
+from bot.services import datum_erkennung, paare
 from bot.services import qdrant, telegram_helper, grok
 from bot.prompts import coach_persona
 from bot.messages import t
@@ -223,6 +226,38 @@ def _ruhe_setzen(tage: int) -> str:
     bis = _jetzt() + timedelta(days=max(1, tage))
     state.set_coach_ruhe("ruhe", bis=bis.isoformat())
     return _dd_mm(bis.isoformat())
+
+
+# Obergrenze für ein Datum als Ruhe-Ende: ein vertipptes Jahr ("30.09.2062")
+# würde den Coach sonst still für Jahrzehnte stummschalten – dafür gibt es
+# den Zuschauer-Modus. Die Tage-Form deckelt separat bei 90.
+_RUHE_MAX_TAGE = 365
+
+
+def _ruhe_bis_datum(ende: date) -> str:
+    """Coach-Ruhe bis EINSCHLIESSLICH `ende` (Tagesende in der Bot-Zeitzone),
+    damit „bis 30.09.“ auch am 30.09. noch gilt und der Status „bis 30.09.“ zeigt."""
+    bis = datetime.combine(ende, time(23, 59, 59), tzinfo=ZoneInfo(config.TIMEZONE))
+    bis = bis.astimezone(timezone.utc)
+    state.set_coach_ruhe("ruhe", bis=bis.isoformat())
+    return _dd_mm(bis.isoformat())
+
+
+def _ruhe_aus_eingabe(text: str) -> bool:
+    """Datum, Dauer oder Wochentag als Ruhe-Ende ('bis 30.09.', '30.09.26',
+    '2 Wochen', 'bis Sonntag') über datum_erkennung.finde_zeitraum. Bei einem
+    Zeitraum zählt nur das Ende – die Ruhe beginnt immer sofort. False =
+    nicht erkannt, vergangen oder unplausibel weit weg."""
+    zeitraum = datum_erkennung.finde_zeitraum(text)
+    if not zeitraum:
+        return False
+    ende = zeitraum[1]
+    heute = datum_erkennung._heute()
+    if ende < heute or (ende - heute).days > _RUHE_MAX_TAGE:
+        return False
+    bis = _ruhe_bis_datum(ende)
+    logger.info("Coach-Ruhe per /einstellungen gesetzt bis %s (Datum/Dauer).", bis)
+    return True
 
 
 async def _reaktion(typ: str, antworten) -> None:
@@ -450,6 +485,8 @@ def einstellungs_hinweis() -> str:
         "`-` = alles normal (Ruhe / Zuschauer-Modus aus)\n"
         f"`ruhe` = {config.STILLE_RUHE_TAGE} Tage Coach-Ruhe: keine Vorschläge, Fragen und "
         "Impulse vom Coach (`ruhe 7` für 7 Tage)\n"
+        "`bis 30.09.` = Coach-Ruhe bis einschließlich diesem Tag "
+        "(auch `30.09.2026`, `2 Wochen` oder `bis Sonntag`)\n"
         "`zuschauer` = Zuschauer-Modus: dauerhaft nur noch Berichte über den Sklaven, "
         "nichts Proaktives\n\n"
         "_Berichte (erledigte Aufgaben, Gefühle, Wünsche) kommen in beiden Modi weiter._"
@@ -468,7 +505,8 @@ def einstellung_anwenden(eingabe: str) -> bool:
         tage = config.STILLE_RUHE_TAGE
         if rest:
             if not rest.isdigit():
-                return False
+                # 'ruhe bis 30.09.', 'ruhe 2 wochen' → Datum/Dauer als Ende
+                return _ruhe_aus_eingabe(rest)
             tage = min(90, max(1, int(rest)))
         bis = _ruhe_setzen(tage)
         logger.info("Coach-Ruhe per /einstellungen gesetzt bis %s.", bis)
@@ -477,7 +515,8 @@ def einstellung_anwenden(eingabe: str) -> bool:
         state.set_coach_ruhe("zuschauer")
         logger.info("Zuschauer-Modus per /einstellungen gesetzt.")
         return True
-    return False
+    # Ohne Schlüsselwort: 'bis 30.09.', '30.09.26', '2 wochen', 'bis sonntag'
+    return _ruhe_aus_eingabe(w)
 
 
 async def status_zeilen() -> list[str]:

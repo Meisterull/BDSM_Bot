@@ -11,7 +11,9 @@ Regressions-Tests Stille-Check-in 🔕 (09.09.2026, handlers/stille_checkin):
     passen nicht → Rückfrage-Mode; Doppel-Tap löst nichts zweites aus
   - Freitext: Rückfrage → Coach-Regel (quelle stille_checkin); ANDERES → Coach-Chat,
     Frage bleibt offen; KEINE_ZEIT → Ruhe
-  - /einstellungen → 9: -, ruhe, ruhe 7, zuschauer, Unsinn
+  - /einstellungen → 9: -, ruhe, ruhe 7, zuschauer, Unsinn; Datum/Dauer als
+    Ruhe-Ende (bis 30.09., 30.09.26, ruhe bis …, 2 Wochen, bis morgen) gilt
+    bis Tagesende, Vergangenes/zu Fernes wird abgewiesen
   - /stats-Zeilen nennen nie den Inhalt der Antwort
 
 Läuft mit echten Deps (Docker) ODER lokal mit MagicMock-Stubs:
@@ -482,6 +484,47 @@ def test_einstellung_anwenden():
         _reset()
 
 
+def test_einstellung_datum_als_ruhe_ende():
+    """Live-Befund 13.09.2026: die Dom-Seite tippte in Option 9 ein Datum, das
+    nur „Das kenne ich nicht“ ergab. Datum/Dauer/Wochentag → Ruhe bis Tagesende
+    (Bot-Zeitzone); Erwartungen relativ zum echten Heute, damit der Test nicht
+    mit dem Kalender verfällt."""
+    from datetime import date as _date, time as _time
+    from zoneinfo import ZoneInfo
+    _reset()
+    heute = sc.datum_erkennung._heute()
+
+    def _bis_utc(ende):
+        return datetime.combine(ende, _time(23, 59, 59),
+                                tzinfo=ZoneInfo(_config.TIMEZONE)).astimezone(timezone.utc)
+
+    def _pruefe(eingabe, ende):
+        assert sc.einstellung_anwenden(eingabe) is True, eingabe
+        r = state.coach_ruhe()
+        assert r and r["modus"] == "ruhe", eingabe
+        assert datetime.fromisoformat(r["bis"]) == _bis_utc(ende), (eingabe, r["bis"])
+        assert sc.ruhe_status_text() == f"Coach-Ruhe bis {ende.strftime('%d.%m.')}", eingabe
+        _reset()
+
+    try:
+        ende = heute + timedelta(days=16)
+        _pruefe(f"bis {ende.strftime('%d.%m.')}", ende)            # ohne Jahr
+        _pruefe(ende.strftime("%d.%m.%y"), ende)                    # zweistelliges Jahr
+        _pruefe(f"ruhe bis {ende.strftime('%d.%m.%Y')}", ende)      # mit Schlüsselwort
+        _pruefe("2 Wochen", heute + timedelta(days=14))             # Dauer
+        _pruefe("ruhe 2 wochen", heute + timedelta(days=14))
+        _pruefe("bis morgen", heute + timedelta(days=1))            # Termin-Form
+        # Vergangen (mit Jahr eindeutig) und unplausibel fern → abgewiesen, nichts gesetzt
+        assert sc.einstellung_anwenden((heute - timedelta(days=5)).strftime("bis %d.%m.%Y")) is False
+        assert sc.einstellung_anwenden((heute + timedelta(days=400)).strftime("bis %d.%m.%Y")) is False
+        assert sc.einstellung_anwenden("ruhe bis") is False
+        assert sc.einstellung_anwenden("ruhe x") is False
+        assert state.coach_ruhe() is None
+        assert "bis 30.09." in sc.einstellungs_hinweis()
+    finally:
+        _reset()
+
+
 def test_status_zeilen_ohne_inhalt():
     _reset()
     orig = sc.qdrant.get_user_profile
@@ -512,6 +555,7 @@ def _run():
     test_freitext_rueckfrage_wird_regel()
     test_freitext_klassen()
     test_einstellung_anwenden()
+    test_einstellung_datum_als_ruhe_ende()
     test_status_zeilen_ohne_inhalt()
     print("✅ Alle Stille-Check-in-Tests bestanden")
 

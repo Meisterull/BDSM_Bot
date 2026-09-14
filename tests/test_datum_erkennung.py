@@ -63,6 +63,9 @@ def test_explizites_datum():
     assert de.finde_termin("am 01.01. geht es los")[0] == date(2027, 1, 1)
     # Explizit vergangenes Datum → kein Termin
     assert de.finde_termin("am 01.01.2020 war das") is None
+    # zweistelliges Jahr = 20xx (auch vergangen)
+    assert de.finde_termin("am 26.07.26 wäscht er das Auto")[0] == date(2026, 7, 26)
+    assert de.finde_termin("am 01.01.20 war das") is None
     # Datum heute → kein Termin (= sofort)
     assert de.finde_termin("am 22.07. also heute") is None
 
