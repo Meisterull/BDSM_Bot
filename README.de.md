@@ -49,6 +49,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 - **Dauer-Anweisungen** – `/dauer <Stunden> <Text>`: eine Anweisung über 1–48 Stunden mit unangekündigten Zwischen-Checks, danach die übliche „Durchgehalten?“-Nachfrage.
 - **Tiny Tasks & Inspiration** – täglich ein Vorschlag für eine kurze Aufgabe, den die dominante Seite mit einem Tipp weitergibt, drei Ideen auf Abruf passend zum Level des Subs, und abends die Frage, warum ein Vorschlag nicht genutzt wurde – die Antwort kann zur Coach-Regel werden.
 - **Resurface** – einmal pro Woche holt der Bot eine gut bewertete Aufgabe von vor etwa drei Monaten hervor und bietet an, sie erneut zu erteilen.
+- **Versäumnis der dominanten Seite** – scheitert eine Aufgabe, die ohne die dominante Seite nicht ging (Strap-on, gemeinsame Session), weil *sie* keine Zeit hatte, fragt der Bot den Sub kurz nach, an wem es lag. Lag es an ihr, gibt es keinen Streak-Verlust, keine Wette und keine Strafe; die Aufgabe bleibt offen und der Coach schickt der dominanten Seite eine ehrliche Einschätzung mit zwei Knöpfen – nachholen oder streichen. Beim dritten Mal verfällt die Aufgabe von selbst.
 
 ### Spiel
 

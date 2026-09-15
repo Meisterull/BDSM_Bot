@@ -176,6 +176,22 @@ STILLE_CHECKIN_TIME = os.getenv("STILLE_CHECKIN_TIME", "20:30")
 STILLE_ZWEITE_FRAGE_TAGE = int(os.getenv("STILLE_ZWEITE_FRAGE_TAGE", "14"))
 STILLE_RUHE_TAGE = int(os.getenv("STILLE_RUHE_TAGE", "14"))
 
+# Versäumnis der Herrin ⏳ (handlers/herrin_versaeumnis.py): scheitert eine
+# Aufgabe, die die dominante Seite SELBST gebraucht hätte (Strap-on, Pegging,
+# gemeinsame Session …), weil SIE keine Zeit hatte oder es vergessen hat, zählt
+# das nicht gegen den Sub – kein Streak-Reset, keine Wette weg, keine Strafe,
+# kein "nicht_erledigt". Stattdessen bleibt die Aufgabe offen (Nachfrage in
+# HERRIN_NACHFRAGE_TAGE) und der Coach schickt der Dom-Seite eine ehrliche
+# Einschätzung mit Buttons „Hol ich nach" / „Streichen". Beim
+# HERRIN_MAX_VERSAEUMNISSE. Mal derselben Aufgabe verfällt sie von selbst.
+# Erkannt wird das erst beim „❌ Nicht erledigt"-Tipp des Subs (Kategorie-
+# Kurzschluss oder Grok-Klassifikation), dann Rückfrage an ihn: an mir / an ihr.
+HERRIN_VERSAEUMNIS = os.getenv("HERRIN_VERSAEUMNIS", "1") == "1"
+HERRIN_NACHFRAGE_TAGE = int(os.getenv("HERRIN_NACHFRAGE_TAGE", "3"))
+HERRIN_MAX_VERSAEUMNISSE = int(os.getenv("HERRIN_MAX_VERSAEUMNISSE", "3"))
+# Zählfenster (Tage) für die Stufe der Coach-Einschätzung und die Anzeige in /aufgaben.
+HERRIN_VERSAEUMNIS_FENSTER_TAGE = int(os.getenv("HERRIN_VERSAEUMNIS_FENSTER_TAGE", "90"))
+
 # Sprachnachrichten der Herrin 🔊 (lokales Piper via Wyoming-Protokoll).
 # Leer = aus. Beispiel: tcp://192.0.2.10:10200 (wyoming-piper auf dem Host).
 # Aufgaben-Zustellungen kommen dann zusätzlich als Telegram-Voice (best-effort).

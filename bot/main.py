@@ -25,7 +25,7 @@ from bot.handlers import (
     wunsch, kommentar, geheimnis, strafen_protokoll, tinytask,
     wuerfel, wunschkategorien, privileg, wette, blitz, arc, event_arc, roulette, dauer, quiz, coach_quiz, advent, tiny_task_feedback, hilfe, resurface, stille_checkin,
     lerntagebuch, coach_regeln, skill, kette_adaptiv, dossier, namen, meine_aufgaben,
-    einstellungen, luecke, pairing, admin, abwesenheit, inventar,
+    einstellungen, luecke, pairing, admin, abwesenheit, inventar, herrin_versaeumnis,
 )
 
 
@@ -166,6 +166,8 @@ _CALLBACK_ROLLEN = (
     ("kettefail:",          paare.ROLLE_DOM),
     ("wochenplan:",         paare.ROLLE_DOM),
     ("stille:",             paare.ROLLE_DOM),
+    ("herrinfehl:",         paare.ROLLE_DOM),   # Versäumnis: nachholen/streichen
+    ("herrin:",             paare.ROLLE_SUB),   # Versäumnis: an mir / an ihr
     ("wette:",              paare.ROLLE_SUB),
     ("blitz:",              paare.ROLLE_SUB),
     ("followup:",           paare.ROLLE_SUB),
@@ -467,6 +469,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
         if mode == "gefuehl":
             await gefuehl.handle(update, context)
+            return
+        if mode == herrin_versaeumnis.MODE:
+            await herrin_versaeumnis.handle(update, context)
             return
         if mode == "stimmung":
             await stimmung.handle_antwort(update, context)
@@ -913,6 +918,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(wochenplanung.callback,            pattern=r"^wochenplan:"))
     app.add_handler(CallbackQueryHandler(followup_response.callback,        pattern=r"^followup:"))
     app.add_handler(CallbackQueryHandler(meine_aufgaben.callback,           pattern=r"^meinetask:"))
+    app.add_handler(CallbackQueryHandler(herrin_versaeumnis.callback,        pattern=r"^herrin:"))
+    app.add_handler(CallbackQueryHandler(herrin_versaeumnis.callback_domina, pattern=r"^herrinfehl:"))
     app.add_handler(CallbackQueryHandler(wunsch.callback_loeschen,          pattern=r"^wunschdel:"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

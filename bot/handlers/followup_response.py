@@ -43,7 +43,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if antwort == "ja":
         await _handle_yes(update.message, context, chat_id, task_id, aufgabe, s)
     elif antwort == "nein":
-        await _handle_no(update.message, context, chat_id, task_id, aufgabe)
+        await _handle_no(update.message, context, chat_id, task_id, aufgabe, task)
     else:
         await update.message.reply_text(t("FOLLOWUP_KLARSTELLUNG"))
 
@@ -82,7 +82,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if action == "ja":
         await _handle_yes(query.message, context, chat_id, task_id, aufgabe, s)
     elif action == "nein":
-        await _handle_no(query.message, context, chat_id, task_id, aufgabe)
+        await _handle_no(query.message, context, chat_id, task_id, aufgabe, task)
 
 
 async def _handle_yes(
@@ -111,8 +111,30 @@ async def _handle_no(
     chat_id: str,
     task_id: str,
     aufgabe: str,
+    task: dict | None = None,
 ) -> None:
-    """Nein: Streak reset, Domina informieren + Bestrafungsvorschlag."""
+    """Nein: erst klären, an WEM es lag (Versäumnis der Herrin ⏳, 15.09.2026):
+    brauchte die Aufgabe die Dom-Seite selbst, bekommt der Sub eine Rückfrage –
+    der Malus darf nicht blind laufen. Sonst direkt die Malus-Kette."""
+    if config.HERRIN_VERSAEUMNIS:
+        from bot.handlers import herrin_versaeumnis  # lazy: zirkulärer Import
+        if task is None:
+            task = await qdrant.get_task(task_id)
+        if task and await herrin_versaeumnis.braucht_herrin(task):
+            await herrin_versaeumnis.frage_stellen(message, chat_id, task_id)
+            return
+    await malus_kette(message, context, chat_id, task_id, aufgabe)
+
+
+async def malus_kette(
+    message,
+    context,
+    chat_id: str,
+    task_id: str,
+    aufgabe: str,
+) -> None:
+    """Nicht erledigt, lag am Sub: Streak reset, Domina informieren + Bestrafungsvorschlag.
+    Auch der Einstieg für herrin_versaeumnis („lag an mir")."""
     await qdrant.update_task(task_id, {"status": "nicht_erledigt"})
     state.set_mode(chat_id, "chat")
     state.get(chat_id)["followup_task_id"] = None

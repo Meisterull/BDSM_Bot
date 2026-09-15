@@ -920,6 +920,37 @@ MESSAGES = {
     "BESTRAFUNG_LABEL_ESKALATION": "🚨 *Eskalation – Wiederholtes Muster:*",
     "BESTRAFUNG_LABEL_VORSCHLAG": "⚠️ *Bestrafungsvorschlag:*",
 
+    # --- Versäumnis der Herrin ⏳ (handlers/herrin_versaeumnis) ------------------------------
+    # Sub-Seite (Herrin-Stimme, Ich-Form = die dominante Seite)
+    "HERRIN_FRAGE": (
+        "Bevor ich das verbuche: Die Aufgabe ging nicht ohne mich. Lag es an dir – "
+        "oder ist sie liegen geblieben, weil ich keine Zeit dafür hatte?"
+    ),
+    "BUTTON_HERRIN_ICH": "🙋 Lag an mir",
+    "BUTTON_HERRIN_VERGESSEN": "⏳ Du hattest keine Zeit",
+    "HERRIN_FRAGE_KLARSTELLUNG": "Sag's klar: lag es an dir oder an mir? Nutz die Knöpfe.",
+    "FALLBACK_HERRIN_VERSAEUMT": (
+        "Das geht nicht auf deine Kappe. Die Aufgabe bleibt offen – ich hole sie nach, wenn es passt."
+    ),
+    "FALLBACK_HERRIN_VERFALLEN": "Das geht nicht auf deine Kappe. Die Aufgabe ist vom Tisch.",
+    # Dom-Seite (Coach-Stimme)
+    "BUTTON_HERRIN_NACHHOLEN": "✅ Hol ich nach",
+    "BUTTON_HERRIN_STREICHEN": "🗑 Streichen",
+    "HERRIN_COACH_FALLBACK": (
+        "⏳ „{aufgabe}“ ist an dir hängen geblieben – {sub_nom} hat's rückgemeldet. Geht nicht auf "
+        "{poss} Kappe: kein Streak-Verlust, keine Strafe. Die Aufgabe bleibt offen, in {tage} Tagen "
+        "frag ich {sub_akk} wieder. Unten kannst du entscheiden: nachholen oder streichen."
+    ),
+    "HERRIN_COACH_FALLBACK_VERFALLEN": (
+        "⏳ „{aufgabe}“ ist zum {n}. Mal an dir hängen geblieben – damit ist sie vom Tisch. "
+        "{sub_nom} büßt nicht dafür."
+    ),
+    "HERRIN_NACHHOLEN_OK": "👍 Alles klar, die Aufgabe bleibt offen – ich frag {sub_akk} zur nächsten Nachfrage wieder.",
+    "HERRIN_STREICHEN_OK": "🗑 Gestrichen. {sub_nom} erfährt, dass die Aufgabe vom Tisch ist.",
+    "HERRIN_ENTSCHEIDUNG_VERALTET": "Das ist schon entschieden – da gibt's nichts mehr umzuschalten.",
+    "AUFGABEN_HERRIN_ZAEHLER": "⏳ An dir hängen geblieben: *{n}* in {tage} Tagen{verfallen}\n",
+    "AUFGABEN_HERRIN_ZAEHLER_VERFALLEN": " (davon {v} verfallen)",
+
     # --- Rollenspiel (Liste/Aktiv-Meldung sind MarkdownV2) --------------------------------
     "ROLLENSPIEL_LISTE_TITEL": "🎭 *Rollenspiel – Wähle ein Szenario:*\n",
     "ROLLENSPIEL_LISTE_FUSS": "\nSchreibe eine Nummer \\(1\\-5\\) oder beschreibe dein eigenes Szenario\\.",

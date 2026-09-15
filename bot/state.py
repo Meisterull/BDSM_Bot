@@ -198,6 +198,7 @@ FLOW_STATE_KEYS = (
     "bewertung_task_id",
     "skill_edit_kategorie",
     "tiny_task_feedback_id",
+    "herrin_frage_task_id",
     "privileg_aktiv_id",
     # Stille-Check-in: offene Rückfrage (aufgaben/nervt)
     "stille_rueckfrage",

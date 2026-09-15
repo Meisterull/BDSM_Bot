@@ -347,6 +347,11 @@ def _followup_zeitpunkt_utc(tage: int = 1) -> str:
     return ziel.astimezone(timezone.utc).isoformat()
 
 
+def followup_zeitpunkt_utc(tage: int = 1) -> str:
+    """Öffentlicher Name (herrin_versaeumnis: Nachfrage in N Tagen neu setzen)."""
+    return _followup_zeitpunkt_utc(tage)
+
+
 async def erstelle_task(
     aufgabe: str,
     kategorie: str,

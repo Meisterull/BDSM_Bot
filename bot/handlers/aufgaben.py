@@ -34,8 +34,16 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE,
     # Kategorie-Filter, aber serverseitig sortiert sind es ab >100 Tasks
     # wenigstens die NEUESTEN 100 statt einer willkürlichen Teilmenge.
     tasks = await qdrant.get_tasks_by_status(["erledigt"], sort_by_datum=True)
+    # Versäumnis der Herrin ⏳: was in den letzten Tagen an der Dom-Seite hängen
+    # blieb (nur, wenn es etwas gibt – die Dom-Seite hat kein /stats).
+    from bot.handlers import herrin_versaeumnis
+    zaehler = await herrin_versaeumnis.zaehler_zeile()
     if not tasks:
-        await update.message.reply_text(t("AUFGABEN_KEINE_ERLEDIGT"))
+        text = t("AUFGABEN_KEINE_ERLEDIGT")
+        if zaehler:
+            await telegram_helper.reply_markdown_safe(update.message, f"{text}\n\n{zaehler}")
+        else:
+            await update.message.reply_text(text)
         return
 
     # Kategorie-Filter anwenden
@@ -47,6 +55,8 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     filter_hint = f" _(Filter: {aktive_kategorie})_" if aktive_kategorie else ""
     lines = [t("AUFGABEN_LISTE_TITEL", filter=filter_hint)]
+    if zaehler:
+        lines.append(zaehler)
 
     for i, task in enumerate(top, 1):
         aufgabe = task.get("aufgabe", "–")

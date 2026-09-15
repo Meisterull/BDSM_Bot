@@ -922,6 +922,35 @@ MESSAGES = {
     "BESTRAFUNG_LABEL_ESKALATION": "🚨 *Escalation – repeated pattern:*",
     "BESTRAFUNG_LABEL_VORSCHLAG": "⚠️ *Punishment suggestion:*",
 
+    # --- Dominant's lapse ⏳ (handlers/herrin_versaeumnis) ------------------------------
+    "HERRIN_FRAGE": (
+        "Before I log this: that task didn't work without me. Was it on you – "
+        "or did it fall through because I didn't have time for it?"
+    ),
+    "BUTTON_HERRIN_ICH": "🙋 It was on me",
+    "BUTTON_HERRIN_VERGESSEN": "⏳ You didn't have time",
+    "HERRIN_FRAGE_KLARSTELLUNG": "Say it straight: on you or on me? Use the buttons.",
+    "FALLBACK_HERRIN_VERSAEUMT": (
+        "That's not on you. The task stays open – I'll pick it up when it fits."
+    ),
+    "FALLBACK_HERRIN_VERFALLEN": "That's not on you. The task is off the table.",
+    "BUTTON_HERRIN_NACHHOLEN": "✅ I'll catch up",
+    "BUTTON_HERRIN_STREICHEN": "🗑 Drop it",
+    "HERRIN_COACH_FALLBACK": (
+        "⏳ \"{aufgabe}\" got stuck on your side – {sub_nom} reported it. Not on {poss} head: "
+        "no streak loss, no punishment. The task stays open, I'll ask {sub_akk} again in {tage} days. "
+        "You can decide below: catch up or drop it."
+    ),
+    "HERRIN_COACH_FALLBACK_VERFALLEN": (
+        "⏳ \"{aufgabe}\" got stuck on your side for the {n}. time – so it's off the table. "
+        "{sub_nom} doesn't pay for that."
+    ),
+    "HERRIN_NACHHOLEN_OK": "👍 Got it, the task stays open – I'll ask {sub_akk} again at the next follow-up.",
+    "HERRIN_STREICHEN_OK": "🗑 Dropped. {sub_nom} will hear that the task is off the table.",
+    "HERRIN_ENTSCHEIDUNG_VERALTET": "That's already been decided – nothing left to switch.",
+    "AUFGABEN_HERRIN_ZAEHLER": "⏳ Stuck on your side: *{n}* in {tage} days{verfallen}\n",
+    "AUFGABEN_HERRIN_ZAEHLER_VERFALLEN": " ({v} of them dropped)",
+
     # --- Rollenspiel (Liste/Aktiv-Meldung sind MarkdownV2) --------------------------------
     "ROLLENSPIEL_LISTE_TITEL": "🎭 *Roleplay – pick a scenario:*\n",
     "ROLLENSPIEL_LISTE_FUSS": "\nWrite a number \\(1\\-5\\) or describe your own scenario\\.",

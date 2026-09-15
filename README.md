@@ -49,6 +49,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 - **Endurance orders** — `/dauer <hours> <text>`: an instruction that runs for 1–48 hours with unannounced interim checks, then the usual "did you hold out?" follow-up.
 - **Tiny tasks & inspiration** — a daily short-task suggestion the dominant forwards with one tap, three ideas on demand matching the sub's level, and an evening question why a suggestion wasn't used — the answer can become a coach rule.
 - **Resurface** — once a week the bot digs up a well-rated task from about three months ago and offers to re-issue it.
+- **Dominant's lapse** — when a task that couldn't happen without the dominant (strap-on, a shared session) fails because *she* had no time, the bot briefly asks the sub whose fault it was. If it was hers, there is no streak loss, no lost bet and no punishment; the task stays open and the coach sends the dominant an honest assessment with two buttons — catch up or drop it. The third lapse retires the task by itself.
 
 ### Play
 

@@ -57,6 +57,11 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     kategorien_str = ", ".join(f"{k}: {v}x" for k, v in kategorien.items()) or "keine Daten"
 
+    # Versäumnis der Herrin ⏳: Aufgaben, die an der Dom-Seite selbst hängen blieben
+    # (zählen NICHT als nicht erledigt – der Coach soll das ehrlich einordnen).
+    from bot.handlers import herrin_versaeumnis
+    versaeumt_str = await herrin_versaeumnis.prompt_fakten(28) or "Keine."
+
     from bot.prompts import coach_persona
     system = f"""Du schaust mit der Domina auf die letzten Wochen zurück – wie eine vertraute Freundin, die ehrlich Bilanz zieht.
 
@@ -71,8 +76,11 @@ Ehrlich statt Motivations-Schaum. Maximal 12 Sätze. Kein [AUFGABE: ...] Tag."""
 Erledigte Aufgaben (letzte Wochen):
 {aufgaben_str}
 
-Nicht erledigte Aufgaben:
+Nicht erledigte Aufgaben (lag am Sklaven):
 {nicht_erledigt_str}
+
+An der Domina selbst hängen geblieben (sie hatte keine Zeit – zählt nicht gegen den Sklaven):
+{versaeumt_str}
 
 Aufgaben nach Kategorie: {kategorien_str}
 Gesammelte Gefühle des Sklaven: {', '.join(gefuehle[:5]) if gefuehle else 'keine'}"""

@@ -1557,7 +1557,10 @@ async def lernkurve_job(bot: Bot) -> None:
 
     # Leer-Guard (Review D8/N6, wie die anderen Verdichtungs-Jobs): bei null
     # Aktivität in 2 Wochen weder Reasoning-Call noch Analyse-über-nichts senden.
-    if daten["erledigt"] + daten["nicht_erledigt"] == 0:
+    # Versäumnis der Herrin ⏳ (14 Tage): zählt als Aktivität, aber nicht gegen den Sub.
+    from bot.handlers import herrin_versaeumnis
+    versaeumt_str = await herrin_versaeumnis.prompt_fakten(14)
+    if daten["erledigt"] + daten["nicht_erledigt"] == 0 and not versaeumt_str:
         logger.info("Lernkurve-Job übersprungen – keine Task-Aktivität im Zeitraum.")
         return
 
@@ -1568,7 +1571,9 @@ async def lernkurve_job(bot: Bot) -> None:
 Inhaltlich: was lief gut, was nicht, was wäre als nächstes dran. Aber NICHT als nummerierte Liste mit "1. Was gut lief: …". Lass es fließen wie ein Gespräch. 4-6 Sätze insgesamt. Konkret, nicht hohl. Kein [AUFGABE: ...] Tag."""
     prompt = f"""{coach_persona.level_zeile(level)}
 Erledigte Tasks: {daten['erledigt']}
-Nicht erledigte Tasks: {daten['nicht_erledigt']}
+Nicht erledigte Tasks (lag am Sklaven): {daten['nicht_erledigt']}
+An der Domina selbst hängen geblieben (keine Zeit – zählt nicht gegen den Sklaven):
+{versaeumt_str or 'nichts'}
 Kategorien: {daten['kategorien']}
 Durchschnittliche Bewertung: {daten['avg_bewertung']}★
 Beispiel-Tasks: {', '.join(daten['task_details'])}"""
