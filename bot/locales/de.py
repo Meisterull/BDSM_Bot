@@ -466,6 +466,24 @@ MESSAGES = {
     "COACH_SPRACHNACHRICHT_GESENDET": "🔊 Sprachnachricht ist raus.",
     "COACH_SPRACHNACHRICHT_LIMIT": "⛔ Nicht gesendet – das würde Limits verletzen ({begriffe}).",
     "COACH_SPRACHNACHRICHT_FEHLER": "⚠️ Sprachnachricht konnte nicht zugestellt werden – probier es gleich nochmal.",
+    # Sprachnachricht mit Auftrag → Ein-Tipp-Angebot, daraus eine Aufgabe zu machen
+    # (Live 14.09.2026: „schreib ihm, er muss …" blieb reine Nachricht, keine Nachfrage).
+    # Plain-Text: {aufgabe} ist LLM-Freitext.
+    "COACH_SN_AUFGABE_FRAGE": (
+        "📋 Das klingt nach einem Auftrag an {sub_akk}:\n„{aufgabe}“\n\n"
+        "Soll ich das auch als Aufgabe anlegen? Dann frag ich {sub_akk} zur nächsten "
+        "Nachfrage, ob es erledigt ist."
+    ),
+    "BUTTON_SN_AUFGABE_JA": "📋 Ja, als Aufgabe",
+    "BUTTON_SN_AUFGABE_NEIN": "Nein, nur Nachricht",
+    "COACH_SN_AUFGABE_ANGELEGT": "📋 Angelegt – ich frag {sub_akk} {wann} nach.",
+    "COACH_SN_AUFGABE_NEIN_OK": "👍 Alles klar, bleibt eine reine Nachricht.",
+    "COACH_SN_AUFGABE_VERALTET": (
+        "Das Angebot ist nicht mehr aktuell. Wenn du die Aufgabe trotzdem willst, "
+        "schreib sie mir einfach als „Aufgabe: …“."
+    ),
+    "COACH_SN_WANN": "am {tag} um {zeit}",
+    "SKLAVE_SN_AUFGABE_HINWEIS": "📋 Das eben gilt als Aufgabe – ich frage {wann} nach.",
     "MINIAPP_OEFFNEN": "📱 Deine Mini-App – tippe auf den Knopf (nur im Heimnetz erreichbar):",
     "MINIAPP_KNOPF": "📱 Öffnen",
     "MINIAPP_AUS": "Die Mini-App ist nicht eingerichtet (MINIAPP_PORT/MINIAPP_URL in der .env).",

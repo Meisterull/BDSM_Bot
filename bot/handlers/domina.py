@@ -5,16 +5,16 @@ Aufgaben werden erst nach Bestätigung + Serie-Frage weitergeleitet.
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, embeddings, punkte, telegram_helper, kategorie_logik, synonyme
 from bot.services import sticker_reaktionen
-from bot.prompts import domina_coach, followup as fp
+from bot.prompts import domina_coach, rollen, followup as fp
 from bot.handlers import onboarding
 from bot.messages import t
 
@@ -65,6 +65,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Keyword Aufgabe erkennen
     is_task, task_text = grok.extract_keyword_task(text)
+    keyword_task = is_task
 
     system = await _baue_system_prompt(chat_id, profile, sklave_profile, level, query_vector)
 
@@ -96,11 +97,29 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await telegram_helper.voice_an(context.bot, chat_id, clean_response,
                                            empfaenger_rolle=paare.ROLLE_DOM)
 
+    sn_blockiert = False
     if sn_gefunden and sn_inhalt:
-        await _sende_sprachnachricht_an_sklaven(update, context, sn_inhalt)
+        sn_gesendet = await _sende_sprachnachricht_an_sklaven(update, context, sn_inhalt)
+        sn_blockiert = not sn_gesendet
+        # Auftrag in der ausgerichteten Nachricht (LLM-Tag ODER Detektor) →
+        # Ein-Tipp-Angebot statt Bestätigungsdialog. Live 14.09.2026: „schreib
+        # ihm, er muss …" ging als reine Sprachnachricht raus – kein Task, am
+        # Folgetag keine Nachfrage. Die Zustellung ist hier schon passiert, ein
+        # zweiter Aufgaben-Text an den Sub wäre doppelt; deshalb legt „Ja" den
+        # Task nur an. Der Keyword-Pfad („Aufgabe: …") bleibt unverändert.
+        if sn_gesendet and not keyword_task:
+            auftrag = task_text if is_task else (
+                sn_inhalt if klingt_nach_auftrag(sn_inhalt, text) else "")
+            if auftrag:
+                await _biete_sprachnachricht_als_aufgabe(update, chat_id, auftrag, level,
+                                                          quelltext=text)
+                await _save_conversation(text, response)
+                return
 
-    # Aufgabe gefunden → Limits-Check, dann Bestätigung anfragen
-    if is_task and task_text:
+    # Aufgabe gefunden → Limits-Check, dann Bestätigung anfragen. Wurde die
+    # Sprachnachricht schon am Limits-Gate gestoppt, nicht dieselbe Sache ein
+    # zweites Mal als Aufgabe durchs Gate schicken (doppelte Grenzen-Meldung).
+    if is_task and task_text and not (sn_blockiert and not keyword_task):
         await _starte_aufgaben_bestaetigung(
             update, chat_id, task_text, level, profile, sklave_profile,
             quelltext=text,
@@ -134,23 +153,24 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _sende_sprachnachricht_an_sklaven(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                            inhalt: str) -> None:
+                                            inhalt: str) -> bool:
     """[SPRACHNACHRICHT:]-Tag des Coachs: Inhalt durchs Limits-Gate (wie die
     Aufgaben-Pfade, D8/H1), in der Herrin-Stimme ausformulieren (Sprech-Tags
-    bei Grok-TTS) und dem Sklaven als Text (ohne Tags) + Voice zustellen."""
+    bei Grok-TTS) und dem Sklaven als Text (ohne Tags) + Voice zustellen.
+    True = zugestellt (Text ist raus; Voice bleibt best-effort)."""
     from bot.services import limits_check, tts
     try:
         treffer = await limits_check.verletzungen(inhalt)
     except Exception:
         logger.exception("Limits-Check der Sprachnachricht fehlgeschlagen – nicht gesendet.")
         await update.message.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
-        return
+        return False
     if treffer:
         # verletzungen() liefert Dicts (limit/matched_via) – nur die Limit-Namen zeigen
         await update.message.reply_text(
             t("COACH_SPRACHNACHRICHT_LIMIT",
               begriffe=", ".join(sorted({v["limit"] for v in treffer}))))
-        return
+        return False
     try:
         nachricht = await grok.simple(fp.nachricht_an_sklaven(inhalt), max_tokens=250)
     except Exception as e:
@@ -164,8 +184,144 @@ async def _sende_sprachnachricht_an_sklaven(update: Update, context: ContextType
     except Exception:
         logger.exception("Sprachnachricht-Zustellung an den Sklaven fehlgeschlagen.")
         await update.message.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
-        return
+        return False
     await update.message.reply_text(t("COACH_SPRACHNACHRICHT_GESENDET"))
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Sprachnachricht mit Auftrag → Aufgabe (Ein-Tipp-Angebot an die Dom-Seite)
+# ---------------------------------------------------------------------------
+
+# Modalverben/Pflicht-Formen in 2./3. Person (de + en). Erste Person („sag
+# ihm, ich muss länger arbeiten") ist KEIN Auftrag an den Sub – die
+# Lookbehinds nehmen sie raus. Bewusst grob: ein Fehltreffer kostet nur eine
+# Button-Frage, ein verpasster Auftrag den Nachfrage-Tag.
+_AUFTRAG_MODAL_RE = re.compile(
+    r"(?<!\bich )(?<!\bwir )(?<!\bi )(?<!\bwe )"
+    r"\b(?:muss|musst|müssen|soll|sollst|sollen|hat zu|hast zu|haben zu"
+    r"|zu \w+ (?:hat|hast|haben)"
+    r"|darf(?:st)?\b[^.!?\n]{0,40}?\b(?:nicht|kein\w*)"
+    r"|must|has to|have to|should|needs? to|is to"
+    r"|may not|mustn't|can't|cannot)\b",
+    re.I)
+_AUFTRAG_WORT_RE = re.compile(
+    r"\b(?:verlange|erwarte|befehle|befiehl|anweisung|auftrag|aufgabe"
+    r"|order|task|command|expect|demand)\b", re.I)
+
+_SN_AUFGABE_KEYS = ("sn_aufgabe_id", "sn_aufgabe_text", "sn_aufgabe_quelltext",
+                    "sn_aufgabe_level")
+
+
+def klingt_nach_auftrag(*texte: str) -> bool:
+    """Deterministischer Detektor: steckt in Sprachnachricht-Inhalt oder
+    Original-Wortlaut der Dom-Seite ein Auftrag an den Sub?"""
+    for text in texte:
+        if not text:
+            continue
+        if _AUFTRAG_MODAL_RE.search(text) or _AUFTRAG_WORT_RE.search(text):
+            return True
+    return False
+
+
+def _nachfrage_wann(tage: int) -> str:
+    """„am Mittwoch, 16.09.2026 um 17:30" – Nachfrage-Zeitpunkt des Paares."""
+    from zoneinfo import ZoneInfo
+    from bot.services import datum_erkennung, persona_config
+    tz = ZoneInfo(config.TIMEZONE)
+    datum = (datetime.now(tz) + timedelta(days=tage)).date()
+    return t("COACH_SN_WANN", tag=datum_erkennung.format_termin(datum),
+             zeit=persona_config.zeit("followup_time"))
+
+
+async def _biete_sprachnachricht_als_aufgabe(update: Update, chat_id: str, auftrag: str,
+                                             level: int, quelltext: str = "") -> None:
+    """Nach einer zugestellten Sprachnachricht mit Auftrag: Ein-Tipp-Frage an
+    die Dom-Seite, ob daraus eine Aufgabe (mit Nachfrage) werden soll."""
+    s = state.get(chat_id)
+    kennung = uuid.uuid4().hex[:8]
+    s["sn_aufgabe_id"] = kennung
+    s["sn_aufgabe_text"] = auftrag
+    s["sn_aufgabe_quelltext"] = quelltext
+    s["sn_aufgabe_level"] = level
+    buttons = InlineKeyboardMarkup([[
+        InlineKeyboardButton(t("BUTTON_SN_AUFGABE_JA"), callback_data=f"snaufgabe:ja:{kennung}"),
+        InlineKeyboardButton(t("BUTTON_SN_AUFGABE_NEIN"), callback_data=f"snaufgabe:nein:{kennung}"),
+    ]])
+    # Plain-Text (kein parse_mode): der Auftrag ist LLM-Freitext.
+    await update.message.reply_text(
+        t("COACH_SN_AUFGABE_FRAGE", sub_akk=rollen.sub()["label_akk"], aufgabe=auftrag),
+        reply_markup=buttons)
+    logger.info("Sprachnachricht mit Auftrag – Aufgaben-Angebot an die Dom-Seite (%s).", kennung)
+
+
+async def callback_sn_aufgabe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Buttons unter dem Aufgaben-Angebot (Rolle via main._callback_gate: Dom).
+    „Ja" legt den Task an, OHNE ihn nochmal an den Sub zu schicken – die
+    Sprachnachricht war die Zustellung; nur ein kurzer Hinweis geht raus."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        _, action, kennung = query.data.split(":", 2)
+    except ValueError:
+        return
+    if action not in ("ja", "nein"):
+        return
+    chat_id = str(update.effective_chat.id)
+    s = state.get(chat_id)
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    if s.get("sn_aufgabe_id") != kennung or not s.get("sn_aufgabe_text"):
+        await query.message.reply_text(t("COACH_SN_AUFGABE_VERALTET"))
+        return
+    auftrag = s["sn_aufgabe_text"]
+    quelltext = s.get("sn_aufgabe_quelltext", "")
+    level = s.get("sn_aufgabe_level", 1)
+    for key in _SN_AUFGABE_KEYS:
+        s.pop(key, None)
+    sub = rollen.sub()
+    if action == "nein":
+        await query.message.reply_text(t("COACH_SN_AUFGABE_NEIN_OK"))
+        logger.info("Aufgaben-Angebot abgelehnt (%s) – bleibt Sprachnachricht.", kennung)
+        return
+
+    # Limits-Gate wie im Chat-Aufgaben-Pfad (Sub-Hard-Limits + Dom-Grenzen).
+    from bot.services import datum_erkennung, limits_check
+    from zoneinfo import ZoneInfo
+    profile = await qdrant.get_user_profile("domina") or {}
+    sklave_profile = await qdrant.get_user_profile("sklave") or {}
+    treffer = await limits_check.verletzungen(
+        auftrag, sklave_profile.get("hard_limits", []) or [], profile.get("grenzen", []) or [])
+    if treffer:
+        await telegram_helper.reply_markdown_safe(
+            query.message,
+            t("DOMINA_AUFGABE_GRENZEN", treffer=limits_check.format_verletzungen(treffer)))
+        return
+
+    kategorie = await kategorie_logik.klassifiziere(auftrag)
+    # Termin aus dem Original-Wortlaut („am Samstag") → Nachfrage an dem Tag;
+    # sonst wie jede Sofort-Aufgabe morgen zur Followup-Zeit.
+    termin = datum_erkennung.finde_termin(quelltext) or datum_erkennung.finde_termin(auftrag)
+    tage = 1
+    extra: dict = {}
+    if termin:
+        heute = datetime.now(ZoneInfo(config.TIMEZONE)).date()
+        tage = max((termin[0] - heute).days, 1)
+        extra["termin_datum"] = termin[0].isoformat()
+    task_id = await qdrant.erstelle_task(
+        auftrag, kategorie, level, status="offen", quelle="sprachnachricht",
+        followup_in_tagen=tage, extra=extra)
+    wann = _nachfrage_wann(tage)
+    await query.message.reply_text(
+        t("COACH_SN_AUFGABE_ANGELEGT", sub_akk=sub["label_akk"], wann=wann))
+    logger.info("Sprachnachricht als Aufgabe angelegt (Task %s, Nachfrage in %d Tag(en)).",
+                task_id, tage)
+    try:
+        await telegram_helper.send_sklave(context.bot, t("SKLAVE_SN_AUFGABE_HINWEIS", wann=wann))
+    except Exception:
+        logger.exception("Aufgaben-Hinweis an den Sub konnte nicht zugestellt werden")
 
 
 async def _baue_system_prompt(

@@ -47,14 +47,39 @@ SPRECH_TAG_ANLEITUNG = (
 )
 _INLINE_TAG_RE = re.compile(r"\[(?:pause|long-pause|laugh|cry|sigh|breath|giggle|whisper)\]", re.I)
 _WRAP_TAG_RE = re.compile(r"</?(?:whisper|soft|loud|slow|fast|singing)>", re.I)
+# Grok mischt die Syntax gelegentlich: „[soft]…[/soft]" statt <soft>…</soft>
+# bzw. „<laugh>" statt [laugh]. Live 14.09.2026 stand „[soft]…[/soft]" wörtlich
+# in der Text-Bubble einer Sprachnachricht an den Sub. Beide Fremdformen
+# werden erkannt: der Entferner nimmt sie raus, normalisiere_sprech_tags()
+# biegt sie für Grok-TTS in die dokumentierte Form.
+_WRAP_TAG_ECKIG_PAAR_RE = re.compile(
+    r"\[(whisper|soft|loud|slow|fast|singing)\](.*?)\[/\1\]", re.I | re.S)
+# Einzelne eckige Wickel-Tags (unpaarig) – „[whisper]" ohne Schrägstrich ist
+# ein gültiger Einschub (_INLINE_TAG_RE) und bleibt deshalb hier außen vor.
+_WRAP_TAG_ECKIG_REST_RE = re.compile(r"\[/?(?:soft|loud|slow|fast|singing)\]|\[/whisper\]", re.I)
+_INLINE_TAG_SPITZ_RE = re.compile(r"<(pause|long-pause|laugh|cry|sigh|breath|giggle)\s*/?>", re.I)
 
 
 def entferne_sprech_tags(text: str) -> str:
     """Nimmt Grok-Sprech-Tags aus einem Text – für die Text-Darstellung in der
-    Chat-Bubble und für den Piper-Fallback (der läse '[laugh]' sonst wörtlich vor)."""
+    Chat-Bubble und für den Piper-Fallback (der läse '[laugh]' sonst wörtlich vor).
+    Kennt auch die vom Modell vertauschten Klammerformen ([soft]…[/soft], <laugh>)."""
     text = _INLINE_TAG_RE.sub("", text or "")
     text = _WRAP_TAG_RE.sub("", text)
+    text = _WRAP_TAG_ECKIG_REST_RE.sub("", text)
+    text = _INLINE_TAG_SPITZ_RE.sub("", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def normalisiere_sprech_tags(text: str) -> str:
+    """Vertauschte Klammerformen in die Form bringen, die Grok-TTS versteht:
+    [soft]…[/soft] → <soft>…</soft>, <laugh> → [laugh]. Unpaarige eckige
+    Wickel-Tags fliegen raus (wären auch für TTS nur Buchstabensalat)."""
+    text = _WRAP_TAG_ECKIG_PAAR_RE.sub(
+        lambda m: f"<{m.group(1).lower()}>{m.group(2)}</{m.group(1).lower()}>", text or "")
+    text = _WRAP_TAG_ECKIG_REST_RE.sub("", text)
+    text = _INLINE_TAG_SPITZ_RE.sub(lambda m: f"[{m.group(1).lower()}]", text)
+    return text
 
 
 def _host_port() -> tuple[str, int] | None:
@@ -212,7 +237,7 @@ async def synthesize(text: str, rolle: str = ROLLE_HERRIN) -> bytes | None:
     `rolle` wählt die Grok-Stimme (Empfänger-Seite: herrin|coach)."""
     # 1) Grok-TTS (Gate + Key nötig); Fehler → still weiter zu Piper.
     if config.GROK_TTS and config.XAI_API_KEY:
-        grok_text = _gekuerzt(bereinige(text, tags_erhalten=True))
+        grok_text = _gekuerzt(bereinige(normalisiere_sprech_tags(text), tags_erhalten=True))
         if grok_text:
             try:
                 async with asyncio.timeout(_TIMEOUT):

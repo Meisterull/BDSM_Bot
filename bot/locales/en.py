@@ -468,6 +468,22 @@ MESSAGES = {
     "COACH_SPRACHNACHRICHT_GESENDET": "🔊 Voice message sent.",
     "COACH_SPRACHNACHRICHT_LIMIT": "⛔ Not sent – that would violate limits ({begriffe}).",
     "COACH_SPRACHNACHRICHT_FEHLER": "⚠️ The voice message could not be delivered – try again in a moment.",
+    # Voice message containing an order → one-tap offer to turn it into a task
+    "COACH_SN_AUFGABE_FRAGE": (
+        "📋 That sounds like an order for {sub_akk}:\n“{aufgabe}”\n\n"
+        "Should I also save it as a task? Then I'll ask {sub_akk} at the next "
+        "follow-up whether it got done."
+    ),
+    "BUTTON_SN_AUFGABE_JA": "📋 Yes, as a task",
+    "BUTTON_SN_AUFGABE_NEIN": "No, just a message",
+    "COACH_SN_AUFGABE_ANGELEGT": "📋 Saved – I'll ask {sub_akk} {wann}.",
+    "COACH_SN_AUFGABE_NEIN_OK": "👍 Okay, it stays a plain message.",
+    "COACH_SN_AUFGABE_VERALTET": (
+        "That offer is no longer current. If you still want the task, "
+        "just send it to me as “Task: …”."
+    ),
+    "COACH_SN_WANN": "on {tag} at {zeit}",
+    "SKLAVE_SN_AUFGABE_HINWEIS": "📋 That just now counts as a task – I'll ask {wann}.",
     "MINIAPP_OEFFNEN": "📱 Your mini app – tap the button (reachable on the home network only):",
     "MINIAPP_KNOPF": "📱 Open",
     "MINIAPP_AUS": "The mini app is not configured (MINIAPP_PORT/MINIAPP_URL in .env).",
