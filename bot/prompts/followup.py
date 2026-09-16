@@ -121,6 +121,31 @@ def nachricht_an_sklaven(inhalt: str) -> tuple[str, str]:
     return system, user
 
 
+def wette_an_sklaven(idee: str) -> tuple[str, str]:
+    """Wettvorschlag des Coachs (📨-Button der Dom-Seite, handlers/coach_quiz):
+    die Herrin formuliert die Idee als eigene Wett-Ansage an den Sub. In der
+    Idee ist „du" die Dom-Seite und der Sub steht in dritter Person – hier
+    dreht sich das: der Sub wird „du". Sprech-Tags bei Grok-TTS wie bei
+    nachricht_an_sklaven; die Text-Bubble wird davon befreit."""
+    from bot.services import tts  # lazy: kein Service-Import beim Prompt-Laden
+    s = rollen.sub()
+    tag_block = f"\n{tts.SPRECH_TAG_ANLEITUNG}\n" if config.GROK_TTS else ""
+    system = (
+        f"{_du_bist_dom()}. Unten steht eine Wett-Idee, die dein Coach dir vorgeschlagen hat "
+        f"(dort bist DU ‚du‘, und {s['nom']} ist {s['label_nom']} in dritter Person). "
+        f"Mach daraus deine eigene Wett-Ansage an {s['akk']} – Ich-Form, dein Ton, direkt an "
+        f"{s['akk']} gesprochen, {s['akk']} sprichst du mit ‚du‘ an.\n"
+        f"Drei bis fünf Sätze: die Bedingung (messbar, bis wann), was {s['nom']} bei Sieg bekommt, "
+        f"was du bei Sieg bekommst – Einsätze und Richtung EXAKT wie in der Idee, nichts dazu "
+        f"erfinden. Zum Schluss fragst du, ob {s['nom']} die Wette annimmt. Keine Einleitung, "
+        f"keine Erklärung, kein Coach-Ton, keine Regeln oder Bot-Mechanik.\n"
+        f"{tag_block}\n"
+        f"{persona.fuer_sklaven_prompt()}"
+    )
+    user = f"Wett-Idee (Kontext, formuliere sie als deine eigene Ansage, nicht wörtlich): {idee}"
+    return system, user
+
+
 def reaktion_auf_gefuehl(aufgabe: str, gefuehl: str) -> tuple[str, str]:
     """Kurze, persönliche Reaktion der Herrin auf die Gefühl-Antwort des Sklaven."""
     s = rollen.sub()
@@ -890,6 +915,13 @@ def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
     from bot.prompts import coach_persona
     s, d = rollen.sub(), rollen.dom()
     sub_nom_gross = s["label_nom"][0].upper() + s["label_nom"][1:]
+    # Anrede des Subs nur als Negativ-Beispiel („kein ‚<Anrede>, wir machen …'"):
+    # Live 15.09. begann die Idee mit dem Vokativ und war eine fertige Nachricht.
+    try:
+        from bot.services import persona_config  # lazy: kein Service-Import beim Prompt-Laden
+        anrede = persona_config.sklave_anrede() or s["label_nom"]
+    except Exception:
+        anrede = s["label_nom"]
     zutaten_str = ""
     if verbrauchte_zutaten:
         zutaten_str = (
@@ -907,7 +939,8 @@ ROLLEN UND ANREDE (strikt):
 - Die Interessen {d['real_gen']} sind aus {d['poss'][:-1] if d['poss'].endswith('e') else d['poss']}er Sicht notiert: dort ist „ich/mein" = dein „du", und „{s['poss']}/{s['akk']}" = {s['label_nom']}.
 
 DIE WETTE (strikt):
-- 2–4 lockere Sätze: die Wett-Bedingung (messbar, in den nächsten 1–3 Tagen entscheidbar) und was jede Seite bei Sieg bekommt.
+- 2–4 lockere Sätze (höchstens 500 Zeichen): die Wett-Bedingung (messbar, in den nächsten 1–3 Tagen entscheidbar) und was jede Seite bei Sieg bekommt.
+- Du schreibst die IDEE an {d['real_akk']} – KEINE fertige Nachricht an {s['akk']}: kein „{anrede}, wir machen eine Wette …", keine Anführungszeichen, kein „schick mir ‚angenommen‘". Das Ausformulieren an {s['akk']} übernimmt der Bot auf Knopfdruck.
 - Einsätze nur aus den Vorlieben {s['label_gen']} und den Interessen {d['real_gen']} unten – nichts Neues einführen; Richtung, Rollen und Bedingungen jeder Vorliebe EXAKT übernehmen.
 - Kein Vorwort, keine Erklärung und KEINE Rückfrage am Ende („Willst du das so abschicken?", „Soll ich noch was ändern?") – die Weitergabe regelt der Bot. Nur der Vorschlag selbst.
 {zutaten_str}"""

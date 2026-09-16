@@ -168,6 +168,7 @@ _CALLBACK_ROLLEN = (
     ("stille:",             paare.ROLLE_DOM),
     ("herrinfehl:",         paare.ROLLE_DOM),   # Versäumnis: nachholen/streichen
     ("snaufgabe:",          paare.ROLLE_DOM),   # Sprachnachricht → Aufgabe ja/nein
+    ("wettidee:",           paare.ROLLE_DOM),   # Wettvorschlag: senden / andere Idee
     ("herrin:",             paare.ROLLE_SUB),   # Versäumnis: an mir / an ihr
     ("wette:",              paare.ROLLE_SUB),
     ("blitz:",              paare.ROLLE_SUB),
@@ -922,6 +923,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(herrin_versaeumnis.callback,        pattern=r"^herrin:"))
     app.add_handler(CallbackQueryHandler(herrin_versaeumnis.callback_domina, pattern=r"^herrinfehl:"))
     app.add_handler(CallbackQueryHandler(domina.callback_sn_aufgabe,         pattern=r"^snaufgabe:"))
+    app.add_handler(CallbackQueryHandler(coach_quiz.callback_wett_idee,      pattern=r"^wettidee:"))
     app.add_handler(CallbackQueryHandler(wunsch.callback_loeschen,          pattern=r"^wunschdel:"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

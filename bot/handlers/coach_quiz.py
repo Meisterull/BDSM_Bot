@@ -15,8 +15,9 @@ eine fertige Wett-Idee zum Weitergeben – Spiegel des Spiel-Impulses.
 import logging
 import random
 import re
+import uuid
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from bot import state
@@ -375,15 +376,61 @@ def _nachsatz_entfernen(text: str) -> str:
         t = t[:m.start()].rstrip()
 
 
-async def sende_wett_idee(bot) -> bool:
-    """Coach-Impuls: fertige Wett-Idee im Coach-Ton – zum Weitergeben an den
-    Sub, bewusst OHNE eigenen Bestätigungs-Flow. True nur bei Versand.
+# ---------------------------------------------------------------------------
+# Wett-Idee 🎲 – Coach-Impuls mit Ein-Tipp-Weitergabe (📨 / 🎲)
+# ---------------------------------------------------------------------------
 
-    Dieselben Bausteine wie der Tiny-Task (Live-Befund 07.09.: die erste
-    Wett-Idee verdrehte die Rollen – Vorlieben in Ich-Perspektive ohne
-    Rollen-Rahmen – und garnierte mit den Zutaten des Tipps vom selben Abend):
-    Rollen-Frame + Richtungs-Regel (Prompt), Vorlieben-Subsample,
-    Zutaten-Sperrliste, Schablonen-Detektor mit einem Retry, Nachsatz-Schnitt."""
+WETT_IDEE_MAX_ZEICHEN = 600   # Prompt verlangt 2–4 Sätze; Live 15.09.: 1100 Zeichen Herrin-Nachricht
+WETT_IDEE_MAX_NEU = 3         # „Andere Idee"-Würfe pro Vorschlag
+_WETT_IDEE_KEYS = ("wett_idee_id", "wett_idee_text", "wett_idee_neu")
+_ZITAT_BLOCK_RE = re.compile(r"[„“\"»][^“”\"«]{120,}")
+
+
+def _idee_verstoesse(idee: str) -> list[str]:
+    """Deterministische Drift-Prüfung (Live 15.09.2026: statt einer Idee an die
+    Dom-Seite kam eine fertige, 1100 Zeichen lange Herrin-Nachricht an den Sub
+    in Anführungszeichen, mit Vokativ-Anrede und erfundener Mechanik – die
+    Schablonen-/Nachsatz-Detektoren sahen nichts). Leer = brauchbar."""
+    text = (idee or "").strip()
+    funde: list[str] = []
+    if len(text) > WETT_IDEE_MAX_ZEICHEN:
+        funde.append(f"zu lang ({len(text)} Zeichen, höchstens {WETT_IDEE_MAX_ZEICHEN})")
+    if re.match(r"^[„“\"»]", text) or _ZITAT_BLOCK_RE.search(text):
+        funde.append("fertiger Nachrichtentext in Anführungszeichen statt einer Idee")
+    try:
+        from bot.services import persona_config
+        anrede = (persona_config.sklave_anrede() or "").strip()
+    except Exception:
+        anrede = ""
+    if anrede and re.search(rf"(?:^|[\n„“\"»])\s*{re.escape(anrede)}\s*[,!]", text, re.I):
+        funde.append(f"Anrede ‚{anrede}‘ – der Text spricht den Sub an statt die Dom-Seite")
+    return funde
+
+
+def _wett_idee_buttons(kennung: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(t("BUTTON_WETTIDEE_SENDEN"), callback_data=f"wettidee:senden:{kennung}"),
+        InlineKeyboardButton(t("BUTTON_WETTIDEE_NEU"), callback_data=f"wettidee:neu:{kennung}"),
+    ]])
+
+
+def _wett_idee_merken(chat_id: str, idee: str, neu_zaehler: int) -> str:
+    """Idee im Chat-State parken (callback_data trägt nur die Kennung)."""
+    s = state.get(chat_id)
+    kennung = uuid.uuid4().hex[:8]
+    s["wett_idee_id"] = kennung
+    s["wett_idee_text"] = idee
+    s["wett_idee_neu"] = neu_zaehler
+    return kennung
+
+
+async def _wett_idee_generieren() -> str | None:
+    """Wett-Idee im Coach-Ton. Dieselben Bausteine wie der Tiny-Task (Live-Befund
+    07.09.: die erste Wett-Idee verdrehte die Rollen – Vorlieben in Ich-Perspektive
+    ohne Rollen-Rahmen – und garnierte mit den Zutaten des Tipps vom selben Abend):
+    Rollen-Frame + Richtungs-Regel (Prompt), Vorlieben-Subsample, Zutaten-Sperrliste,
+    Schablonen-Detektor + Drift-Prüfung (_idee_verstoesse) mit genau einem Retry,
+    Nachsatz-Schnitt. None = nichts Brauchbares (der Impuls fällt dann auf Quiz)."""
     # lazy: der Scheduler importiert coach_quiz selbst lazy (zirkulärer Import)
     from bot.scheduler.followup import _formel_verstoesse, _verbrauchte_zutaten
     from bot.prompts import followup as followup_prompts, rollen
@@ -421,28 +468,132 @@ async def sende_wett_idee(bot) -> bool:
 
     idee = await _generiere(prompt)
     if not idee:
-        return False
+        return None
     idee = _nachsatz_entfernen(idee)
-    funde = _formel_verstoesse(idee)
+    funde = _formel_verstoesse(idee) + _idee_verstoesse(idee)
     if funde:
-        logger.info("Wett-Idee nutzt verbotene Schablonen (%s) – generiere einmal neu.",
-                    "; ".join(funde))
+        logger.info("Wett-Idee mit Mängeln (%s) – generiere einmal neu.", "; ".join(funde))
         s = rollen.sub()
         neu = await _generiere(
-            prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN Schablonen "
-            "benutzt: " + "; ".join(funde) + ". Formuliere die Wette neu – der Inhalt "
-            "darf bleiben, aber ohne Profil-Abgleich ('passt zu …', 'genau "
-            f"{s['poss']}e …', '…, den du magst') und ohne Kommentar, wovon du dich absetzt."
+            prompt + "\n\nACHTUNG: Dein letzter Entwurf hatte diese Mängel: " + "; ".join(funde)
+            + ". Formuliere die Wette neu – der Inhalt darf bleiben, aber als kurze IDEE an sie "
+            "(kein fertiger Nachrichtentext, keine Anführungszeichen, keine Anrede an "
+            f"{s['label_akk']}), ohne Profil-Abgleich ('passt zu …', 'genau {s['poss']}e …', "
+            "'…, den du magst') und ohne Kommentar, wovon du dich absetzt."
         )
         if neu:
             neu = _nachsatz_entfernen(neu)
-            if len(_formel_verstoesse(neu)) <= len(funde):
+            if len(_formel_verstoesse(neu) + _idee_verstoesse(neu)) <= len(funde):
                 idee = neu
+    rest = _idee_verstoesse(idee)
+    if rest:
+        logger.info("Wett-Idee auch nach Retry unbrauchbar (%s) – kein Versand.", "; ".join(rest))
+        return None
+    return idee
+
+
+async def sende_wett_idee(bot) -> bool:
+    """Coach-Impuls: Wettvorschlag im Coach-Ton mit Ein-Tipp-Weitergabe – 📨 schickt
+    ihn in der Herrin-Stimme an den Sub, 🎲 würfelt eine andere Idee. True nur bei
+    Versand. (Bis 15.09.2026 bewusst ohne Flow – Live hat die Dom-Seite die reine
+    Text-Idee nie als Wettvorschlag wahrgenommen, geschweige denn abgetippt.)"""
+    idee = await _wett_idee_generieren()
+    if not idee:
+        return False
     chat_id = paare.dom_chat_id()
     if state.is_paused() or state.get_mode(chat_id) not in ("chat", None):
         logger.info("Coach-Impuls-Wette nach Generierung verworfen – Pause/Mode geändert.")
         return False
+    kennung = _wett_idee_merken(chat_id, idee, 0)
     await telegram_helper.send_domina(
         bot, t("COACH_IMPULS_WETTE", idee=telegram_helper.md_einbett_sicher(idee)),
-        parse_mode="Markdown")
+        parse_mode="Markdown", reply_markup=_wett_idee_buttons(kennung))
     return True
+
+
+async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Buttons unter dem Wettvorschlag (Rolle via main._callback_gate: Dom).
+    senden → Herrin-Ansage an den Sub (Text + Voice, Weg der Sprachnachricht);
+    neu → nächste Idee (höchstens WETT_IDEE_MAX_NEU pro Vorschlag).
+    Bei Fehlern bleiben Buttons und State stehen – sie kann es gleich nochmal tippen."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        _, action, kennung = query.data.split(":", 2)
+    except ValueError:
+        return
+    if action not in ("senden", "neu"):
+        return
+    chat_id = str(update.effective_chat.id)
+    s = state.get(chat_id)
+    if s.get("wett_idee_id") != kennung or not s.get("wett_idee_text"):
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await query.message.reply_text(t("COACH_WETTIDEE_VERALTET"))
+        return
+    idee = s["wett_idee_text"]
+
+    if action == "neu":
+        zaehler = int(s.get("wett_idee_neu", 0) or 0)
+        if zaehler >= WETT_IDEE_MAX_NEU:
+            await query.message.reply_text(t("COACH_WETTIDEE_NEU_LIMIT"))
+            return
+        neu = await _wett_idee_generieren()
+        if not neu:
+            await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
+            return
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        neu_kennung = _wett_idee_merken(chat_id, neu, zaehler + 1)
+        await telegram_helper.send_domina(
+            context.bot, t("COACH_IMPULS_WETTE", idee=telegram_helper.md_einbett_sicher(neu)),
+            parse_mode="Markdown", reply_markup=_wett_idee_buttons(neu_kennung))
+        logger.info("Wett-Idee neu gewürfelt (%s → %s, Wurf %d).", kennung, neu_kennung, zaehler + 1)
+        return
+
+    # senden: in der Herrin-Stimme ausformulieren (Sprech-Tags bei Grok-TTS),
+    # Limits-Gate auf das Ergebnis, Text ohne Tags + Voice an den Sub.
+    from bot.prompts import followup as followup_prompts
+    from bot.services import tts
+    try:
+        ansage = grok.clean_text(await grok.simple(followup_prompts.wette_an_sklaven(idee),
+                                                   max_tokens=350))
+    except Exception:
+        logger.exception("Wett-Ansage konnte nicht formuliert werden")
+        ansage = ""
+    if not ansage:
+        await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
+        return
+    sklave_profil = await qdrant.get_user_profile("sklave") or {}
+    domina_profil = await qdrant.get_user_profile("domina") or {}
+    try:
+        treffer = await limits_check.verletzungen(
+            ansage, sklave_profil.get("hard_limits", []) or [],
+            domina_profil.get("grenzen", []) or [])
+    except Exception:
+        logger.exception("Limits-Check der Wett-Ansage fehlgeschlagen – nicht gesendet.")
+        await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
+        return
+    if treffer:
+        await query.message.reply_text(
+            t("COACH_WETTIDEE_LIMIT", begriffe=", ".join(sorted({v["limit"] for v in treffer}))))
+        return
+    try:
+        await telegram_helper.send_sklave(context.bot, tts.entferne_sprech_tags(ansage),
+                                          voice_text=ansage)
+    except Exception:
+        logger.exception("Wett-Ansage an den Sub konnte nicht zugestellt werden")
+        await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
+        return
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    for key in _WETT_IDEE_KEYS:
+        s.pop(key, None)
+    await query.message.reply_text(t("COACH_WETTIDEE_GESENDET"))
+    logger.info("Wettvorschlag an den Sub geschickt (%s).", kennung)

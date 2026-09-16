@@ -536,7 +536,16 @@ MESSAGES = {
     "COACH_QUIZ_ZU_WENIG_DATEN": "🧠 Über ihn weiß ich noch zu wenig – pfleg erst Profil/Dossier, dann wird das ein Quiz.",
     "COACH_QUIZ_FEHLER": "⚠️ Quiz gerade nicht möglich – versuch es später nochmal.",
     "COACH_IMPULS_QUIZ_PREFIX": "☕ Kurze Zwischenfrage von mir – einfach weil's mich interessiert:",
-    "COACH_IMPULS_WETTE": "🎲 *Idee für euch zwei* – falls dir nach einem Spiel ist:\n\n{idee}\n\n_Nur eine Idee – gib sie weiter, wenn sie dir gefällt._",
+    # Wettvorschlag mit Ein-Tipp-Weitergabe (15.09.2026: die reine Text-Idee kam nie
+    # als Wettvorschlag an – „noch nie einen bekommen, nur Quiz")
+    "COACH_IMPULS_WETTE": "🎲 *Wettvorschlag* – wenn du magst, schick ich ihn ihm in deiner Stimme:\n\n{idee}",
+    "BUTTON_WETTIDEE_SENDEN": "📨 An ihn schicken",
+    "BUTTON_WETTIDEE_NEU": "🎲 Andere Idee",
+    "COACH_WETTIDEE_GESENDET": "📨 Ist raus – die Wette liegt jetzt bei ihm.",
+    "COACH_WETTIDEE_VERALTET": "Dieser Wettvorschlag ist nicht mehr aktuell – der nächste kommt von selbst.",
+    "COACH_WETTIDEE_FEHLER": "⚠️ Gerade nicht möglich – tipp gleich nochmal.",
+    "COACH_WETTIDEE_NEU_LIMIT": "Drei neue Ideen reichen für heute 😉 – nimm eine davon oder warte auf die nächste.",
+    "COACH_WETTIDEE_LIMIT": "⛔ So formuliert würde die Wette Limits verletzen ({begriffe}) – tipp nochmal, ich formuliere neu.",
 
     # --- Adventskalender 🎄 ------------------------------------------------------
     "ADVENT_DEFAULT_THEMA": "Adventskalender",

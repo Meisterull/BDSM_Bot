@@ -536,7 +536,15 @@ MESSAGES = {
     "COACH_QUIZ_ZU_WENIG_DATEN": "🧠 I don't know enough about him yet – maintain profile/dossier first, then we can quiz.",
     "COACH_QUIZ_FEHLER": "⚠️ Quiz not possible right now – try again later.",
     "COACH_IMPULS_QUIZ_PREFIX": "☕ Quick question from me – just because I'm curious:",
-    "COACH_IMPULS_WETTE": "🎲 *Idea for you two* – in case you feel like a game:\n\n{idee}\n\n_Just an idea – pass it on if you like it._",
+    # Bet proposal with one-tap forwarding
+    "COACH_IMPULS_WETTE": "🎲 *Bet proposal* – if you like it, I'll send it to him in your voice:\n\n{idee}",
+    "BUTTON_WETTIDEE_SENDEN": "📨 Send it to him",
+    "BUTTON_WETTIDEE_NEU": "🎲 Another idea",
+    "COACH_WETTIDEE_GESENDET": "📨 Sent – the bet is in his hands now.",
+    "COACH_WETTIDEE_VERALTET": "This bet proposal is no longer current – the next one will come by itself.",
+    "COACH_WETTIDEE_FEHLER": "⚠️ Not possible right now – tap again in a moment.",
+    "COACH_WETTIDEE_NEU_LIMIT": "Three new ideas are enough for today 😉 – take one of them or wait for the next.",
+    "COACH_WETTIDEE_LIMIT": "⛔ Phrased like that the bet would violate limits ({begriffe}) – tap again, I'll rephrase.",
 
     # --- Advent calendar 🎄 ------------------------------------------------------
     "ADVENT_DEFAULT_THEMA": "Advent calendar",

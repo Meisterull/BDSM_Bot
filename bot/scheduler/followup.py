@@ -1153,6 +1153,18 @@ async def _quiz_verfall_nachreichen(bot: Bot) -> None:
         logger.exception("Quiz-Verfall-Nachreichen fehlgeschlagen – Retry nächster Tick")
 
 
+def _impuls_reihenfolge(kandidaten: list, letzter_typ: str) -> list:
+    """Kandidaten so drehen, dass der Typ NACH dem zuletzt gesendeten vorn steht
+    (strikte Abwechslung Quiz/Wette); ohne bekannten letzten Typ zufällig."""
+    namen = [n for n, _ in kandidaten]
+    if letzter_typ not in namen:
+        k = list(kandidaten)
+        random.shuffle(k)
+        return k
+    i = namen.index(letzter_typ)
+    return list(kandidaten[i + 1:]) + list(kandidaten[:i + 1])
+
+
 @_job_guard
 async def coach_impuls_job(bot: Bot) -> None:
     """Coach-Impuls ☕ (Env-Gate COACH_IMPULS): der Coach meldet sich von sich
@@ -1203,9 +1215,11 @@ async def coach_impuls_job(bot: Bot) -> None:
         ("coach_quiz", coach_quiz.sende_spontane_frage),
         ("wett_idee", coach_quiz.sende_wett_idee),
     ]
-    # Fallback statt stillem Ausfall (Owner-Frage 06.09.): schlägt der gewürfelte
-    # Zweig fehl (z.B. leere LLM-Antwort), kommt der andere dran.
-    random.shuffle(kandidaten)
+    # Strikt abwechseln statt würfeln (Live 15.09.: Quiz, Quiz, dann erst Wette –
+    # die Dom-Seite hatte „noch nie einen Wettvorschlag"). Fallback statt stillem
+    # Ausfall bleibt (Owner-Frage 06.09.): schlägt der Zweig fehl (z.B. leere
+    # LLM-Antwort), kommt der andere dran.
+    kandidaten = _impuls_reihenfolge(kandidaten, domina_profile.get("coach_impuls_letzter_typ", ""))
     gesendet = None
     for name, senden in kandidaten:
         if await senden(bot):
@@ -1216,7 +1230,8 @@ async def coach_impuls_job(bot: Bot) -> None:
             _impuls_claim = None
         return
     await qdrant.patch_profile_fields(
-        "domina", {"coach_impuls_letzte_am": datetime.now(timezone.utc).isoformat()})
+        "domina", {"coach_impuls_letzte_am": datetime.now(timezone.utc).isoformat(),
+                   "coach_impuls_letzter_typ": gesendet})
     logger.info("Coach-Impuls gesendet: %s", gesendet)
 
 

@@ -22,6 +22,7 @@ test:
 	python3 tests/test_inventar.py
 	python3 tests/test_herrin_versaeumnis.py
 	python3 tests/test_sprachnachricht_aufgabe.py
+	python3 tests/test_wett_idee.py
 
 # Image bauen – nur wenn die Tests grün sind.
 build: test
