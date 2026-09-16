@@ -71,6 +71,8 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     hw = profil.get(waehrung_h.FELD_WETTE) or {}
     if waehrung_h.wette_laeuft(profil):
         text += f"🎲 Laufende Wette: *{hw.get('einsatz', 0)} Punkte* obendrauf, Frist {(hw.get('frist') or '')[:10]}\n"
+    elif hw.get("status") == "angeboten":
+        text += "🎲 Wette angeboten – deine Antwort steht noch aus\n"
 
     if uebernommen + abgelehnt > 0:
         quote = round(100 * uebernommen / (uebernommen + abgelehnt))

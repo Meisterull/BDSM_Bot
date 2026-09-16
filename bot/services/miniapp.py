@@ -192,7 +192,7 @@ def _sparziel_payload(profil: dict) -> dict | None:
 
 def _herrin_wette_payload(profil: dict) -> dict | None:
     w = profil.get("herrin_wette") or {}
-    if w.get("status") not in ("laeuft", "gefragt"):
+    if w.get("status") not in ("angeboten", "laeuft", "gefragt", "abgelehnt"):
         return None
     return {"einsatz": w.get("einsatz", 0), "frist": (w.get("frist") or "")[:10],
             "status": w.get("status")}
@@ -235,6 +235,20 @@ async def _werkstatt_aufgabe(paar_id: str, text: str, kategorie: str) -> dict:
         except Exception:
             await qdrant.loesche_task(point_id)
             raise
+    return {"ok": True}
+
+
+async def _werkstatt_wette(paar_id: str, thema: str) -> dict:
+    """🎲 Wettvorschlag aus dem Cockpit: kurzer Status-Check, dann läuft die
+    Generierung im Hintergrund und der Vorschlag kommt im Telegram-Chat mit
+    📨/🎲 (derselbe Ablauf wie /wette)."""
+    from bot.handlers import coach_quiz, waehrung as waehrung_h
+    from bot.services import paare, qdrant
+    with paare.kontext(paar_id):
+        sklave = await qdrant.get_user_profile("sklave") or {}
+        if waehrung_h.wette_offen(sklave):
+            return {"fehler": waehrung_h.lage_text(sklave)}
+        waehrung_h.im_hintergrund(coach_quiz.wett_vorschlag_auf_abruf(_BOT, thema))
     return {"ok": True}
 
 
@@ -710,6 +724,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/api/senden": (paare.ROLLE_DOM, True),
             "/api/aufgabe": (paare.ROLLE_DOM, True),
             "/api/inspiration": (paare.ROLLE_DOM, False),
+            "/api/wette": (paare.ROLLE_DOM, False),
             "/api/aufgabe_loeschen": (paare.ROLLE_DOM, False),
             "/api/serie": (paare.ROLLE_DOM, True),
             "/api/kette": (paare.ROLLE_DOM, False),
@@ -771,6 +786,10 @@ class _Handler(BaseHTTPRequestHandler):
                 ergebnis = _await(_werkstatt_aufgabe(paar.paar_id, text, kategorie),
                                   timeout=90)
                 self._json(409 if ergebnis.get("limit") else 200, ergebnis)
+            elif pfad == "/api/wette":
+                thema = (body.get("thema") or "").strip()[:60]
+                ergebnis = _await(_werkstatt_wette(paar.paar_id, thema), timeout=30)
+                self._json(409 if ergebnis.get("fehler") else 200, ergebnis)
             elif pfad == "/api/inspiration":
                 # reasoning-Generierung + Limits-Filter: darf dauern
                 self._json(200, _await(_werkstatt_inspiration(paar.paar_id), timeout=180))

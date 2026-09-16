@@ -56,7 +56,7 @@ def _md(text: str) -> str:
 def _zeile(eintrag: ck.Eintrag, sprache: str) -> tuple[str, str]:
     if sprache == "en":
         name = en.ALIASES.get(eintrag.command, eintrag.command)
-        kurz_en, lang_en = en.BESCHREIBUNGEN.get(eintrag.command, ("", None))
+        kurz_en, lang_en = en.BESCHREIBUNGEN.get(eintrag.beschreibung_key, ("", None))
         text = lang_en if lang_en is not None else (kurz_en or eintrag.hilfe_text)
     else:
         name, text = eintrag.command, eintrag.hilfe_text

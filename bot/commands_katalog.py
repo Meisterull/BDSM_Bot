@@ -28,6 +28,13 @@ class Eintrag:
     lang: str | None = None
     im_menue: bool = True
     in_hilfe: bool = True
+    # Schlüssel in commands_en.BESCHREIBUNGEN, wenn derselbe Command auf beiden
+    # Seiten etwas anderes tut (/quiz, /wette) – sonst der Command-Name.
+    en_key: str | None = None
+
+    @property
+    def beschreibung_key(self) -> str:
+        return self.en_key or self.command
 
     @property
     def hilfe_text(self) -> str:
@@ -76,7 +83,11 @@ DOMINA_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
     ]),
     # Nur im Command-Menü sichtbar (historisch nicht Teil von /hilfe):
     ("🧠 Coach & Wissen", [
-        Eintrag("quiz",             "🧠 Coach-Quiz: Fachwissen lernen oder Sklaven-Wissen prüfen"),
+        Eintrag("quiz",             "🧠 Coach-Quiz: Fachwissen lernen oder Sklaven-Wissen prüfen",
+                en_key="quiz@dom"),
+        Eintrag("wette",            "🎲 Wettvorschlag holen (optional: /wette Thema)",
+                lang="Wettvorschlag vom Coach holen – /wette oder /wette Thema; gefällt er dir, schickst du ihn ihm per Knopf, und er muss annehmen oder ablehnen",
+                en_key="wette@dom"),
         Eintrag("lerntagebuch",     "📓 Coach-Gespräche der letzten Tage verdichten", in_hilfe=False),
         Eintrag("dossier",          "🗒 Charakteristik des Sklaven (was der Bot über ihn weiß)", in_hilfe=False),
         Eintrag("botname",          "🏷 Namen der Bot-Herrin festlegen", in_hilfe=False),
@@ -159,7 +170,7 @@ _DOMINA_MENUE_REIHENFOLGE = [
     "loeschen", "vorlagen",
     "rollenspiel", "rollenspiel_beenden", "wochenplanung", "training",
     "ziele", "rueckblick",
-    "quiz", "lerntagebuch", "dossier", "botname", "sklavenname", "setup",
+    "quiz", "wette", "lerntagebuch", "dossier", "botname", "sklavenname", "setup",
     "regel", "merken", "regeln", "vergessen", "profil_check",
     "lerne", "skills", "lerne_neu", "skill_bearbeiten",
     "strafen", "geheimnis", "profil",
@@ -231,7 +242,7 @@ def anzeige_command(command: str) -> str:
 def anzeige_kurz(eintrag: "Eintrag") -> str:
     en = _locale_anzeige()
     if en:
-        uebersetzt = en.BESCHREIBUNGEN.get(eintrag.command)
+        uebersetzt = en.BESCHREIBUNGEN.get(eintrag.beschreibung_key)
         if uebersetzt and uebersetzt[0]:
             return uebersetzt[0]
     return eintrag.kurz
@@ -240,7 +251,7 @@ def anzeige_kurz(eintrag: "Eintrag") -> str:
 def anzeige_hilfe_text(eintrag: "Eintrag") -> str:
     en = _locale_anzeige()
     if en:
-        uebersetzt = en.BESCHREIBUNGEN.get(eintrag.command)
+        uebersetzt = en.BESCHREIBUNGEN.get(eintrag.beschreibung_key)
         if uebersetzt:
             kurz_en, lang_en = uebersetzt
             if lang_en is not None:

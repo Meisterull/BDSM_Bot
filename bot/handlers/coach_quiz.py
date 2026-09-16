@@ -10,7 +10,9 @@ in der knowledge_base (typ=quiz_wissen); FALSCH beantwortete Themen dürfen
 nach >=7 Tagen wiederkommen.
 
 Dazu der Coach-Impuls (scheduler.coach_impuls_job): spontane Quiz-Frage oder
-eine fertige Wett-Idee zum Weitergeben – Spiegel des Spiel-Impulses.
+eine fertige Wett-Idee zum Weitergeben – Spiegel des Spiel-Impulses – und
+/wette (Dom-Seite): Wettvorschlag auf Abruf, optional mit Thema. Annahme,
+Ablehnung und Urteil laufen in handlers/waehrung.
 """
 import logging
 import random
@@ -32,6 +34,16 @@ logger = logging.getLogger(__name__)
 ANTEIL_WISSEN = 0.6          # Rest: Sklaven-Wissen
 CHANCE_OFFENES_THEMA = 0.35  # falsch beantwortete Themen bevorzugt wiederholen
 ANTI_WDH_EINTRAEGE = 15      # so viele letzte Wissens-Themen gelten als verbraucht
+
+
+async def wette_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/wette nach Rolle verzweigen: Dom-Seite → Wettvorschlag auf Abruf,
+    Sub → Punkte-Wette auf die nächste Aufgabe (handlers/wette)."""
+    if str(update.effective_chat.id) == paare.dom_chat_id():
+        await wette_abruf(update, context)
+    else:
+        from bot.handlers import wette  # lazy: zirkulären Import vermeiden
+        await wette.show(update, context)
 
 
 async def quiz_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -425,7 +437,10 @@ def _nachsatz_entfernen(text: str) -> str:
 
 WETT_IDEE_MAX_ZEICHEN = 600   # Prompt verlangt 2–4 Sätze; Live 15.09.: 1100 Zeichen Herrin-Nachricht
 WETT_IDEE_MAX_NEU = 3         # „Andere Idee"-Würfe pro Vorschlag
-_WETT_IDEE_KEYS = ("wett_idee_id", "wett_idee_text", "wett_idee_neu", "wett_idee_schwerpunkt")
+# Geparkter Vorschlag im Dom-Profil (Qdrant statt Chat-State: die Buttons überleben
+# einen Neustart – die Dom-Seite tippt oft erst Stunden später):
+#   {"kennung", "text", "neu", "schwerpunkt"}  bzw. nach 📨 {"gesendet": kennung}
+FELD_WETT_IDEE = "wett_idee_offen"
 # Nur GEPAARTE Anführungszeichen um einen langen Block (Live 16.09. 20:34: die alte
 # Form nahm das schließende Zeichen eines zitierten Einzelworts wie „später“ als
 # Öffner und verwarf jede Idee, nach der noch 120 Zeichen folgten).
@@ -464,15 +479,16 @@ def _wett_idee_buttons(kennung: str) -> InlineKeyboardMarkup:
     ]])
 
 
-def _wett_idee_merken(chat_id: str, idee: str, neu_zaehler: int, schwerpunkt: str = "") -> str:
-    """Idee im Chat-State parken (callback_data trägt nur die Kennung). Der
-    Schwerpunkt fährt mit, damit 🎲 „Andere Idee" beim Wunsch-Thema bleibt."""
-    s = state.get(chat_id)
+async def _wett_idee_zustellen(bot, idee: str, neu_zaehler: int, schwerpunkt: str = "") -> str:
+    """Idee im Dom-Profil parken (callback_data trägt nur die Kennung) und mit
+    📨/🎲 an die Dom-Seite schicken. Der Schwerpunkt fährt mit, damit 🎲
+    „Andere Idee" beim Wunsch-Thema bleibt."""
     kennung = uuid.uuid4().hex[:8]
-    s["wett_idee_id"] = kennung
-    s["wett_idee_text"] = idee
-    s["wett_idee_neu"] = neu_zaehler
-    s["wett_idee_schwerpunkt"] = schwerpunkt
+    await qdrant.patch_profile_fields("domina", {FELD_WETT_IDEE: {
+        "kennung": kennung, "text": idee, "neu": neu_zaehler, "schwerpunkt": schwerpunkt}})
+    await telegram_helper.send_domina(
+        bot, t("COACH_IMPULS_WETTE", idee=telegram_helper.md_einbett_sicher(idee)),
+        parse_mode="Markdown", reply_markup=_wett_idee_buttons(kennung))
     return kennung
 
 
@@ -577,11 +593,11 @@ async def sende_wett_idee(bot, schwerpunkt: str = "") -> bool:
     Versand. (Bis 15.09.2026 bewusst ohne Flow – Live hat die Dom-Seite die reine
     Text-Idee nie als Wettvorschlag wahrgenommen, geschweige denn abgetippt.)
     schwerpunkt: Thema eines Wunsch-Wettvorschlags (s. coach_impuls_job)."""
-    # Währung ⭐: höchstens eine laufende Herrin-Wette – solange sie läuft,
-    # fällt der Impuls auf das Quiz zurück (Scheduler-Fallback).
+    # Währung ⭐: höchstens eine offene Herrin-Wette (angeboten, laufend oder
+    # abgelehnt mit ausstehender Strafwahl) – solange fällt der Impuls aus.
     from bot.handlers import waehrung as waehrung_h
-    if waehrung_h.wette_laeuft(await qdrant.get_user_profile("sklave") or {}):
-        logger.info("Wett-Idee übersprungen – es läuft noch eine Herrin-Wette.")
+    if waehrung_h.wette_offen(await qdrant.get_user_profile("sklave") or {}):
+        logger.info("Wett-Idee übersprungen – es ist noch eine Herrin-Wette offen.")
         return False
     idee = await _wett_idee_generieren(schwerpunkt)
     if not idee:
@@ -590,10 +606,39 @@ async def sende_wett_idee(bot, schwerpunkt: str = "") -> bool:
     if state.is_paused() or state.get_mode(chat_id) not in ("chat", None):
         logger.info("Coach-Impuls-Wette nach Generierung verworfen – Pause/Mode geändert.")
         return False
-    kennung = _wett_idee_merken(chat_id, idee, 0, schwerpunkt)
-    await telegram_helper.send_domina(
-        bot, t("COACH_IMPULS_WETTE", idee=telegram_helper.md_einbett_sicher(idee)),
-        parse_mode="Markdown", reply_markup=_wett_idee_buttons(kennung))
+    await _wett_idee_zustellen(bot, idee, 0, schwerpunkt)
+    return True
+
+
+async def wette_abruf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/wette [Thema] der Dom-Seite: Wettvorschlag auf Abruf. Die Generierung
+    (Reasoning, 30–70 s) läuft im Hintergrund, der Vorschlag kommt mit 📨/🎲."""
+    from bot.handlers import waehrung as waehrung_h
+    schwerpunkt = " ".join(context.args or []).strip()[:60]
+    sklave = await qdrant.get_user_profile("sklave") or {}
+    if waehrung_h.wette_offen(sklave):
+        await update.message.reply_text(t("WETTE_ABRUF_OFFEN", lage=waehrung_h.lage_text(sklave)))
+        return
+    await update.message.reply_text(t(
+        "WETTE_ABRUF_DENKT",
+        thema=t("WETTE_ABRUF_THEMA", thema=schwerpunkt) if schwerpunkt else ""))
+    waehrung_h.im_hintergrund(wett_vorschlag_auf_abruf(context.bot, schwerpunkt))
+
+
+async def wett_vorschlag_auf_abruf(bot, schwerpunkt: str = "") -> bool:
+    """Gemeinsamer Kern von /wette und dem Mini-App-Knopf: Idee erzeugen und mit
+    📨/🎲 zustellen; bei Misserfolg eine kurze Meldung an die Dom-Seite."""
+    from bot.handlers import waehrung as waehrung_h
+    idee = await _wett_idee_generieren(schwerpunkt)
+    if state.is_paused():
+        return False
+    if waehrung_h.wette_offen(await qdrant.get_user_profile("sklave") or {}):
+        return False  # während der Generierung kam eine andere Wette dazwischen
+    if not idee:
+        await telegram_helper.send_domina(bot, t("WETTE_ABRUF_FEHLER"))
+        return False
+    await _wett_idee_zustellen(bot, idee, 0, schwerpunkt)
+    logger.info("Wettvorschlag auf Abruf zugestellt (Schwerpunkt: %s).", schwerpunkt or "–")
     return True
 
 
@@ -608,11 +653,10 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except ValueError:
         await query.answer()
         return
-    chat_id = str(update.effective_chat.id)
-    s = state.get(chat_id)
+    offen = (await qdrant.get_user_profile("domina") or {}).get(FELD_WETT_IDEE) or {}
     # Doppel-Tap (Live 16.09.): Senden dauert ~9 s (LLM + Stimme), die Buttons fallen
     # erst danach – der zweite Tipp kam als „nicht mehr aktuell" an. Still schlucken.
-    if kennung == s.get("wett_idee_gesendet_id"):
+    if kennung == offen.get("gesendet"):
         await query.answer()
         return
     # Sofort sichtbare Rückmeldung als Toast statt stummer Wartezeit
@@ -621,21 +665,21 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer(t(toast) if toast else None)
     if action not in ("senden", "neu"):
         return
-    if s.get("wett_idee_id") != kennung or not s.get("wett_idee_text"):
+    if offen.get("kennung") != kennung or not offen.get("text"):
         try:
             await query.edit_message_reply_markup(reply_markup=None)
         except Exception:
             pass
         await query.message.reply_text(t("COACH_WETTIDEE_VERALTET"))
         return
-    idee = s["wett_idee_text"]
+    idee = offen["text"]
 
     if action == "neu":
-        zaehler = int(s.get("wett_idee_neu", 0) or 0)
+        zaehler = int(offen.get("neu", 0) or 0)
         if zaehler >= WETT_IDEE_MAX_NEU:
             await query.message.reply_text(t("COACH_WETTIDEE_NEU_LIMIT"))
             return
-        schwerpunkt = s.get("wett_idee_schwerpunkt", "") or ""
+        schwerpunkt = offen.get("schwerpunkt", "") or ""
         neu = await _wett_idee_generieren(schwerpunkt)
         if not neu:
             await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
@@ -644,19 +688,16 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.edit_message_reply_markup(reply_markup=None)
         except Exception:
             pass
-        neu_kennung = _wett_idee_merken(chat_id, neu, zaehler + 1, schwerpunkt)
-        await telegram_helper.send_domina(
-            context.bot, t("COACH_IMPULS_WETTE", idee=telegram_helper.md_einbett_sicher(neu)),
-            parse_mode="Markdown", reply_markup=_wett_idee_buttons(neu_kennung))
+        neu_kennung = await _wett_idee_zustellen(context.bot, neu, zaehler + 1, schwerpunkt)
         logger.info("Wett-Idee neu gewürfelt (%s → %s, Wurf %d).", kennung, neu_kennung, zaehler + 1)
         return
 
     # senden: in der Herrin-Stimme ausformulieren (Sprech-Tags bei Grok-TTS),
     # Limits-Gate auf das Ergebnis, Text ohne Tags + Voice an den Sub.
     from bot.prompts import followup as followup_prompts
-    from bot.services import tts, waehrung
+    from bot.services import waehrung
     from bot.handlers import waehrung as waehrung_h
-    if waehrung_h.wette_laeuft(await qdrant.get_user_profile("sklave") or {}):
+    if waehrung_h.wette_offen(await qdrant.get_user_profile("sklave") or {}):
         await query.message.reply_text(t("COACH_WETTIDEE_LAEUFT"))
         return
     try:
@@ -682,9 +723,10 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.message.reply_text(
             t("COACH_WETTIDEE_LIMIT", begriffe=", ".join(sorted({v["limit"] for v in treffer}))))
         return
+    # Annahme-Pflicht (Bauplan 16.09. abends): Ansage mit ✅/❌, die Wette läuft
+    # erst ab seiner Annahme (handlers/waehrung).
     try:
-        await telegram_helper.send_sklave(context.bot, tts.entferne_sprech_tags(ansage),
-                                          voice_text=ansage)
+        await waehrung_h.wette_anbieten(context.bot, idee, ansage, kennung)
     except Exception:
         logger.exception("Wett-Ansage an den Sub konnte nicht zugestellt werden")
         await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
@@ -693,15 +735,6 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_reply_markup(reply_markup=None)
     except Exception:
         pass
-    for key in _WETT_IDEE_KEYS:
-        s.pop(key, None)
-    s["wett_idee_gesendet_id"] = kennung
-    # Währung ⭐: Wette mit Frist + festem Einsatz parken (Urteil per Job/Buttons)
-    try:
-        tage = await waehrung_h.wette_starten(idee, ansage, kennung)
-    except Exception:
-        logger.exception("Herrin-Wette konnte nicht geparkt werden – Ansage war schon raus")
-        tage = 0
-    await query.message.reply_text(
-        t("COACH_WETTIDEE_GESENDET", tage=tage, einsatz=waehrung.WETT_EINSATZ))
-    logger.info("Wettvorschlag an den Sub geschickt (%s, Frist %d Tag(e)).", kennung, tage)
+    await qdrant.patch_profile_fields("domina", {FELD_WETT_IDEE: {"gesendet": kennung}})
+    await query.message.reply_text(t("COACH_WETTIDEE_GESENDET", einsatz=waehrung.WETT_EINSATZ))
+    logger.info("Wettvorschlag an den Sub geschickt (%s) – wartet auf Annahme.", kennung)

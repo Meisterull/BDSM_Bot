@@ -177,6 +177,8 @@ _CALLBACK_ROLLEN = (
     ("wunschziel:",         paare.ROLLE_DOM),   # Währung: Sparziel gewähren / später
     ("wetteeinspruch:",     paare.ROLLE_DOM),   # Währung: Wett-Urteil kippen
     ("wetteurteil:",        paare.ROLLE_SUB),   # Währung: gewonnen / verloren
+    ("wetteantwort:",       paare.ROLLE_SUB),   # Währung: Wette annehmen / ablehnen
+    ("wetteablehnung:",     paare.ROLLE_DOM),   # Währung: Abzug + Strafwahl nach Ablehnung
     ("herrin:",             paare.ROLLE_SUB),   # Versäumnis: an mir / an ihr
     ("wette:",              paare.ROLLE_SUB),
     ("blitz:",              paare.ROLLE_SUB),
@@ -426,6 +428,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
         if mode == "reaktion_alternativ":
             await reaktion.handle_alternativ(update, context)
+            return
+        if mode == waehrung_h.MODE_STRAFE_EIGEN:
+            await waehrung_h.handle_strafe_eigen(update, context)
             return
         if mode == "aufgabe_loeschen":
             await aufgaben.handle_loeschen(update, context)
@@ -899,7 +904,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler(ck.aliases("adventskalender"),     advent.command))
     app.add_handler(CommandHandler(ck.aliases("wunschkategorien"),    wunschkategorien.show))
     app.add_handler(CommandHandler(ck.aliases("privileg"),            privileg.show))
-    app.add_handler(CommandHandler(ck.aliases("wette"),               wette.show))
+    # /wette gibt es auf beiden Seiten: Dom → Wettvorschlag auf Abruf, Sub → Punkte-Wette
+    app.add_handler(CommandHandler(ck.aliases("wette"),               coach_quiz.wette_router))
     # /quiz gibt es auf beiden Seiten: der Router verzweigt nach Rolle
     # (Sub → Sklave-Quiz, Domina → Coach-Quiz).
     app.add_handler(CommandHandler(ck.aliases("quiz"),                coach_quiz.quiz_router))
@@ -947,6 +953,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(waehrung_h.callback_wunschziel,      pattern=r"^wunschziel:"))
     app.add_handler(CallbackQueryHandler(waehrung_h.callback_wetteeinspruch,  pattern=r"^wetteeinspruch:"))
     app.add_handler(CallbackQueryHandler(waehrung_h.callback_wetteurteil,     pattern=r"^wetteurteil:"))
+    app.add_handler(CallbackQueryHandler(waehrung_h.callback_wetteantwort,    pattern=r"^wetteantwort:"))
+    app.add_handler(CallbackQueryHandler(waehrung_h.callback_wetteablehnung,  pattern=r"^wetteablehnung:"))
     app.add_handler(CallbackQueryHandler(wunsch.callback_loeschen,          pattern=r"^wunschdel:"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

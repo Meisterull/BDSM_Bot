@@ -34,6 +34,14 @@ WETT_FRIST_DEFAULT_TAGE = 2
 WETT_FRIST_MAX_TAGE = 7
 WETT_MELDEFRIST_TAGE = 3           # keine Meldung → verloren
 EINSPRUCH_STUNDEN = 24
+# Annahme / Ablehnung einer Herrin-Wette (Bauplan 16.09.2026 abends)
+WETT_ANNAHME_ERINNERUNG_STUNDEN = 4   # Erinnerung an den Sub (nur tagsüber)
+WETT_ANNAHME_AUTO_STUNDEN = 24        # ohne Antwort → gilt als angenommen
+WETT_ABLEHNUNG_ABZUEGE = (25, 50, 100)  # Dom-Seite wählt, was das Ablehnen kostet
+WETT_ABLEHNUNG_AUTO_STUNDEN = 24      # Dom-Seite wählt nichts → Default-Abzug, keine Strafe
+WETT_ABLEHNUNG_DEFAULT = 50
+WETT_STRAFE_MAX_NEU = 3               # 🎲-Würfe für die Strafvorschläge
+TAGSUEBER = (9, 23)                   # Sub-Nachrichten der Jobs nur in diesem Stunden-Fenster
 SPARZIEL_RUHE_TAGE = 14            # nach „noch nicht"
 
 

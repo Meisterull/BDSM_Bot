@@ -54,7 +54,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 ### Play
 
 - **Dice & roulette** — `/wuerfel` rolls a surprise task outside the usual rotation, with Telegram's dice animation; `/roulette` spins a slot machine over a punishment: jackpot means mercy, everything below sets the severity. Both reach the dominant as a preview first.
-- **Bets & privileges** — the sub can bet points on the next task (double or nothing, with a taunt from the persona) and spend points in a privilege shop: a wish category, a free task, a session from the sub's wish categories, a secret of the dominant, and more. Every redemption needs the dominant's confirmation. Points carry weight: ranks follow the balance, a missed task costs points, the dominant can deduct more with one tap under a punishment proposal, the wish list gets point prices (savings goal), and the coach's bet proposals put a fixed stake on top.
+- **Bets & privileges** — the sub can bet points on the next task (double or nothing, with a taunt from the persona) and spend points in a privilege shop: a wish category, a free task, a session from the sub's wish categories, a secret of the dominant, and more. Every redemption needs the dominant's confirmation. Points carry weight: ranks follow the balance, a missed task costs points, the dominant can deduct more with one tap under a punishment proposal, the wish list gets point prices (savings goal), and the dominant's bets put a fixed stake on top. The dominant gets bet suggestions with `/bet` (optionally with a topic) or from the mini app, or the coach brings one spontaneously; one tap sends it to the sub in her voice. The sub has to accept or decline — declining costs points (25/50/100, her call) and a punishment she picks from three suggestions or writes herself, set as a task. If he stays silent, the bet counts as accepted after 24 hours.
 - **Flash tasks** — opt-in: unannounced mini tasks with a 30-minute countdown, only inside child-free windows, never two at once.
 - **Storylines** — `/arc_starten <topic>` turns a theme into a 3–7 day storyline with one task per day; `/event <date> <topic>` plans a storyline whose finale lands exactly on a birthday or anniversary; `/adventskalender` opens one door every morning from 1 to 24 December.
 - **Roleplay** — a scenario library with adjustable intensity; the persona stays in character over days, and the bot suggests a matching scenario on Friday and Saturday evenings.
@@ -98,7 +98,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 <!-- commands:start -->
 
 <details>
-<summary><b>Dominant partner</b> – 48 commands</summary>
+<summary><b>Dominant partner</b> – 49 commands</summary>
 
 **📋 Tasks & Templates**
 
@@ -148,7 +148,8 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 
 | Command | What it does |
 |---|---|
-| `/quiz` | Quiz question about your Mistress – right answers earn points |
+| `/quiz` | 🧠 Coach quiz: learn expert knowledge or test what you know about the slave |
+| `/bet` | Get a bet suggestion from the coach – /bet or /bet topic; if you like it, send it to him with one tap, and he has to accept or decline |
 | `/learning_log` | 📓 Condense recent coach conversations |
 | `/dossier` | 🗒 Profile of the slave (what the bot knows about him) |
 | `/botname` | 🏷 Set the bot Mistress's name |

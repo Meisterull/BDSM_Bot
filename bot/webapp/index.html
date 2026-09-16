@@ -124,6 +124,16 @@ window.onerror = function (msg, src, zeile) {
       <div id="werkstatt-meldung" class="feld-meldung"></div>
     </div>
   </div>
+  <div id="wette-block" style="display:none">
+    <h2>Wettvorschlag</h2>
+    <div class="karte">
+      <div class="zeile"><input type="text" id="wette-thema" maxlength="60" placeholder="Thema (optional)"></div>
+      <div class="aktionen">
+        <button id="wette-holen" class="primaer">🎲 Wettvorschlag holen</button>
+      </div>
+      <div id="wette-meldung" class="feld-meldung"></div>
+    </div>
+  </div>
   <div id="training-block" style="display:none">
     <h2>Training</h2>
     <div class="karte">
@@ -268,6 +278,7 @@ async function laden() {
   if (d.rolle === "domina") {
     el("studio").style.display = "";
     el("werkstatt").style.display = "";
+    el("wette-block").style.display = "";
     el("tagleiste").innerHTML = TAGS.map(([tag, label]) =>
       `<button type="button" data-tag="${tag.replaceAll('"', "")}">${label}</button>`).join("");
     if (!d.grok_tts) el("meldung").textContent = "Hinweis: Grok-TTS ist aus – Tags werden ignoriert.";
@@ -296,7 +307,7 @@ async function laden() {
         `<div>🎁 ${esc(p.name)}${p.gueltig_bis ? `<span class="datum"> · gültig bis ${esc(p.gueltig_bis)}</span>` : ""}</div>`).join("") +
       (d.wette_einsatz ? `<div>🎰 Aktive Wette: <b>${esc(String(d.wette_einsatz))} Punkte</b> – doppelt oder nichts</div>` : "") +
       (d.sparziel ? `<div>🎯 Sparziel: ${esc(d.sparziel.wunsch)} · <b>${esc(String(d.sparziel.stand))}/${esc(String(d.sparziel.preis))} P</b></div>` : "") +
-      (d.herrin_wette ? `<div>🎲 Laufende Wette: <b>${esc(String(d.herrin_wette.einsatz))} Punkte</b> obendrauf · Frist ${esc(d.herrin_wette.frist)}</div>` : "") +
+      (d.herrin_wette ? `<div>${wetteZeile(d.herrin_wette)}</div>` : "") +
       (d.rang?.naechster ? `<div class="datum">Rang ${esc(d.rang.titel)} · nächster ${esc(d.rang.naechster)} ab ${esc(String(d.rang.naechster_ab))} P</div>` : "");
   }
 
@@ -419,6 +430,31 @@ async function aufgabeErteilen(text) {
   el("aufgabe-erteilen").disabled = false;
 }
 
+function wetteZeile(w) {
+  if (w.status === "angeboten") return `🎲 Wette angeboten · <b>${esc(String(w.einsatz))} Punkte</b> · Antwort steht aus`;
+  if (w.status === "abgelehnt") return "🎲 Wette abgelehnt · Strafe wird gewählt";
+  return `🎲 Laufende Wette: <b>${esc(String(w.einsatz))} Punkte</b> obendrauf · Frist ${esc(w.frist)}`;
+}
+
+async function wetteHolen() {
+  const m = el("wette-meldung");
+  el("wette-holen").disabled = true;
+  m.textContent = "Wird ausgedacht…";
+  try {
+    const r = await hole("/api/wette", { method: "POST",
+      body: JSON.stringify({ thema: el("wette-thema").value.trim() }) });
+    const d = await r.json();
+    if (!r.ok) {
+      m.textContent = r.status === 409 ? "🎲 Es ist noch eine Wette offen – " + (d.fehler || "") : "Fehler: " + (d.fehler || r.status);
+    } else {
+      m.textContent = "✅ Kommt gleich im Chat – dauert bis zu einer Minute.";
+      el("wette-thema").value = "";
+      tg?.HapticFeedback?.notificationOccurred("success");
+    }
+  } catch (e) { m.textContent = "Fehler: " + e.message; }
+  el("wette-holen").disabled = false;
+}
+
 async function inspirationHolen() {
   const m = el("werkstatt-meldung");
   el("inspiration").disabled = true;
@@ -500,6 +536,7 @@ el("tagleiste").addEventListener("click", (ev) => {
 });
 el("aufgabe-erteilen").addEventListener("click", () => aufgabeErteilen(el("aufgabe-text").value));
 el("inspiration").addEventListener("click", inspirationHolen);
+el("wette-holen").addEventListener("click", wetteHolen);
 el("wunsch-senden").addEventListener("click", wunschSenden);
 el("offene").addEventListener("click", (ev) => {
   const b = ev.target.closest("button[data-loeschen]");

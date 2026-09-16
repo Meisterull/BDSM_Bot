@@ -110,6 +110,10 @@ class _Welt:
         self.dom_sends: list[tuple[str, object]] = []
         self.sub_sends: list[tuple[str, str | None]] = []
         self.limits_treffer: list = []
+        self.sub_fehler = False
+        self.sub_markups: list = []
+        self.profile = {"sklave": {"vorlieben": ["Kaffee ans Bett"], "hard_limits": []},
+                        "domina": {"interessen": ["Lesen"], "grenzen": []}}
 
     async def fake_retry(self, p, sklave_hard_limits=None, domina_grenzen=None, system="", **kw):
         self.retry_calls.append(p)
@@ -125,7 +129,16 @@ class _Welt:
         self.dom_sends.append((text, reply_markup))
 
     async def send_sklave(self, bot, text, parse_mode=None, reply_markup=None, voice_text=None, **kw):
+        if self.sub_fehler:
+            raise RuntimeError("Telegram down")
         self.sub_sends.append((text, voice_text))
+        self.sub_markups.append(reply_markup)
+
+    async def get_profile(self, uid):
+        return dict(self.profile.get(uid, {}))
+
+    async def patch(self, uid, fields, **kw):
+        self.profile.setdefault(uid, {}).update(fields)
 
     async def verletzungen(self, text, *a, **kw):
         return list(self.limits_treffer)
@@ -135,26 +148,24 @@ class _Welt:
         cq.limits_check.verletzungen = self.verletzungen
         cq.grok.simple = self.fake_simple
         cq.grok.clean_text = lambda x: (x or "").strip()
-        cq.qdrant.get_user_profile = AsyncMock(return_value={
-            "vorlieben": ["Kaffee ans Bett"], "hard_limits": [], "interessen": ["Lesen"], "grenzen": []})
+        cq.qdrant.get_user_profile = self.get_profile
+        cq.qdrant.patch_profile_fields = self.patch
         cq.qdrant.get_recent_tiny_tasks = AsyncMock(return_value=([], [], []))
         cq.telegram_helper.send_domina = self.send_domina
         cq.telegram_helper.send_sklave = self.send_sklave
         cq.state.is_paused = lambda *a, **k: False
         persona_config.sklave_anrede = lambda: "Kleine Maus"
-        # Währung ⭐: keine laufende Herrin-Wette, Start der Wette nur mitschreiben
-        from bot.handlers import waehrung as waehrung_h
-        waehrung_h.wette_laeuft = lambda profil: False
-        self.wetten: list = []
-
-        async def _start(idee, ansage, kennung):
-            self.wetten.append((idee, ansage, kennung))
-            return 2
-        waehrung_h.wette_starten = _start
         state.set_mode(DOM, "chat")
-        for k in cq._WETT_IDEE_KEYS:
-            state.get(DOM).pop(k, None)
         return self
+
+    @property
+    def offen(self) -> dict:
+        """Geparkter Wettvorschlag im Dom-Profil."""
+        return self.profile["domina"].get(cq.FELD_WETT_IDEE) or {}
+
+    @property
+    def herrin_wette(self) -> dict:
+        return self.profile["sklave"].get("herrin_wette") or {}
 
 
 def _press(data: str):
@@ -243,8 +254,7 @@ def test_sende_wett_idee_mit_buttons():
     text, markup = w.dom_sends[0]
     assert text.startswith("🎲") and "Wettvorschlag" in text and "pünktlich" in text
     assert markup is not None
-    s = state.get(DOM)
-    assert s["wett_idee_text"] == GUT and s["wett_idee_id"] and s["wett_idee_neu"] == 0
+    assert w.offen["text"] == GUT and w.offen["kennung"] and w.offen["neu"] == 0
     # Drift ohne Rettung → kein Versand (Scheduler fällt auf Quiz zurück)
     w = _Welt([DRIFT, DRIFT]).install()
     assert _run(cq.sende_wett_idee(None)) is False and w.dom_sends == []
@@ -253,29 +263,39 @@ def test_sende_wett_idee_mit_buttons():
 def test_callback_senden():
     w = _Welt([GUT]).install()
     _run(cq.sende_wett_idee(None))
-    kennung = state.get(DOM)["wett_idee_id"]
+    kennung = w.offen["kennung"]
     # LLM-Fehler → Hinweis, Buttons + State bleiben
     w.ansage_fehler = True
     q = _press(f"wettidee:senden:{kennung}")
-    assert not q.markup_entfernt and w.sub_sends == [] and state.get(DOM).get("wett_idee_id") == kennung
+    assert not q.markup_entfernt and w.sub_sends == [] and w.offen.get("kennung") == kennung
     assert any("nicht möglich" in r[0] for r in q.message.replies)
     # Limits-Treffer → Hinweis, State bleibt
     w.ansage_fehler = False
     w.limits_treffer = [{"limit": "X", "quelle": "sklave", "matched_via": "X"}]
     q = _press(f"wettidee:senden:{kennung}")
-    assert w.sub_sends == [] and state.get(DOM).get("wett_idee_id") == kennung
+    assert w.sub_sends == [] and w.offen.get("kennung") == kennung
     assert any("Limits" in r[0] for r in q.message.replies)
-    # Erfolg → Herrin-Ansage als Text ohne Tags + Voice mit Tags, Buttons weg, State leer
+    # Zustellung scheitert → Hinweis, Vorschlag bleibt geparkt, keine Wette angeboten
     w.limits_treffer = []
+    w.sub_fehler = True
+    q = _press(f"wettidee:senden:{kennung}")
+    assert not q.markup_entfernt and w.offen.get("kennung") == kennung and not w.herrin_wette
+    assert any("nicht möglich" in r[0] for r in q.message.replies)
+    # Erfolg → Herrin-Ansage (ohne Tags) mit ✅/❌ + Voice, Buttons weg, Wette „angeboten"
+    w.sub_fehler = False
     q = _press(f"wettidee:senden:{kennung}")
     assert q.markup_entfernt
     assert w.sub_sends == [("Wir wetten. Nimmst du an?", "<soft>Wir wetten.</soft> Nimmst du an?")]
-    assert "wett_idee_id" not in state.get(DOM)
-    assert any("Ist raus" in r[0] and "50 Punkte" in r[0] for r in q.message.replies)
-    assert w.wetten and w.wetten[0][0] == GUT and w.wetten[0][1].startswith("<soft>")
+    assert w.sub_markups[0] is not None
+    assert w.offen == {"gesendet": kennung}
+    assert any("Ist raus" in r[0] and "annehmen oder ablehnen" in r[0] and "50 Punkte" in r[0]
+               for r in q.message.replies)
+    hw = w.herrin_wette
+    assert hw["status"] == "angeboten" and hw["idee"] == GUT and hw["ansage"].startswith("<soft>")
+    assert "frist" not in hw, "die Frist startet erst mit der Annahme"
     # Prompt an die Herrin enthält die Idee und die Rollen-Drehung
     system, user = w.simple_calls[-1]
-    assert GUT in user and "dritter Person" in system and "annimmt" in system
+    assert GUT in user and "dritter Person" in system and "annimmt" in system and "kostet" in system
     assert "50 Punkte obendrauf" in system and "Beigabe" in system
     assert q.toast == t("COACH_WETTIDEE_SCHICKT")
     # Doppel-Tap auf die gesendete Idee → still, keine zweite Meldung, kein zweiter Versand
@@ -289,26 +309,26 @@ def test_callback_senden():
 def test_callback_neu_mit_deckel():
     w = _Welt([GUT, GUT + " (2)", GUT + " (3)", GUT + " (4)", GUT + " (5)"]).install()
     _run(cq.sende_wett_idee(None))
-    k1 = state.get(DOM)["wett_idee_id"]
+    k1 = w.offen["kennung"]
     q = _press(f"wettidee:neu:{k1}")
     assert q.markup_entfernt and len(w.dom_sends) == 2 and w.dom_sends[1][1] is not None
     assert q.toast == t("COACH_WETTIDEE_DENKT")
     assert "(2)" in w.dom_sends[1][0]
-    k2 = state.get(DOM)["wett_idee_id"]
-    assert k2 != k1 and state.get(DOM)["wett_idee_neu"] == 1
+    k2 = w.offen["kennung"]
+    assert k2 != k1 and w.offen["neu"] == 1
     # alter Button → veraltet, nichts Neues
     q = _press(f"wettidee:neu:{k1}")
     assert len(w.dom_sends) == 2 and any("nicht mehr aktuell" in r[0] for r in q.message.replies)
     _press(f"wettidee:neu:{k2}")
-    k3 = state.get(DOM)["wett_idee_id"]
+    k3 = w.offen["kennung"]
     _press(f"wettidee:neu:{k3}")
-    k4 = state.get(DOM)["wett_idee_id"]
-    assert state.get(DOM)["wett_idee_neu"] == 3 and len(w.dom_sends) == 4
+    k4 = w.offen["kennung"]
+    assert w.offen["neu"] == 3 and len(w.dom_sends) == 4
     q = _press(f"wettidee:neu:{k4}")
     assert len(w.dom_sends) == 4 and any("reichen" in r[0] for r in q.message.replies)
     # nach dem Deckel geht Senden weiterhin
     q = _press(f"wettidee:senden:{k4}")
-    assert len(w.sub_sends) == 1 and "wett_idee_id" not in state.get(DOM)
+    assert len(w.sub_sends) == 1 and w.offen == {"gesendet": k4}
 
 
 def test_impuls_reihenfolge():
@@ -333,13 +353,13 @@ def test_schwerpunkt_prompt_auswahl_und_neu():
     # Schwerpunkt landet im Generator-Prompt und bleibt beim „Andere Idee"-Wurf
     w = _Welt([GUT, GUT + " (2)"]).install()
     assert _run(cq.sende_wett_idee(None, schwerpunkt="Filmabend")) is True
-    assert state.get(DOM)["wett_idee_schwerpunkt"] == "Filmabend"
-    _press(f"wettidee:neu:{state.get(DOM)['wett_idee_id']}")
-    assert state.get(DOM)["wett_idee_schwerpunkt"] == "Filmabend" and len(w.dom_sends) == 2
+    assert w.offen["schwerpunkt"] == "Filmabend"
+    _press(f"wettidee:neu:{w.offen['kennung']}")
+    assert w.offen["schwerpunkt"] == "Filmabend" and len(w.dom_sends) == 2
     # Ohne Schwerpunkt bleibt alles beim Alten
-    _Welt([GUT]).install()
+    w = _Welt([GUT]).install()
     _run(cq.sende_wett_idee(None))
-    assert state.get(DOM)["wett_idee_schwerpunkt"] == ""
+    assert w.offen["schwerpunkt"] == ""
 
 
 def test_coach_impuls_wunsch_und_quiz_schalter():

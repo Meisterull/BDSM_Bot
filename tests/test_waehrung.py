@@ -340,11 +340,15 @@ def test_sparziel_zu_wenig_und_zeilen():
 
 def test_herrin_wette_kompletter_lauf():
     w = _Welt(punkte=200).install()
-    assert not wh.wette_laeuft(w.profile["sklave"])
-    tage = _run(wh.wette_starten("Wer in den nächsten zwei Tagen …", "Ansage", "abc12345"))
-    assert tage == 2 and wh.wette_laeuft(w.profile["sklave"])
+    assert not wh.wette_laeuft(w.profile["sklave"]) and not wh.wette_offen(w.profile["sklave"])
+    # Angebot → erst nach der Annahme läuft sie (Frist aus der Idee: zwei Tage)
+    _run(wh.wette_anbieten(None, "Wer in den nächsten zwei Tagen …", "Ansage", "abc12345"))
+    assert wh.wette_offen(w.profile["sklave"]) and not wh.wette_laeuft(w.profile["sklave"])
+    _press(wh.callback_wetteantwort, "wetteantwort:annehmen:abc12345", SUB)
+    assert wh.wette_laeuft(w.profile["sklave"])
     hw = w.profile["sklave"][wh.FELD_WETTE]
-    assert hw["einsatz"] == 50 and hw["status"] == "laeuft"
+    assert hw["einsatz"] == 50 and hw["status"] == "laeuft" and hw["angenommen"] == "tipp"
+    w.sub_sends.clear()
     # Job vor der Frist: nichts
     _run(wh.wette_urteil_job(None))
     assert w.sub_sends == []
@@ -376,10 +380,9 @@ def test_herrin_wette_kompletter_lauf():
 
 def test_herrin_wette_verfaellt_und_einspruch_frist():
     w = _Welt(punkte=200).install()
-    _run(wh.wette_starten("egal", "Ansage", "k2"))
-    hw = w.profile["sklave"][wh.FELD_WETTE]
-    hw.update({"status": "gefragt",
-               "gefragt_am": (datetime.now(timezone.utc) - timedelta(days=4)).isoformat()})
+    w.profile["sklave"][wh.FELD_WETTE] = {
+        "kennung": "k2", "idee": "egal", "einsatz": 50, "status": "gefragt",
+        "gefragt_am": (datetime.now(timezone.utc) - timedelta(days=4)).isoformat()}
     _run(wh.wette_urteil_job(None))
     assert w.punkte == 150 and w.profile["sklave"][wh.FELD_WETTE]["ergebnis"] == "verloren"
     assert any("Keine Meldung" in s for s, _ in w.sub_sends)
@@ -412,7 +415,7 @@ def test_locale_keys():
                 "SPARZIEL_ERREICHT", "WETTE_URTEIL_FRAGE", "WETTE_ERGEBNIS_DOM",
                 "SESSION_WUNSCH_AUFGABE", "COACH_WETTIDEE_LAEUFT"):
         assert key in __import__("bot.locales.de", fromlist=["MESSAGES"]).MESSAGES
-    assert "50" in t("COACH_WETTIDEE_GESENDET", tage=2, einsatz=50)
+    assert "50" in t("COACH_WETTIDEE_GESENDET", einsatz=50)
 
 
 def _run_alle():

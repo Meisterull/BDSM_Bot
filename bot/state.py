@@ -186,6 +186,8 @@ FLOW_STATE_KEYS = (
     # Coach-Quiz (fehlten hier: Stale-Reset ließ die Frage-Leichen liegen)
     "coach_quiz_typ", "coach_quiz_frage", "coach_quiz_muster",
     "coach_quiz_aufloesung", "coach_quiz_thema",
+    # Wette abgelehnt → eigene Strafe schreiben (handlers/waehrung)
+    "wette_strafe_kennung", "wette_strafe_msg",
     # Rollenspiel / Wunsch / Kommentar / Geheimnis
     "szenario_name", "szenario_ton", "szenario_vokabular", "szenario_seit",
     "rollenspiel_intensitaet", "pending_szenario", "pending_szenario_custom",

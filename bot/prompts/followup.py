@@ -137,7 +137,8 @@ def wette_an_sklaven(idee: str, einsatz: int = 0) -> tuple[str, str]:
         f"{s['akk']} gesprochen, {s['akk']} sprichst du mit ‚du‘ an.\n"
         f"Drei bis fünf Sätze: die Bedingung (messbar, bis wann), was {s['nom']} bei Sieg bekommt, "
         f"was du bei Sieg bekommst – Einsätze und Richtung EXAKT wie in der Idee, nichts dazu "
-        f"erfinden. Zum Schluss fragst du, ob {s['nom']} die Wette annimmt. Keine Einleitung, "
+        f"erfinden. Zum Schluss fragst du, ob {s['nom']} die Wette annimmt – ablehnen darf "
+        f"{s['nom']}, aber das kostet {s['akk']} etwas, und was, entscheidest du. Keine Einleitung, "
         f"keine Erklärung, kein Coach-Ton, keine Regeln oder Bot-Mechanik.\n"
         + (f"Erwähne beiläufig in EINEM Halbsatz, dass {einsatz} Punkte obendrauf stehen "
            f"(gewinnt {s['nom']}, bekommt {s['nom']} sie, verliert {s['nom']}, sind sie weg) – "
@@ -147,6 +148,29 @@ def wette_an_sklaven(idee: str, einsatz: int = 0) -> tuple[str, str]:
         f"{persona.fuer_sklaven_prompt()}"
     )
     user = f"Wett-Idee (Kontext, formuliere sie als deine eigene Ansage, nicht wörtlich): {idee}"
+    return system, user
+
+
+def strafe_fuer_ablehnung(strafe: str) -> tuple[str, str]:
+    """Wette abgelehnt → die Dom-Seite hat eine Strafe gewählt oder selbst
+    geschrieben (handlers/waehrung): die Herrin ordnet sie in eigener Stimme an.
+    Sprech-Tags bei Grok-TTS wie bei wette_an_sklaven; die Text-Bubble wird
+    davon befreit."""
+    from bot.services import tts  # lazy: kein Service-Import beim Prompt-Laden
+    s = rollen.sub()
+    sub_gross = s["label_nom"][:1].upper() + s["label_nom"][1:]
+    tag_block = f"\n{tts.SPRECH_TAG_ANLEITUNG}\n" if config.GROK_TTS else ""
+    system = (
+        f"{_du_bist_dom()}. {sub_gross} hat deine Wette abgelehnt. Unten steht die Strafe, "
+        f"die du dafür gewählt hast. Ordne sie {s['dat']} jetzt an – Ich-Form, dein Ton, direkt an "
+        f"{s['akk']} gesprochen, {s['akk']} sprichst du mit ‚du‘ an.\n"
+        f"Zwei bis vier Sätze: dass das die Quittung fürs Ablehnen ist, und die Strafe selbst – "
+        f"Inhalt, Richtung und Umfang EXAKT wie unten, nichts dazu erfinden. Keine Einleitung, "
+        f"keine Erklärung, kein Coach-Ton, keine Bot-Mechanik, kein [AUFGABE: …]-Tag.\n"
+        f"{tag_block}\n"
+        f"{persona.fuer_sklaven_prompt()}"
+    )
+    user = f"Strafe (Kontext, formuliere sie als deine eigene Anordnung, nicht wörtlich): {strafe}"
     return system, user
 
 

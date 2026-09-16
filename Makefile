@@ -23,6 +23,7 @@ test:
 	python3 tests/test_herrin_versaeumnis.py
 	python3 tests/test_sprachnachricht_aufgabe.py
 	python3 tests/test_wett_idee.py
+	python3 tests/test_wette_annahme.py
 	python3 tests/test_waehrung.py
 
 # Image bauen – nur wenn die Tests grün sind.

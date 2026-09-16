@@ -142,6 +142,10 @@ BESCHREIBUNGEN = {
                  "Redeem privileges (costs points)"),
     "wette": ("🎰 Points bet: double or nothing",
               "Bet points on your next task (double or nothing)"),
+    # Dom-Seite (Eintrag.en_key): gleicher Command, andere Funktion
+    "quiz@dom": ("🧠 Coach quiz: learn expert knowledge or test what you know about the slave", None),
+    "wette@dom": ("🎲 Get a bet suggestion (optional: /bet topic)",
+                  "Get a bet suggestion from the coach – /bet or /bet topic; if you like it, send it to him with one tap, and he has to accept or decline"),
     "quiz": ("🧠 Quiz: how well do you know your Mistress?",
              "Quiz question about your Mistress – right answers earn points"),
     "blitz": ("⚡ Flash tasks on/off",

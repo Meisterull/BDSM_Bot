@@ -54,7 +54,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 ### Spiel
 
 - **Würfel & Roulette** – `/wuerfel` würfelt eine Überraschungsaufgabe außerhalb der üblichen Rotation, mit Telegrams Würfel-Animation; `/roulette` lässt eine Slot-Machine über eine Strafe entscheiden: Jackpot heißt Gnade, alles darunter bestimmt den Schweregrad. Beides erreicht die dominante Seite zuerst als Vorschau.
-- **Wetten & Privilegien** – der Sub kann Punkte auf seine nächste Aufgabe setzen (doppelt oder nichts, mit Spott der Persona) und Punkte im Privilegien-Shop ausgeben: eine Wunsch-Kategorie, eine freie Aufgabe, eine Session aus den Wunsch-Kategorien, ein Geheimnis der Dominanten und mehr. Jede Einlösung braucht die Bestätigung der dominanten Seite. Die Punkte haben Gewicht: Ränge folgen dem Stand, eine verpasste Aufgabe kostet Punkte, die dominante Seite zieht unter einem Strafvorschlag mit einem Tipp mehr ab, Wünsche auf der Wunschliste bekommen Punkte-Preise (Sparziel), und die Wettvorschläge des Coachs setzen einen festen Einsatz obendrauf.
+- **Wetten & Privilegien** – der Sub kann Punkte auf seine nächste Aufgabe setzen (doppelt oder nichts, mit Spott der Persona) und Punkte im Privilegien-Shop ausgeben: eine Wunsch-Kategorie, eine freie Aufgabe, eine Session aus den Wunsch-Kategorien, ein Geheimnis der Dominanten und mehr. Jede Einlösung braucht die Bestätigung der dominanten Seite. Die Punkte haben Gewicht: Ränge folgen dem Stand, eine verpasste Aufgabe kostet Punkte, die dominante Seite zieht unter einem Strafvorschlag mit einem Tipp mehr ab, Wünsche auf der Wunschliste bekommen Punkte-Preise (Sparziel), und Wetten der dominanten Seite setzen einen festen Einsatz obendrauf. Wettvorschläge holt sie sich mit `/wette` (optional mit Thema) oder aus der Mini-App, oder der Coach bringt spontan einen mit; per Knopf geht der Vorschlag in ihrer Stimme an den Sub. Der muss annehmen oder ablehnen – ablehnen kostet Punkte (25/50/100, sie entscheidet) und eine Strafe, die sie aus drei Vorschlägen wählt oder selbst schreibt und die als Aufgabe angelegt wird. Schweigt er, gilt die Wette nach 24 Stunden als angenommen.
 - **Blitzaufgaben** – Opt-in: unangekündigte Mini-Aufgaben mit 30-Minuten-Countdown, nur in kinderfreien Zeitfenstern, nie zwei gleichzeitig.
 - **Storylines** – `/arc_starten <Thema>` macht aus einem Thema eine 3–7-tägige Storyline mit einer Aufgabe pro Tag; `/event <Datum> <Thema>` plant eine Storyline, deren Finale genau auf einen Geburtstag oder Jahrestag fällt; `/adventskalender` öffnet vom 1. bis 24. Dezember jeden Morgen ein Türchen.
 - **Rollenspiel** – Szenarien-Bibliothek mit einstellbarer Intensität; die Persona bleibt über Tage in der Rolle, und freitags und samstags schlägt der Bot ein passendes Szenario vor.
@@ -98,7 +98,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 <!-- commands:start -->
 
 <details>
-<summary><b>Dominante Seite</b> – 48 Befehle</summary>
+<summary><b>Dominante Seite</b> – 49 Befehle</summary>
 
 **📋 Aufgaben & Vorlagen**
 
@@ -149,6 +149,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 | Befehl | Was er tut |
 |---|---|
 | `/quiz` | 🧠 Coach-Quiz: Fachwissen lernen oder Sklaven-Wissen prüfen |
+| `/wette` | Wettvorschlag vom Coach holen – /wette oder /wette Thema; gefällt er dir, schickst du ihn ihm per Knopf, und er muss annehmen oder ablehnen |
 | `/lerntagebuch` | 📓 Coach-Gespräche der letzten Tage verdichten |
 | `/dossier` | 🗒 Charakteristik des Sklaven (was der Bot über ihn weiß) |
 | `/botname` | 🏷 Namen der Bot-Herrin festlegen |
