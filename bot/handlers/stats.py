@@ -9,6 +9,7 @@ from bot import config
 from bot.services import paare
 from bot.services import qdrant, kategorie_logik
 from bot.services.punkte import format_abzeichen, SKLAVE_ABZEICHEN
+from bot.handlers import waehrung as waehrung_h
 from bot.messages import t
 from bot.handlers import stille_checkin
 
@@ -52,6 +53,7 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         f"📊 *Deine Statistiken*\n\n"
         f"⭐ Punkte: *{punkte}*\n"
+        f"🏅 Rang: {waehrung_h.rang_zeile(punkte)}\n"
         f"🔥 Aktueller Streak: *{streak}*\n"
         f"🏆 Bester Streak: *{streak_max}*\n"
         f"✅ Erledigte Tasks: *{tasks_gesamt}*\n"
@@ -62,6 +64,13 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     wette = profil.get("wette") or {}
     if wette.get("einsatz"):
         text += f"🎰 Aktive Wette: *{wette['einsatz']} Punkte* – doppelt oder nichts\n"
+    # Währung ⭐: Sparziel + laufende Herrin-Wette
+    sparziel = waehrung_h.sparziel_zeile(punkte)
+    if sparziel:
+        text += f"🎯 Sparziel: {sparziel}\n"
+    hw = profil.get(waehrung_h.FELD_WETTE) or {}
+    if waehrung_h.wette_laeuft(profil):
+        text += f"🎲 Laufende Wette: *{hw.get('einsatz', 0)} Punkte* obendrauf, Frist {(hw.get('frist') or '')[:10]}\n"
 
     if uebernommen + abgelehnt > 0:
         quote = round(100 * uebernommen / (uebernommen + abgelehnt))

@@ -32,7 +32,9 @@ _FERTIG_WORTE = {"fertig", "ok", "okay", "passt", "done", "ende", "abbrechen", "
 
 
 async def _liste_senden(message) -> None:
-    v, w = inventar.anzeige(inventar.vorhanden(), inventar.wuensche())
+    ziel = inventar.sparziel()
+    v, w = inventar.anzeige(inventar.vorhanden(), inventar.wuensche(), inventar.preise(),
+                            ziel[0] if ziel else None, inventar.gewaehrte())
     esc = telegram_helper.escape_md
     await message.reply_text(
         t("INVENTAR_ANZEIGE", vorhanden=esc(v), wuensche=esc(w)),

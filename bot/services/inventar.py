@@ -36,6 +36,17 @@ logger = logging.getLogger(__name__)
 FELD_VORHANDEN = "inventar"
 FELD_WUNSCH = "inventar_wunsch"
 FELD_ZULETZT = "inventar_zuletzt"
+# Sparziel ⭐ (Bauplan 16.09.2026): Punkte-Preis je Wunsch (Dom-Seite tippt
+# 200/300/500, ohne Tipp kein Preis) und gewährte Wünsche (Punkte abgebucht,
+# Gegenstand noch nicht da). Sparziel = günstigster bepreister Wunsch.
+FELD_PREISE = "inventar_wunsch_preise"
+FELD_GEWAEHRT = "inventar_gewaehrt"
+MAX_GEWAEHRT = 15
+
+# Hook der Nachrichten-Schicht (handlers/waehrung.frage_wunschpreis): wird
+# NACH dem Persistieren für jeden NEUEN Wunsch mit dem Text aufgerufen – egal
+# ob er per /inventar, Mini-App oder Skript kam. None = still.
+NEUER_WUNSCH_HOOK = None
 
 MAX_VORHANDEN = 40
 MAX_WUNSCH = 15
@@ -55,7 +66,25 @@ _caches: dict[str, dict] = {}
 
 
 def _leer() -> dict:
-    return {"vorhanden": [], "wunsch": [], "zuletzt": []}
+    return {"vorhanden": [], "wunsch": [], "zuletzt": [], "preise": {}, "gewaehrt": []}
+
+
+def saubere_preise(werte, wuensche: list[str]) -> dict:
+    """{Wunschtext: Preis} – nur ganze Preise > 0 und nur für Wünsche, die noch
+    auf der Liste stehen (Schlüssel-Abgleich ohne Groß/Klein)."""
+    if not isinstance(werte, dict):
+        return {}
+    kanon = {w.lower(): w for w in wuensche}
+    sauber: dict = {}
+    for k, v in werte.items():
+        try:
+            preis = int(v)
+        except (TypeError, ValueError):
+            continue
+        w = kanon.get(str(k).strip().lower())
+        if w and preis > 0:
+            sauber[w] = preis
+    return sauber
 
 
 def _cache_fuer(paar_id: str) -> dict:
@@ -98,6 +127,8 @@ async def load() -> None:
             cache["vorhanden"] = saubere_liste(p.get(FELD_VORHANDEN) or [], MAX_VORHANDEN)
             cache["wunsch"] = saubere_liste(p.get(FELD_WUNSCH) or [], MAX_WUNSCH)
             cache["zuletzt"] = saubere_liste(p.get(FELD_ZULETZT) or [], ZULETZT_MERKEN)
+            cache["preise"] = saubere_preise(p.get(FELD_PREISE) or {}, cache["wunsch"])
+            cache["gewaehrt"] = saubere_liste(p.get(FELD_GEWAEHRT) or [], MAX_GEWAEHRT)
             logger.info("inventar[%s] geladen: %d vorhanden, %d Wünsche",
                         paar.paar_id, len(cache["vorhanden"]), len(cache["wunsch"]))
         except Exception:
@@ -114,6 +145,76 @@ def vorhanden() -> list[str]:
 
 def wuensche() -> list[str]:
     return list(_aktueller_cache()["wunsch"])
+
+
+def preise() -> dict:
+    return dict(_aktueller_cache().get("preise") or {})
+
+
+def gewaehrte() -> list[str]:
+    return list(_aktueller_cache().get("gewaehrt") or [])
+
+
+def preis(wunsch: str) -> int | None:
+    """Punkte-Preis eines Wunsches (Abgleich ohne Groß/Klein), None = unbepreist."""
+    ziel = (wunsch or "").strip().lower()
+    for w, p in (_aktueller_cache().get("preise") or {}).items():
+        if w.lower() == ziel:
+            return int(p)
+    return None
+
+
+def wunsch_kanonisch(wunsch: str) -> str | None:
+    """Text des Wunsches, wie er auf der Liste steht (Abgleich ohne Groß/Klein)."""
+    ziel = (wunsch or "").strip().lower()
+    return next((w for w in _aktueller_cache()["wunsch"] if w.lower() == ziel), None)
+
+
+def sparziel() -> tuple[str, int] | None:
+    """Günstigster bepreister Wunsch als (Text, Preis); bei Gleichstand der
+    weiter oben stehende. None ohne bepreisten Wunsch."""
+    cache = _aktueller_cache()
+    bestes: tuple[str, int] | None = None
+    for w in cache["wunsch"]:
+        p = preis(w)
+        if p is None:
+            continue
+        if bestes is None or p < bestes[1]:
+            bestes = (w, p)
+    return bestes
+
+
+async def setze_preis(wunsch: str, punkte: int) -> str | None:
+    """Preis eines Wunsches setzen/ändern (persistieren, dann Cache). Gibt den
+    kanonischen Wunschtext zurück, None wenn der Wunsch nicht (mehr) existiert."""
+    w = wunsch_kanonisch(wunsch)
+    if not w or int(punkte) <= 0:
+        return None
+    cache = _aktueller_cache()
+    neu = {k: v for k, v in (cache.get("preise") or {}).items() if k.lower() != w.lower()}
+    neu[w] = int(punkte)
+    await qdrant.patch_profile_fields(_profil_user_id(), {FELD_PREISE: neu})
+    cache["preise"] = neu
+    return w
+
+
+async def gewaehren(wunsch: str) -> str | None:
+    """Wunsch als gewährt verbuchen: von der Wunschliste (samt Preis) in die
+    Gewährt-Liste. Punkte bucht der Aufrufer (waehrung.buchen). Gibt den
+    kanonischen Text zurück, None wenn unbekannt."""
+    w = wunsch_kanonisch(wunsch)
+    if not w:
+        return None
+    cache = _aktueller_cache()
+    gewaehrt = saubere_liste([e for e in cache["gewaehrt"] if e.lower() != w.lower()] + [w],
+                             MAX_GEWAEHRT)
+    wuensche = [e for e in cache["wunsch"] if e.lower() != w.lower()]
+    preise_neu = {k: v for k, v in (cache.get("preise") or {}).items() if k.lower() != w.lower()}
+    await qdrant.patch_profile_fields(_profil_user_id(), {
+        FELD_WUNSCH: wuensche, FELD_PREISE: preise_neu, FELD_GEWAEHRT: gewaehrt,
+    })
+    cache["wunsch"], cache["preise"], cache["gewaehrt"] = wuensche, preise_neu, gewaehrt
+    return w
 
 
 def zuletzt() -> list[str]:
@@ -142,9 +243,29 @@ async def setze(vorhanden_neu: list | None = None, wuensche_neu: list | None = N
             felder[FELD_WUNSCH] = w
     if wuensche_neu is not None:
         felder[FELD_WUNSCH] = w
+    # Preise nur für Wünsche, die bleiben; ein neu vorhandener Gegenstand räumt
+    # auch einen gleichnamigen GEWÄHRTEN Wunsch ab (er ist dann da).
+    preise_neu = saubere_preise(cache.get("preise") or {}, w)
+    if preise_neu != (cache.get("preise") or {}):
+        felder[FELD_PREISE] = preise_neu
+    gewaehrt_neu = list(cache.get("gewaehrt") or [])
+    if vorhanden_neu is not None:
+        namen_v = {name(e).lower() for e in v}
+        gewaehrt_neu = [e for e in gewaehrt_neu if name(e).lower() not in namen_v]
+        if gewaehrt_neu != (cache.get("gewaehrt") or []):
+            felder[FELD_GEWAEHRT] = gewaehrt_neu
+    alte_wuensche = {e.lower() for e in cache["wunsch"]}
     if felder:
         await qdrant.patch_profile_fields(_profil_user_id(), felder)
         cache["vorhanden"], cache["wunsch"] = v, w
+        cache["preise"], cache["gewaehrt"] = preise_neu, gewaehrt_neu
+    if wuensche_neu is not None and NEUER_WUNSCH_HOOK is not None:
+        for e in w:
+            if e.lower() not in alte_wuensche:
+                try:
+                    await NEUER_WUNSCH_HOOK(e)
+                except Exception:
+                    logger.exception("Neuer-Wunsch-Hook fehlgeschlagen (%s)", e[:40])
     return list(v), list(w)
 
 
@@ -247,10 +368,24 @@ async def angeschafft(ref: str) -> tuple[str | None, str]:
     return eintrag, ""
 
 
-def anzeige(vorh: list[str], wuen: list[str]) -> tuple[str, str]:
-    """Nummerierte Listen für die Anzeige ('1. Gerte …' / 'w1. Käfig')."""
+def anzeige(vorh: list[str], wuen: list[str], preise_map: dict | None = None,
+            ziel: str | None = None, gewaehrt: list[str] | None = None) -> tuple[str, str]:
+    """Nummerierte Listen für die Anzeige ('1. Gerte …' / 'w1. Käfig · 300 P 🎯').
+    preise_map/ziel/gewaehrt optional (Sparziel-Anzeige)."""
     v = "\n".join(f"{i + 1}. {e}" for i, e in enumerate(vorh)) or "–"
-    w = "\n".join(f"w{i + 1}. {e}" for i, e in enumerate(wuen)) or "–"
+    pm = {k.lower(): p for k, p in (preise_map or {}).items()}
+    zeilen = []
+    for i, e in enumerate(wuen):
+        zeile = f"w{i + 1}. {e}"
+        p = pm.get(e.lower())
+        if p:
+            zeile += f" · {p} P"
+        if ziel and e.lower() == ziel.lower():
+            zeile += " 🎯"
+        zeilen.append(zeile)
+    for e in gewaehrt or []:
+        zeilen.append(f"✅ {e} (gewährt)")
+    w = "\n".join(zeilen) or "–"
     return v, w
 
 

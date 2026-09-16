@@ -163,6 +163,11 @@ COACH_IMPULS_FENSTER = os.getenv("COACH_IMPULS_FENSTER", "09:00-21:00")
 COACH_IMPULS_CHANCE = float(os.getenv("COACH_IMPULS_CHANCE", "0.04"))    # pro 30-Min-Check
 COACH_IMPULS_MIN_ABSTAND_TAGE = int(os.getenv("COACH_IMPULS_MIN_ABSTAND_TAGE", "1"))
 
+# Währung ⭐ (services/waehrung, handlers/waehrung, 16.09.2026): Abzug bei
+# „nicht erledigt" (nie unter 0). Strafe-Buttons, Schwellen, Wett-Einsatz und
+# Wunsch-Preise sind Konstanten im Service.
+PUNKTE_ABZUG_NICHT_ERLEDIGT = int(os.getenv("PUNKTE_ABZUG_NICHT_ERLEDIGT", "20"))
+
 # Stille-Check-in 🔕 (handlers/stille_checkin.py): hat die dominante Seite
 # STILLE_CHECKIN_TAGE Tage weder geschrieben noch etwas angetippt, fragt der
 # Coach sie selbst, was gerade los ist (Buttons: keine Zeit / Vorschläge passen

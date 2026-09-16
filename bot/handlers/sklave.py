@@ -12,6 +12,8 @@ from telegram.ext import ContextTypes
 
 from bot import state
 from bot.services import qdrant, grok, embeddings as emb, kategorie_logik, telegram_helper, lokal_llm, paare
+from bot.services import waehrung
+from bot.handlers import waehrung as waehrung_h
 from bot.services import limits_check
 from bot.prompts import sklave as sklave_prompt
 from bot.handlers import onboarding
@@ -399,6 +401,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         stimmung=stimmung,
         streak=profile.get("streak", 0),
         punkte=profile.get("punkte", 0),
+        rang=waehrung.rang(profile.get("punkte", 0))[1],
+        sparziel=waehrung_h.sparziel_zeile(profile.get("punkte", 0)),
         dossier=dossier_inj,
         offene_faeden=profile.get("offene_faeden", []),
         entdeckte_wuensche=entdeckte_inj,

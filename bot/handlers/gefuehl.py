@@ -371,6 +371,10 @@ async def _send_punkte_feedback(context, ergebnis: dict) -> None:
     if any("🎰" in name for name, _ in boni):
         await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.SCHICKSAL)
     await telegram_helper.send_sklave(context.bot, msg, parse_mode="Markdown")
+    # Währung ⭐: Rang / Schwellen-Push / Sparziel (best-effort, fängt selbst)
+    from bot.handlers import waehrung as waehrung_h  # lazy: Handler-Zyklus
+    await waehrung_h.nach_punkteaenderung(
+        context.bot, punkte_gesamt - gewonnene_punkte, punkte_gesamt)
 
     # Neue Abzeichen – Domina fragen ob sie es dem Sklaven mitteilen möchte
     for abzeichen in neue_abzeichen:

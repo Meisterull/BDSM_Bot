@@ -191,6 +191,9 @@ async def callback_fertig(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if breakdown:
             msg += f"\n{breakdown}"
         await query.message.reply_text(msg, parse_mode="Markdown")
+        from bot.handlers import waehrung as waehrung_h  # lazy: Handler-Zyklus
+        await waehrung_h.nach_punkteaenderung(
+            context.bot, ergebnis["punkte"] - ergebnis["gewonnene_punkte"], ergebnis["punkte"])
 
     # Herrin reagiert (best-effort)
     try:

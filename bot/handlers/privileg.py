@@ -22,21 +22,10 @@ from bot.messages import t
 logger = logging.getLogger(__name__)
 
 
+# Währung ⭐ (16.09.2026): Pause-Tag und Easy Mode sind aus dem Shop raus
+# (‚weniger Spiel' kauft niemand), Session nach Wunsch ist neu. Die alten
+# Definitionen bleiben unten für bestehende Einlösungen (Effekte, Erstattung).
 PRIVILEGIEN = [
-    {
-        "id": "pause_tag",
-        "kosten": 50,
-        "name": "Pause-Tag",
-        "beschreibung": "Skipt die nächste fällige Aufgabe ohne Streak-Verlust",
-        "wirkung": "skip_next_task",
-    },
-    {
-        "id": "easy_mode",
-        "kosten": 30,
-        "name": "Easy Mode (3 Tage)",
-        "beschreibung": "3 Tage lang einfachere Aufgaben",
-        "wirkung": "schwierigkeit_niedrig_3tage",
-    },
     {
         "id": "wunsch_pflicht",
         "kosten": 40,
@@ -72,10 +61,35 @@ PRIVILEGIEN = [
         "beschreibung": "Sie verrät dir etwas, das du noch nicht über sie weißt",
         "wirkung": "sofort_geheimnis",
     },
+    {
+        "id": "session_wunsch",
+        "kosten": 150,
+        "name": "Session nach Wunsch",
+        "beschreibung": "Eine Session aus deinen Wunsch-Kategorien – wann, bestimmt sie",
+        "wirkung": "session_wunsch",
+    },
+]
+PRIVILEGIEN_ALT = [
+    {
+        "id": "pause_tag",
+        "kosten": 50,
+        "name": "Pause-Tag",
+        "beschreibung": "Skipt die nächste fällige Aufgabe ohne Streak-Verlust",
+        "wirkung": "skip_next_task",
+    },
+    {
+        "id": "easy_mode",
+        "kosten": 30,
+        "name": "Easy Mode (3 Tage)",
+        "beschreibung": "3 Tage lang einfachere Aufgaben",
+        "wirkung": "schwierigkeit_niedrig_3tage",
+    },
 ]
 
 # Zusatz-Anweisung an die Herrin-Stimme je Sofort-Wirkung (bei Bestätigung).
 _SOFORT_ANWEISUNG = {
+    "session_wunsch": ("Das Privileg ist eine Session aus seinen Wunsch-Kategorien: kündige sie an – "
+                       "WANN und WIE, bestimmst allein du. Leg dich auf keinen Termin fest."),
     "sofort_lob": "Das Privileg ist Anerkennung: gib ihm ein ECHTES, konkretes Lob – kurz, ohne Zuckerguss.",
     "sofort_ueberraschung": ("Das Privileg ist eine Überraschung: kündige sie nur an – WAS es ist, "
                              "bleibt offen. Mach ihn neugierig, leg dich auf nichts fest."),
@@ -86,7 +100,7 @@ _SOFORT_ANWEISUNG = {
 
 
 def _privileg_by_id(pid: str) -> dict | None:
-    return next((p for p in PRIVILEGIEN if p["id"] == pid), None)
+    return next((p for p in PRIVILEGIEN + PRIVILEGIEN_ALT if p["id"] == pid), None)
 
 
 async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -335,7 +349,15 @@ async def _entscheidung_anwenden(context, aktiv_id: str, bestaetigt: bool, komme
         eintrag_frisch["domina_bestaetigt"] = True
         eintrag_frisch["domina_kommentar"] = kommentar
         privileg_effekte.setze_ttl_bei_bestaetigung(eintrag_frisch)
+        if eintrag_frisch.get("wirkung") == "session_wunsch":
+            # Währung ⭐: die Session wird eine offene Aufgabe mit 7-Tage-Nachfrage
+            # (scheitert sie an ihr → herrin_versaeumnis, kein Malus) – der
+            # Privileg-Eintrag selbst ist damit verbraucht.
+            eintrag_frisch["verbraucht"] = True
         await qdrant.patch_profile_fields("sklave", {"aktive_privilegien": aktive})
+        if eintrag_frisch.get("wirkung") == "session_wunsch":
+            from bot.handlers import waehrung as waehrung_h  # lazy: Handler-Zyklus
+            await waehrung_h.session_wunsch_task()
     else:
         await qdrant.patch_profile_fields("sklave", {
             "punkte": profil.get("punkte", 0) + kosten,

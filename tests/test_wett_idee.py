@@ -139,6 +139,15 @@ class _Welt:
         cq.telegram_helper.send_sklave = self.send_sklave
         cq.state.is_paused = lambda *a, **k: False
         persona_config.sklave_anrede = lambda: "Kleine Maus"
+        # Währung ⭐: keine laufende Herrin-Wette, Start der Wette nur mitschreiben
+        from bot.handlers import waehrung as waehrung_h
+        waehrung_h.wette_laeuft = lambda profil: False
+        self.wetten: list = []
+
+        async def _start(idee, ansage, kennung):
+            self.wetten.append((idee, ansage, kennung))
+            return 2
+        waehrung_h.wette_starten = _start
         state.set_mode(DOM, "chat")
         for k in cq._WETT_IDEE_KEYS:
             state.get(DOM).pop(k, None)
@@ -219,10 +228,12 @@ def test_callback_senden():
     assert q.markup_entfernt
     assert w.sub_sends == [("Wir wetten. Nimmst du an?", "<soft>Wir wetten.</soft> Nimmst du an?")]
     assert "wett_idee_id" not in state.get(DOM)
-    assert any("Ist raus" in r[0] for r in q.message.replies)
+    assert any("Ist raus" in r[0] and "50 Punkte" in r[0] for r in q.message.replies)
+    assert w.wetten and w.wetten[0][0] == GUT and w.wetten[0][1].startswith("<soft>")
     # Prompt an die Herrin enthält die Idee und die Rollen-Drehung
     system, user = w.simple_calls[-1]
     assert GUT in user and "dritter Person" in system and "annimmt" in system
+    assert "50 Punkte obendrauf" in system and "Beigabe" in system
     # Doppel-Tap → veraltet
     q2 = _press(f"wettidee:senden:{kennung}")
     assert len(w.sub_sends) == 1 and any("nicht mehr aktuell" in r[0] for r in q2.message.replies)

@@ -165,7 +165,37 @@ async def _uebersicht_daten(paar_id: str, rolle: str) -> dict:
         "privilegien": privilegien,
         "wette_einsatz": wette,
         "verlauf": verlauf,
+        # Währung ⭐: Rang, Sparziel, laufende Herrin-Wette
+        "rang": _rang_payload(profil),
+        "sparziel": _sparziel_payload(profil),
+        "herrin_wette": _herrin_wette_payload(profil),
     }
+
+
+def _rang_payload(profil: dict) -> dict:
+    from bot.services import waehrung
+    punkte = int(profil.get("punkte", 0) or 0)
+    _, titel = waehrung.rang(punkte)
+    naechster = waehrung.naechster_rang(punkte)
+    return {"titel": titel, "naechster": naechster[1] if naechster else None,
+            "naechster_ab": naechster[0] if naechster else None}
+
+
+def _sparziel_payload(profil: dict) -> dict | None:
+    from bot.services import inventar
+    ziel = inventar.sparziel()
+    if not ziel:
+        return None
+    punkte = int(profil.get("punkte", 0) or 0)
+    return {"wunsch": ziel[0], "preis": ziel[1], "stand": min(punkte, ziel[1])}
+
+
+def _herrin_wette_payload(profil: dict) -> dict | None:
+    w = profil.get("herrin_wette") or {}
+    if w.get("status") not in ("laeuft", "gefragt"):
+        return None
+    return {"einsatz": w.get("einsatz", 0), "frist": (w.get("frist") or "")[:10],
+            "status": w.get("status")}
 
 
 async def _vorschau_ogg(text: str) -> bytes | None:

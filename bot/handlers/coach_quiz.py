@@ -497,6 +497,12 @@ async def sende_wett_idee(bot) -> bool:
     ihn in der Herrin-Stimme an den Sub, 🎲 würfelt eine andere Idee. True nur bei
     Versand. (Bis 15.09.2026 bewusst ohne Flow – Live hat die Dom-Seite die reine
     Text-Idee nie als Wettvorschlag wahrgenommen, geschweige denn abgetippt.)"""
+    # Währung ⭐: höchstens eine laufende Herrin-Wette – solange sie läuft,
+    # fällt der Impuls auf das Quiz zurück (Scheduler-Fallback).
+    from bot.handlers import waehrung as waehrung_h
+    if waehrung_h.wette_laeuft(await qdrant.get_user_profile("sklave") or {}):
+        logger.info("Wett-Idee übersprungen – es läuft noch eine Herrin-Wette.")
+        return False
     idee = await _wett_idee_generieren()
     if not idee:
         return False
@@ -558,10 +564,14 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # senden: in der Herrin-Stimme ausformulieren (Sprech-Tags bei Grok-TTS),
     # Limits-Gate auf das Ergebnis, Text ohne Tags + Voice an den Sub.
     from bot.prompts import followup as followup_prompts
-    from bot.services import tts
+    from bot.services import tts, waehrung
+    from bot.handlers import waehrung as waehrung_h
+    if waehrung_h.wette_laeuft(await qdrant.get_user_profile("sklave") or {}):
+        await query.message.reply_text(t("COACH_WETTIDEE_LAEUFT"))
+        return
     try:
-        ansage = grok.clean_text(await grok.simple(followup_prompts.wette_an_sklaven(idee),
-                                                   max_tokens=350))
+        ansage = grok.clean_text(await grok.simple(
+            followup_prompts.wette_an_sklaven(idee, einsatz=waehrung.WETT_EINSATZ), max_tokens=350))
     except Exception:
         logger.exception("Wett-Ansage konnte nicht formuliert werden")
         ansage = ""
@@ -595,5 +605,12 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
         pass
     for key in _WETT_IDEE_KEYS:
         s.pop(key, None)
-    await query.message.reply_text(t("COACH_WETTIDEE_GESENDET"))
-    logger.info("Wettvorschlag an den Sub geschickt (%s).", kennung)
+    # Währung ⭐: Wette mit Frist + festem Einsatz parken (Urteil per Job/Buttons)
+    try:
+        tage = await waehrung_h.wette_starten(idee, ansage, kennung)
+    except Exception:
+        logger.exception("Herrin-Wette konnte nicht geparkt werden – Ansage war schon raus")
+        tage = 0
+    await query.message.reply_text(
+        t("COACH_WETTIDEE_GESENDET", tage=tage, einsatz=waehrung.WETT_EINSATZ))
+    logger.info("Wettvorschlag an den Sub geschickt (%s, Frist %d Tag(e)).", kennung, tage)

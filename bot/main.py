@@ -26,6 +26,7 @@ from bot.handlers import (
     wuerfel, wunschkategorien, privileg, wette, blitz, arc, event_arc, roulette, dauer, quiz, coach_quiz, advent, tiny_task_feedback, hilfe, resurface, stille_checkin,
     lerntagebuch, coach_regeln, skill, kette_adaptiv, dossier, namen, meine_aufgaben,
     einstellungen, luecke, pairing, admin, abwesenheit, inventar, herrin_versaeumnis,
+    waehrung as waehrung_h,
 )
 
 
@@ -169,6 +170,11 @@ _CALLBACK_ROLLEN = (
     ("herrinfehl:",         paare.ROLLE_DOM),   # Versäumnis: nachholen/streichen
     ("snaufgabe:",          paare.ROLLE_DOM),   # Sprachnachricht → Aufgabe ja/nein
     ("wettidee:",           paare.ROLLE_DOM),   # Wettvorschlag: senden / andere Idee
+    ("punkteabzug:",        paare.ROLLE_DOM),   # Währung: −25/−50 unter dem Strafvorschlag
+    ("wunschpreis:",        paare.ROLLE_DOM),   # Währung: Preis eines Wunsches
+    ("wunschziel:",         paare.ROLLE_DOM),   # Währung: Sparziel gewähren / später
+    ("wetteeinspruch:",     paare.ROLLE_DOM),   # Währung: Wett-Urteil kippen
+    ("wetteurteil:",        paare.ROLLE_SUB),   # Währung: gewonnen / verloren
     ("herrin:",             paare.ROLLE_SUB),   # Versäumnis: an mir / an ihr
     ("wette:",              paare.ROLLE_SUB),
     ("blitz:",              paare.ROLLE_SUB),
@@ -683,6 +689,7 @@ async def post_init(application: Application) -> None:
     import asyncio
     from bot.services import miniapp
     miniapp.start(asyncio.get_running_loop(), application.bot)
+    waehrung_h.start(application.bot)   # Währung ⭐: Bot-Handle + Neuer-Wunsch-Hook
 
     _max_versuche = 3
     _pause = 5
@@ -788,6 +795,9 @@ async def post_init(application: Application) -> None:
 
     # Lücken-Füller: alle 15 Min Zustellung freigegebener 'heute Abend'-Aufgaben
     # (der tägliche Check läuft pro Paar in plane_zeit_jobs).
+    # Währung ⭐: Herrin-Wette – Frist um → Urteils-Frage, 3 Tage ohne Meldung → verloren
+    scheduler.add_job(_pro_paar(waehrung_h.wette_urteil_job), "interval", minutes=15,
+                      args=[application.bot], id="wette_urteil", replace_existing=True)
     scheduler.add_job(_pro_paar(luecken_zustellung_job), "interval", minutes=15,
                       args=[application.bot], id="luecken_zustellung", replace_existing=True)
     # Stille-Check-in 🔕: täglich – fragt die Domina nach STILLE_CHECKIN_TAGE
@@ -924,6 +934,11 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(herrin_versaeumnis.callback_domina, pattern=r"^herrinfehl:"))
     app.add_handler(CallbackQueryHandler(domina.callback_sn_aufgabe,         pattern=r"^snaufgabe:"))
     app.add_handler(CallbackQueryHandler(coach_quiz.callback_wett_idee,      pattern=r"^wettidee:"))
+    app.add_handler(CallbackQueryHandler(waehrung_h.callback_punkteabzug,     pattern=r"^punkteabzug:"))
+    app.add_handler(CallbackQueryHandler(waehrung_h.callback_wunschpreis,     pattern=r"^wunschpreis:"))
+    app.add_handler(CallbackQueryHandler(waehrung_h.callback_wunschziel,      pattern=r"^wunschziel:"))
+    app.add_handler(CallbackQueryHandler(waehrung_h.callback_wetteeinspruch,  pattern=r"^wetteeinspruch:"))
+    app.add_handler(CallbackQueryHandler(waehrung_h.callback_wetteurteil,     pattern=r"^wetteurteil:"))
     app.add_handler(CallbackQueryHandler(wunsch.callback_loeschen,          pattern=r"^wunschdel:"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

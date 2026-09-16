@@ -121,7 +121,7 @@ def nachricht_an_sklaven(inhalt: str) -> tuple[str, str]:
     return system, user
 
 
-def wette_an_sklaven(idee: str) -> tuple[str, str]:
+def wette_an_sklaven(idee: str, einsatz: int = 0) -> tuple[str, str]:
     """Wettvorschlag des Coachs (📨-Button der Dom-Seite, handlers/coach_quiz):
     die Herrin formuliert die Idee als eigene Wett-Ansage an den Sub. In der
     Idee ist „du" die Dom-Seite und der Sub steht in dritter Person – hier
@@ -139,7 +139,11 @@ def wette_an_sklaven(idee: str) -> tuple[str, str]:
         f"was du bei Sieg bekommst – Einsätze und Richtung EXAKT wie in der Idee, nichts dazu "
         f"erfinden. Zum Schluss fragst du, ob {s['nom']} die Wette annimmt. Keine Einleitung, "
         f"keine Erklärung, kein Coach-Ton, keine Regeln oder Bot-Mechanik.\n"
-        f"{tag_block}\n"
+        + (f"Erwähne beiläufig in EINEM Halbsatz, dass {einsatz} Punkte obendrauf stehen "
+           f"(gewinnt {s['nom']}, bekommt {s['nom']} sie, verliert {s['nom']}, sind sie weg) – "
+           f"die Punkte sind Beigabe, der Kern der Wette sind die Einsätze aus der Idee.\n"
+           if einsatz else "")
+        + f"{tag_block}\n"
         f"{persona.fuer_sklaven_prompt()}"
     )
     user = f"Wett-Idee (Kontext, formuliere sie als deine eigene Ansage, nicht wörtlich): {idee}"

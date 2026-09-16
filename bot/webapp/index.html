@@ -252,7 +252,7 @@ async function laden() {
   el("kacheln").innerHTML = [
     [d.punkte, "Punkte"], [d.streak, "Streak"], [d.streak_max, "Bester Streak"],
     [d.vertrauen.score + "/100", "Vertrauen"], [d.erledigt_gesamt, "Erledigt"],
-    [d.abzeichen_anzahl, "Abzeichen"],
+    [d.abzeichen_anzahl, "Abzeichen"], [d.rang?.titel || "–", "Rang"],
   ].map(([w, l]) => `<div class="kachel"><b>${esc(String(w))}</b><span>${l}</span></div>`).join("");
   if (d.stimmung) {
     el("stimmung-block").style.display = "";
@@ -289,12 +289,15 @@ async function laden() {
     el("verlauf-block").style.display = "";
     verlaufRender(d.verlauf);
   }
-  if (d.privilegien?.length || d.wette_einsatz) {
+  if (d.privilegien?.length || d.wette_einsatz || d.sparziel || d.herrin_wette) {
     el("privilegien-block").style.display = "";
     el("privilegien").innerHTML =
       (d.privilegien || []).map((p) =>
         `<div>🎁 ${esc(p.name)}${p.gueltig_bis ? `<span class="datum"> · gültig bis ${esc(p.gueltig_bis)}</span>` : ""}</div>`).join("") +
-      (d.wette_einsatz ? `<div>🎰 Aktive Wette: <b>${esc(String(d.wette_einsatz))} Punkte</b> – doppelt oder nichts</div>` : "");
+      (d.wette_einsatz ? `<div>🎰 Aktive Wette: <b>${esc(String(d.wette_einsatz))} Punkte</b> – doppelt oder nichts</div>` : "") +
+      (d.sparziel ? `<div>🎯 Sparziel: ${esc(d.sparziel.wunsch)} · <b>${esc(String(d.sparziel.stand))}/${esc(String(d.sparziel.preis))} P</b></div>` : "") +
+      (d.herrin_wette ? `<div>🎲 Laufende Wette: <b>${esc(String(d.herrin_wette.einsatz))} Punkte</b> obendrauf · Frist ${esc(d.herrin_wette.frist)}</div>` : "") +
+      (d.rang?.naechster ? `<div class="datum">Rang ${esc(d.rang.titel)} · nächster ${esc(d.rang.naechster)} ab ${esc(String(d.rang.naechster_ab))} P</div>` : "");
   }
 
   // Vorlieben/Grenzen-Editor (eigene Listen) + Abwesenheit

@@ -11,6 +11,7 @@ from bot.services import qdrant, grok, telegram_helper, punkte, synonyme
 from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
 from bot.prompts import bestrafung as bp
+from bot.handlers import waehrung as waehrung_h
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,8 @@ async def malus_kette(
         verlorene_wette = await punkte.task_nicht_erledigt()
     except Exception as e:
         logger.error("Fehler bei Streak-Reset: %s", e)
+    # Währung ⭐: fester Abzug (nie unter 0) – Meldung unten in der Herrin-Reaktion
+    abzug = await waehrung_h.abzug_nicht_erledigt()
     spott_gesendet = False
     if verlorene_wette:
         # Verlorene Wette: spöttisches Amüsement der Herrin
@@ -221,12 +224,8 @@ async def malus_kette(
             # zurückkehren – der Sklave bekommt unten trotzdem seine Reaktion.
             await telegram_helper.send_domina(context.bot, t("BESTRAFUNG_KEIN_VORSCHLAG"))
         else:
-            await telegram_helper.send_domina(
-                context.bot,
-                f"{label}\n\n{vorschlag}",
-                parse_mode="Markdown",
-            )
-            # Strafe in Collection speichern
+            # Strafe VOR dem Send speichern: die Punkte-Abzug-Buttons (Währung ⭐)
+            # hängen an der Strafe-Kennung – einmal pro Vorschlag.
             from datetime import datetime, timezone
             strafe_id = await qdrant.save_strafe({
                 "user_id": "sklave",
@@ -236,6 +235,13 @@ async def malus_kette(
                 "datum": datetime.now(timezone.utc).isoformat(),
                 "status": "vorgeschlagen",
             })
+            waehrung_h.abzug_anbieten(str(strafe_id))
+            await telegram_helper.send_domina(
+                context.bot,
+                f"{label}\n\n{vorschlag}",
+                parse_mode="Markdown",
+                reply_markup=waehrung_h.abzug_buttons(str(strafe_id)),
+            )
     except Exception as e:
         logger.error("Fehler bei Bestrafungsvorschlag: %s", e)
 
@@ -254,7 +260,11 @@ async def malus_kette(
     # oben bei der verlorenen Wette (zwei Sticker im selben Flow wären zu viel).
     if not spott_gesendet:
         await sticker_reaktionen.sende_sklave(context.bot, sticker_reaktionen.STRENG)
+    if abzug and abzug.get("delta"):
+        reaktion += "\n\n" + t("ABZUG_NICHT_ERLEDIGT_ZEILE", betrag=-abzug["delta"], stand=abzug["neu"])
     await message.reply_text(reaktion)
+    if abzug and abzug.get("delta"):
+        await waehrung_h.nach_punkteaenderung(context.bot, abzug["alt"], abzug["neu"], push=False)
 
     # F12: Gescheitertes Ketten-Glied darf die Kette nicht stranden lassen –
     # die Domina entscheidet per Button, ob sie weiterläuft oder abbricht.
