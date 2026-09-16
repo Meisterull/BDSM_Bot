@@ -910,12 +910,14 @@ KEIN [AUFGABE: ...] Tag – das ist nur ein Vorschlag, keine automatische Aufgab
 
 
 def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
-              domina_interessen: list = None, verbrauchte_zutaten: list = None) -> tuple[str, str]:
+              domina_interessen: list = None, verbrauchte_zutaten: list = None,
+              schwerpunkt: str = "") -> tuple[str, str]:
     """Coach-Impuls: fertige Wett-Idee für die Domina, zum Weitergeben an den Sub.
     Dieselben Bausteine wie die Aufgaben-Vorschläge (Live-Befund 07.09.: der
     erste Generator kannte weder Rollen-Rahmen noch Richtungs-Regel noch
     Zutaten-Sperre – die Ich-Perspektive der Vorlieben wurde 1:1 übernommen,
-    der Sub wurde zur dritten Person und die Domina zugleich „du" und „sie")."""
+    der Sub wurde zur dritten Person und die Domina zugleich „du" und „sie").
+    schwerpunkt: optionales Thema aus einem Wunsch-Wettvorschlag (coach_wette_wunsch)."""
     from bot.prompts import coach_persona
     s, d = rollen.sub(), rollen.dom()
     sub_nom_gross = s["label_nom"][0].upper() + s["label_nom"][1:]
@@ -933,6 +935,13 @@ def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
             "heute in KEINEM Einsatz, auch nicht als Beiwerk):\n"
             + "\n".join(f"  • {z}" for z in verbrauchte_zutaten) + "\n"
         )
+    schwerpunkt_str = ""
+    if schwerpunkt:
+        schwerpunkt_str = (
+            f"\nSCHWERPUNKT (ausdrücklicher Wunsch): Die Wette dreht sich um „{schwerpunkt}\" – "
+            "als Einsatz oder als Teil der Bedingung. Richtung und Rollen genau so, wie die "
+            "passende Vorliebe bzw. das passende Interesse unten sie festlegen.\n"
+        )
     system = f"""Schlag {d['real_dat']} EINE konkrete Wette vor, die {d['nom']} {s['label_dat']} anbieten kann – als Coach, der {d['akk']} wie eine vertraute Freundin begleitet.
 
 {coach_persona.fuer_aufgaben_vorschlag()}
@@ -944,10 +953,13 @@ ROLLEN UND ANREDE (strikt):
 
 DIE WETTE (strikt):
 - 2–4 lockere Sätze (höchstens 500 Zeichen): die Wett-Bedingung (messbar, in den nächsten 1–3 Tagen entscheidbar) und was jede Seite bei Sieg bekommt.
+- Wer mit wem was tut, ändert sich durch die Wette NICHT: jede Handlung behält in beiden Ausgängen genau die Richtung aus der Vorliebe bzw. dem Interesse – egal, wer gewinnt. Die Wette entscheidet nur, OB und WANN etwas passiert, nie die Rollen.
+- Steht in einer Vorliebe oder einem Interesse „bei X", ist das die Folge von X – nie die Belohnung dafür, dass X ausbleibt. Wer verliert, bestimmt nicht selbst über seinen Einsatz.
+- Safeword, Grenzen und Aftercare gelten immer und sind nie Teil der Wette.
 - Du schreibst die IDEE an {d['real_akk']} – KEINE fertige Nachricht an {s['akk']}: kein „{anrede}, wir machen eine Wette …", keine Anführungszeichen, kein „schick mir ‚angenommen‘". Das Ausformulieren an {s['akk']} übernimmt der Bot auf Knopfdruck.
 - Einsätze nur aus den Vorlieben {s['label_gen']} und den Interessen {d['real_gen']} unten – nichts Neues einführen; Richtung, Rollen und Bedingungen jeder Vorliebe EXAKT übernehmen.
 - Kein Vorwort, keine Erklärung, KEINE Rückfrage am Ende („Willst du das so abschicken?", „Soll ich noch was ändern?") und kein Kommentar über die Wette selbst („kurz und klar", „in 1–2 Tagen entscheidbar") – die Weitergabe regelt der Bot. Nur der Vorschlag selbst.
-{zutaten_str}"""
+{schwerpunkt_str}{zutaten_str}"""
     vorlieben_block = ("\n" + "\n".join(f"  - {v}" for v in sklave_vorlieben)) if sklave_vorlieben else " nicht angegeben"
     prompt = f"""Vorlieben {s['label_gen']} (verdecktes Steuerwissen, aus {s['poss']}er Sicht notiert – NIE als Liste oder Treffer erwähnen):{vorlieben_block}
 Absolute Grenzen {s['label_gen']} (NIEMALS): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine'}

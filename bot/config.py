@@ -162,6 +162,9 @@ COACH_IMPULS = os.getenv("COACH_IMPULS", "") == "1"
 COACH_IMPULS_FENSTER = os.getenv("COACH_IMPULS_FENSTER", "09:00-21:00")
 COACH_IMPULS_CHANCE = float(os.getenv("COACH_IMPULS_CHANCE", "0.04"))    # pro 30-Min-Check
 COACH_IMPULS_MIN_ABSTAND_TAGE = int(os.getenv("COACH_IMPULS_MIN_ABSTAND_TAGE", "1"))
+# Quiz-Zweig des Coach-Impulses abschaltbar (16.09.2026: die Dom-Seite bekommt
+# spontan nur noch Wettvorschläge). Das manuelle /quiz bleibt davon unberührt.
+COACH_IMPULS_QUIZ = os.getenv("COACH_IMPULS_QUIZ", "1") == "1"
 
 # Währung ⭐ (services/waehrung, handlers/waehrung, 16.09.2026): Abzug bei
 # „nicht erledigt" (nie unter 0). Strafe-Buttons, Schwellen, Wett-Einsatz und

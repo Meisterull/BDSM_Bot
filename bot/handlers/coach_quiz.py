@@ -361,8 +361,8 @@ async def sende_spontane_frage(bot) -> bool:
 # abschneiden statt auf die Prompt-Regel hoffen (Lernmuster Detektor > Regel).
 _NACHSATZ_RE = re.compile(
     r"(abschick|weitergeb|weiterleit|so\s+(rüber|raus)|ändern|anpass|soll ich|"
-    r"willst du (das|es|die|sie) so|passt (das|dir das|dir so)|was meinst du|"
-    r"was sagst du|einverstanden)", re.IGNORECASE)
+    r"willst du|möchtest du|magst du|sollen wir|passt (das|dir das|dir so)|was meinst du|"
+    r"was sagst du|einverstanden|passt\b|anmacht|gefällt|\boder\s*\?\s*$)", re.IGNORECASE)
 _LETZTER_FRAGESATZ_RE = re.compile(r"(?:^|(?<=[.!?…])\s+)([^.!?…\n]*\?)\s*$")
 
 
@@ -371,7 +371,7 @@ _LETZTER_FRAGESATZ_RE = re.compile(r"(?:^|(?<=[.!?…])\s+)([^.!?…\n]*\?)\s*$"
 # nicht erfasst. Nur ein kurzer letzter Satz/Absatz mit Meta-Vokabular fällt.
 _META_SCHLUSS_RE = re.compile(
     r"(entscheidbar|messbar|kurz(?:,| und) klar|zum weitergeben|abschicken|anpassen"
-    r"|so passt|fertig zum|meta|coach)", re.I)
+    r"|so passt|fertig zum|meta|coach|richtung)", re.I)
 
 
 def _meta_schluss_entfernen(text: str) -> str:
@@ -384,6 +384,28 @@ def _meta_schluss_entfernen(text: str) -> str:
     letzter = m.group(1)
     if _META_SCHLUSS_RE.search(letzter) and not re.search(r"gewinn|verlier|wette:", letzter, re.I):
         return t[:m.start(1)].rstrip()
+    return t
+
+
+# Vorwort vor der eigentlichen Idee („Hier ist ein konkreter Wettvorschlag, den
+# du ihm machen kannst:" als eigene Zeile, „Wie wär's mit der Wette: Er muss …"
+# inline) – Live-Proben 16.09. trotz „Kein Vorwort", das Reasoning-Modell
+# beginnt in ~der Hälfte der Fälle so und der Einstiegs-Detektor verwarf sie.
+_VORWORT_RE = re.compile(r"^\s*([^\n]{1,140}:[*_]*)\s*\n+(?=\S)")
+_VORWORT_INLINE_RE = re.compile(
+    r"^\s*((?:wie\s+w[äa]r[’'`]?s|hier|mein|meine|kleine|eine|also)\b[^:\n]{0,50}"
+    r"(?:wette|vorschlag|idee)[^:\n]{0,15}:)\s*(?=\S)", re.I)
+
+
+def _vorwort_entfernen(text: str) -> str:
+    """Schneidet eine kurze Einleitung bis zum Doppelpunkt ab – als eigene Zeile
+    oder inline vor dem ersten Satz der Idee."""
+    t = (text or "").strip()
+    for rx in (_VORWORT_RE, _VORWORT_INLINE_RE):
+        m = rx.match(t)
+        if m and not re.search(r"gewinn|verlier", m.group(1), re.I) and t[m.end():].strip():
+            rest = t[m.end():].strip()
+            t = rest[0].upper() + rest[1:]
     return t
 
 
@@ -403,8 +425,11 @@ def _nachsatz_entfernen(text: str) -> str:
 
 WETT_IDEE_MAX_ZEICHEN = 600   # Prompt verlangt 2–4 Sätze; Live 15.09.: 1100 Zeichen Herrin-Nachricht
 WETT_IDEE_MAX_NEU = 3         # „Andere Idee"-Würfe pro Vorschlag
-_WETT_IDEE_KEYS = ("wett_idee_id", "wett_idee_text", "wett_idee_neu")
-_ZITAT_BLOCK_RE = re.compile(r"[„“\"»][^“”\"«]{120,}")
+_WETT_IDEE_KEYS = ("wett_idee_id", "wett_idee_text", "wett_idee_neu", "wett_idee_schwerpunkt")
+# Nur GEPAARTE Anführungszeichen um einen langen Block (Live 16.09. 20:34: die alte
+# Form nahm das schließende Zeichen eines zitierten Einzelworts wie „später“ als
+# Öffner und verwarf jede Idee, nach der noch 120 Zeichen folgten).
+_ZITAT_BLOCK_RE = re.compile(r"„[^“”\"]{120,}[“”\"]|\"[^\"]{120,}\"|»[^«]{120,}«|“[^”]{120,}”")
 
 
 def _idee_verstoesse(idee: str) -> list[str]:
@@ -425,6 +450,10 @@ def _idee_verstoesse(idee: str) -> list[str]:
         anrede = ""
     if anrede and re.search(rf"(?:^|[\n„“\"»])\s*{re.escape(anrede)}\s*[,!]", text, re.I):
         funde.append(f"Anrede ‚{anrede}‘ – der Text spricht den Sub an statt die Dom-Seite")
+    # Live-Probe 16.09.: das Aussetzen des Safewords wurde als Einsatz angeboten.
+    # Das Safeword ist nie Teil einer Wette – jede Erwähnung ist ein Mangel.
+    if re.search(r"safe\s*-?\s*word", text, re.I):
+        funde.append("Safeword als Teil der Wette – das Safeword gilt immer und ist nie Einsatz")
     return funde
 
 
@@ -435,17 +464,40 @@ def _wett_idee_buttons(kennung: str) -> InlineKeyboardMarkup:
     ]])
 
 
-def _wett_idee_merken(chat_id: str, idee: str, neu_zaehler: int) -> str:
-    """Idee im Chat-State parken (callback_data trägt nur die Kennung)."""
+def _wett_idee_merken(chat_id: str, idee: str, neu_zaehler: int, schwerpunkt: str = "") -> str:
+    """Idee im Chat-State parken (callback_data trägt nur die Kennung). Der
+    Schwerpunkt fährt mit, damit 🎲 „Andere Idee" beim Wunsch-Thema bleibt."""
     s = state.get(chat_id)
     kennung = uuid.uuid4().hex[:8]
     s["wett_idee_id"] = kennung
     s["wett_idee_text"] = idee
     s["wett_idee_neu"] = neu_zaehler
+    s["wett_idee_schwerpunkt"] = schwerpunkt
     return kennung
 
 
-async def _wett_idee_generieren() -> str | None:
+def _schwerpunkt_treffer(text: str, schwerpunkt: str) -> bool:
+    """Schreibweisen-tolerant: „Filmabend" trifft auch „Film-Abend"/„Film abend"."""
+    def norm(x: str) -> str:
+        return re.sub(r"[\s\-_]", "", (x or "").lower())
+    return bool(schwerpunkt) and norm(schwerpunkt) in norm(text)
+
+
+def _auswahl_mit_schwerpunkt(eintraege: list, anzahl: int, schwerpunkt: str) -> tuple[list, list]:
+    """Subsample auf `anzahl` Einträge, Schwerpunkt-Treffer immer dabei (sonst
+    könnte das Zufalls-Subsample genau die Wunsch-Vorliebe herauswürfeln).
+    Original-Reihenfolge bleibt. Rückgabe: (Auswahl, Treffer)."""
+    treffer_idx = [i for i, e in enumerate(eintraege) if _schwerpunkt_treffer(e, schwerpunkt)]
+    rest_idx = [i for i in range(len(eintraege)) if i not in treffer_idx]
+    frei = max(0, anzahl - len(treffer_idx))
+    if len(rest_idx) > frei:
+        rest_idx = random.sample(rest_idx, frei)
+    behalten = set(treffer_idx) | set(rest_idx)
+    return ([e for i, e in enumerate(eintraege) if i in behalten],
+            [eintraege[i] for i in treffer_idx])
+
+
+async def _wett_idee_generieren(schwerpunkt: str = "") -> str | None:
     """Wett-Idee im Coach-Ton. Dieselben Bausteine wie der Tiny-Task (Live-Befund
     07.09.: die erste Wett-Idee verdrehte die Rollen – Vorlieben in Ich-Perspektive
     ohne Rollen-Rahmen – und garnierte mit den Zutaten des Tipps vom selben Abend):
@@ -460,37 +512,42 @@ async def _wett_idee_generieren() -> str | None:
     domina_profil = await qdrant.get_user_profile("domina") or {}
     # Subsample wie beim Tiny-Task (DIV4-Analogon): die volle Liste ankert auf
     # denselben Top-Einträgen. Zeilen wörtlich, Original-Reihenfolge erhalten.
-    vorlieben = list(sklave_profil.get("vorlieben", []) or [])
-    if len(vorlieben) > 8:
-        auswahl = set(random.sample(range(len(vorlieben)), 8))
-        vorlieben = [v for i, v in enumerate(vorlieben) if i in auswahl]
-    interessen = list(domina_profil.get("interessen", []) or [])
-    if len(interessen) > 6:
-        interessen = random.sample(interessen, 6)
+    vorlieben, vorlieben_treffer = _auswahl_mit_schwerpunkt(
+        list(sklave_profil.get("vorlieben", []) or []), 8, schwerpunkt)
+    interessen, interessen_treffer = _auswahl_mit_schwerpunkt(
+        list(domina_profil.get("interessen", []) or []), 6, schwerpunkt)
     try:
         _, _, volltexte = await qdrant.get_recent_tiny_tasks(limit=3)
     except Exception:
         logger.exception("Wett-Idee: letzte Vorschläge nicht lesbar – ohne Zutaten-Sperre")
         volltexte = []
-    zutaten = _verbrauchte_zutaten(list(volltexte or [])[:3], [], None)
+    # Schwerpunkt-Zeilen befreien ihre Zutaten wie eine Kombi-Vorliebe – sonst
+    # sperrt ein Tiny-Task vom selben Tag genau das gewünschte Thema.
+    befreit = (vorlieben_treffer + interessen_treffer + [schwerpunkt]) if schwerpunkt else None
+    zutaten = _verbrauchte_zutaten(list(volltexte or [])[:3], [], befreit)
 
     sk_hl = sklave_profil.get("hard_limits", []) or []
     do_gr = domina_profil.get("grenzen", []) or []
     system, prompt = followup_prompts.wett_idee(
         sklave_vorlieben=vorlieben, sklave_hard_limits=sk_hl,
         domina_interessen=interessen, verbrauchte_zutaten=zutaten,
+        schwerpunkt=schwerpunkt,
     )
 
     async def _generiere(p: str) -> str | None:
         return await limits_check.generate_mit_limit_retry(
             p, sklave_hard_limits=sk_hl, domina_grenzen=do_gr,
             system=system, temperature=0.9, max_tokens=400,
+            # Reasoning (Live-Proben 16.09.): das schnelle Modell drehte die Rolle
+            # einer Vorliebe um, bot das Aussetzen des Safewords als Einsatz an und
+            # verwechselte Sieger/Verlierer; das Reasoning-Modell blieb in 4/4 stimmig.
+            reasoning=True,
         )
 
     idee = await _generiere(prompt)
     if not idee:
         return None
-    idee = _meta_schluss_entfernen(_nachsatz_entfernen(idee))
+    idee = _meta_schluss_entfernen(_nachsatz_entfernen(_vorwort_entfernen(idee)))
     funde = _formel_verstoesse(idee) + _idee_verstoesse(idee)
     if funde:
         logger.info("Wett-Idee mit Mängeln (%s) – generiere einmal neu.", "; ".join(funde))
@@ -503,35 +560,37 @@ async def _wett_idee_generieren() -> str | None:
             "'…, den du magst') und ohne Kommentar, wovon du dich absetzt."
         )
         if neu:
-            neu = _meta_schluss_entfernen(_nachsatz_entfernen(neu))
+            neu = _meta_schluss_entfernen(_nachsatz_entfernen(_vorwort_entfernen(neu)))
             if len(_formel_verstoesse(neu) + _idee_verstoesse(neu)) <= len(funde):
                 idee = neu
     rest = _idee_verstoesse(idee)
     if rest:
         logger.info("Wett-Idee auch nach Retry unbrauchbar (%s) – kein Versand.", "; ".join(rest))
+        logger.debug("Verworfene Wett-Idee: %r", idee)
         return None
     return idee
 
 
-async def sende_wett_idee(bot) -> bool:
+async def sende_wett_idee(bot, schwerpunkt: str = "") -> bool:
     """Coach-Impuls: Wettvorschlag im Coach-Ton mit Ein-Tipp-Weitergabe – 📨 schickt
     ihn in der Herrin-Stimme an den Sub, 🎲 würfelt eine andere Idee. True nur bei
     Versand. (Bis 15.09.2026 bewusst ohne Flow – Live hat die Dom-Seite die reine
-    Text-Idee nie als Wettvorschlag wahrgenommen, geschweige denn abgetippt.)"""
+    Text-Idee nie als Wettvorschlag wahrgenommen, geschweige denn abgetippt.)
+    schwerpunkt: Thema eines Wunsch-Wettvorschlags (s. coach_impuls_job)."""
     # Währung ⭐: höchstens eine laufende Herrin-Wette – solange sie läuft,
     # fällt der Impuls auf das Quiz zurück (Scheduler-Fallback).
     from bot.handlers import waehrung as waehrung_h
     if waehrung_h.wette_laeuft(await qdrant.get_user_profile("sklave") or {}):
         logger.info("Wett-Idee übersprungen – es läuft noch eine Herrin-Wette.")
         return False
-    idee = await _wett_idee_generieren()
+    idee = await _wett_idee_generieren(schwerpunkt)
     if not idee:
         return False
     chat_id = paare.dom_chat_id()
     if state.is_paused() or state.get_mode(chat_id) not in ("chat", None):
         logger.info("Coach-Impuls-Wette nach Generierung verworfen – Pause/Mode geändert.")
         return False
-    kennung = _wett_idee_merken(chat_id, idee, 0)
+    kennung = _wett_idee_merken(chat_id, idee, 0, schwerpunkt)
     await telegram_helper.send_domina(
         bot, t("COACH_IMPULS_WETTE", idee=telegram_helper.md_einbett_sicher(idee)),
         parse_mode="Markdown", reply_markup=_wett_idee_buttons(kennung))
@@ -544,15 +603,24 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
     neu → nächste Idee (höchstens WETT_IDEE_MAX_NEU pro Vorschlag).
     Bei Fehlern bleiben Buttons und State stehen – sie kann es gleich nochmal tippen."""
     query = update.callback_query
-    await query.answer()
     try:
-        _, action, kennung = query.data.split(":", 2)
+        _, action, kennung = (query.data or "").split(":", 2)
     except ValueError:
-        return
-    if action not in ("senden", "neu"):
+        await query.answer()
         return
     chat_id = str(update.effective_chat.id)
     s = state.get(chat_id)
+    # Doppel-Tap (Live 16.09.): Senden dauert ~9 s (LLM + Stimme), die Buttons fallen
+    # erst danach – der zweite Tipp kam als „nicht mehr aktuell" an. Still schlucken.
+    if kennung == s.get("wett_idee_gesendet_id"):
+        await query.answer()
+        return
+    # Sofort sichtbare Rückmeldung als Toast statt stummer Wartezeit
+    # (🎲 läuft übers Reasoning-Modell, bis ~1 Min).
+    toast = {"neu": "COACH_WETTIDEE_DENKT", "senden": "COACH_WETTIDEE_SCHICKT"}.get(action)
+    await query.answer(t(toast) if toast else None)
+    if action not in ("senden", "neu"):
+        return
     if s.get("wett_idee_id") != kennung or not s.get("wett_idee_text"):
         try:
             await query.edit_message_reply_markup(reply_markup=None)
@@ -567,7 +635,8 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if zaehler >= WETT_IDEE_MAX_NEU:
             await query.message.reply_text(t("COACH_WETTIDEE_NEU_LIMIT"))
             return
-        neu = await _wett_idee_generieren()
+        schwerpunkt = s.get("wett_idee_schwerpunkt", "") or ""
+        neu = await _wett_idee_generieren(schwerpunkt)
         if not neu:
             await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
             return
@@ -575,7 +644,7 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.edit_message_reply_markup(reply_markup=None)
         except Exception:
             pass
-        neu_kennung = _wett_idee_merken(chat_id, neu, zaehler + 1)
+        neu_kennung = _wett_idee_merken(chat_id, neu, zaehler + 1, schwerpunkt)
         await telegram_helper.send_domina(
             context.bot, t("COACH_IMPULS_WETTE", idee=telegram_helper.md_einbett_sicher(neu)),
             parse_mode="Markdown", reply_markup=_wett_idee_buttons(neu_kennung))
@@ -626,6 +695,7 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
         pass
     for key in _WETT_IDEE_KEYS:
         s.pop(key, None)
+    s["wett_idee_gesendet_id"] = kennung
     # Währung ⭐: Wette mit Frist + festem Einsatz parken (Urteil per Job/Buttons)
     try:
         tage = await waehrung_h.wette_starten(idee, ansage, kennung)

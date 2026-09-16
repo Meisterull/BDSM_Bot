@@ -3,6 +3,8 @@ BDSM Coach Bot – Entry Point
 """
 import logging
 import os
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from logging.handlers import RotatingFileHandler
 
 from telegram import Update
@@ -813,6 +815,12 @@ async def post_init(application: Application) -> None:
                       args=[application.bot], id="spiel_impuls", replace_existing=True)
     scheduler.add_job(_pro_paar(coach_impuls_job), "interval", minutes=30,
                       args=[application.bot], id="coach_impuls", replace_existing=True)
+    # Ein Lauf kurz nach dem Start: ein vorgemerkter Wunsch-Wettvorschlag soll nach
+    # einem Deploy nicht bis zum ersten Intervall-Tick (30 Min) warten. Würfel,
+    # Abstand und Fenster gelten wie immer.
+    scheduler.add_job(_pro_paar(coach_impuls_job), "date",
+                      run_date=datetime.now(ZoneInfo(config.TIMEZONE)) + timedelta(seconds=90),
+                      args=[application.bot], id="coach_impuls_start", replace_existing=True)
     scheduler.add_job(_pro_paar(event_check_job), "cron", hour=8, minute=30,
                       args=[application.bot], id="event_check", replace_existing=True)
     scheduler.add_job(_pro_paar(dauer_job), "interval", minutes=15,

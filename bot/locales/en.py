@@ -591,6 +591,8 @@ MESSAGES = {
     "COACH_WETTIDEE_VERALTET": "This bet proposal is no longer current – the next one will come by itself.",
     "COACH_WETTIDEE_FEHLER": "⚠️ Not possible right now – tap again in a moment.",
     "COACH_WETTIDEE_NEU_LIMIT": "Three new ideas are enough for today 😉 – take one of them or wait for the next.",
+    "COACH_WETTIDEE_DENKT": "🎲 One moment, thinking of something new …",
+    "COACH_WETTIDEE_SCHICKT": "📨 Sending it to him – one moment …",
     "COACH_WETTIDEE_LIMIT": "⛔ Phrased like that the bet would violate limits ({begriffe}) – tap again, I'll rephrase.",
 
     # --- Advent calendar 🎄 ------------------------------------------------------

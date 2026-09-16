@@ -592,6 +592,8 @@ MESSAGES = {
     "COACH_WETTIDEE_VERALTET": "Dieser Wettvorschlag ist nicht mehr aktuell – der nächste kommt von selbst.",
     "COACH_WETTIDEE_FEHLER": "⚠️ Gerade nicht möglich – tipp gleich nochmal.",
     "COACH_WETTIDEE_NEU_LIMIT": "Drei neue Ideen reichen für heute 😉 – nimm eine davon oder warte auf die nächste.",
+    "COACH_WETTIDEE_DENKT": "🎲 Moment, ich denk mir was Neues aus …",
+    "COACH_WETTIDEE_SCHICKT": "📨 Schick ich ihm – einen Moment …",
     "COACH_WETTIDEE_LIMIT": "⛔ So formuliert würde die Wette Limits verletzen ({begriffe}) – tipp nochmal, ich formuliere neu.",
 
     # --- Adventskalender 🎄 ------------------------------------------------------

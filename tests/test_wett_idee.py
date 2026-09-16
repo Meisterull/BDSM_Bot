@@ -14,6 +14,9 @@ reine Text-Idee ohne Flow, und Grok lieferte statt 2–4 Sätzen an sie eine
     LLM-Fehler → Hinweis, State bleibt; fremde Kennung → veraltet
   - callback neu: neue Idee mit Buttons, Zähler, Deckel WETT_IDEE_MAX_NEU
   - _impuls_reihenfolge: strikte Abwechslung Quiz/Wette
+  - Schwerpunkt (Wunsch-Wettvorschlag): Prompt, Subsample behält Treffer,
+    „Andere Idee" bleibt beim Thema; coach_impuls_job: Wunsch heute sofort,
+    Wunsch von gestern verfällt, COACH_IMPULS_QUIZ=0 → nur noch Wetten
 
 Läuft mit echten Deps (Docker) ODER lokal mit MagicMock-Stubs:
     python3 tests/test_wett_idee.py
@@ -90,8 +93,8 @@ class _Query:
         self.message = _Msg()
         self.markup_entfernt = False
 
-    async def answer(self):
-        pass
+    async def answer(self, text=None, **kw):
+        self.toast = text
 
     async def edit_message_reply_markup(self, reply_markup=None):
         self.markup_entfernt = True
@@ -178,9 +181,36 @@ def test_meta_schluss_entfernen():
     assert cq._meta_schluss_entfernen(GUT) == GUT
 
 
+def test_vorwort_safeword_und_richtungs_regel():
+    _Welt([]).install()
+    assert cq._vorwort_entfernen("Hier ist eine Idee für euch:\n\n" + GUT) == GUT
+    assert cq._vorwort_entfernen("**Vorschlag:**\n\n" + GUT) == GUT
+    assert cq._vorwort_entfernen("Wie wär’s mit der Wette: er muss bis Freitag pünktlich sein.") == "Er muss bis Freitag pünktlich sein."
+    assert cq._vorwort_entfernen("Hier meine Idee für eine Wette: Wer zuerst lacht, verliert.") == "Wer zuerst lacht, verliert."
+    # Doppelpunkt mitten in der Idee ohne Vorwort-Anfang bleibt
+    assert cq._vorwort_entfernen("Er trägt die Schürze bis 22 Uhr: schafft er es, gewinnt er.") == "Er trägt die Schürze bis 22 Uhr: schafft er es, gewinnt er."
+    assert cq._nachsatz_entfernen(GUT + " Gefällt dir das so, oder?") == GUT
+    assert cq._nachsatz_entfernen(GUT + "\n\nWillst du den Einsatz noch etwas höher ansetzen?") == GUT
+    assert cq._nachsatz_entfernen("Wer gewinnt, bestimmt den Abend. Wer schafft mehr?") == "Wer gewinnt, bestimmt den Abend. Wer schafft mehr?"
+    assert cq._nachsatz_entfernen(GUT + "\n\nPasst das so für dich?") == GUT
+    assert cq._vorwort_entfernen(GUT) == GUT
+    # Doppelpunkt-Zeile mit Wett-Inhalt bleibt stehen
+    mit_inhalt = "Gewinnt er, gilt:\nKaffee ans Bett."
+    assert cq._vorwort_entfernen(mit_inhalt) == mit_inhalt
+    assert any("Safeword" in f for f in cq._idee_verstoesse("Verliert er, gibt es die Session ohne Safe-Word."))
+    assert cq._meta_schluss_entfernen(GUT + " Alles bleibt in der gewohnten Richtung.") == GUT
+    system, _ = fp.wett_idee(["Kaffee ans Bett"], [], [], [])
+    assert "egal, wer gewinnt" in system and "nie Teil der Wette" in system
+
+
 def test_idee_verstoesse():
     _Welt([]).install()
     assert cq._idee_verstoesse(GUT) == []
+    # Zitiertes Einzelwort + langer Rest ist KEIN Zitat-Block (Fehlalarm Live 16.09. 20:34)
+    einzelwort = ("Er muss bis morgen Abend durchhalten, ohne ein einziges Mal „später“ zu sagen, egal was du ihm "
+                  "aufträgst. Verliert er, bekommt er drei Abende Spüldienst. Gewinnt er, wählt er den Film.")
+    assert cq._idee_verstoesse(einzelwort) == []
+    assert any("Anführungszeichen" in f for f in cq._idee_verstoesse("Gewinnst du, sagst du: „" + "x" * 130 + "“"))
     funde = cq._idee_verstoesse(DRIFT)
     assert any("Anführungszeichen" in f for f in funde), funde
     assert any("Kleine Maus" in f for f in funde), funde
@@ -247,9 +277,13 @@ def test_callback_senden():
     system, user = w.simple_calls[-1]
     assert GUT in user and "dritter Person" in system and "annimmt" in system
     assert "50 Punkte obendrauf" in system and "Beigabe" in system
-    # Doppel-Tap → veraltet
+    assert q.toast == t("COACH_WETTIDEE_SCHICKT")
+    # Doppel-Tap auf die gesendete Idee → still, keine zweite Meldung, kein zweiter Versand
     q2 = _press(f"wettidee:senden:{kennung}")
-    assert len(w.sub_sends) == 1 and any("nicht mehr aktuell" in r[0] for r in q2.message.replies)
+    assert len(w.sub_sends) == 1 and q2.message.replies == [] and q2.toast is None
+    # fremde/alte Kennung → weiterhin „nicht mehr aktuell"
+    q3 = _press("wettidee:senden:deadbeef")
+    assert any("nicht mehr aktuell" in r[0] for r in q3.message.replies)
 
 
 def test_callback_neu_mit_deckel():
@@ -258,6 +292,7 @@ def test_callback_neu_mit_deckel():
     k1 = state.get(DOM)["wett_idee_id"]
     q = _press(f"wettidee:neu:{k1}")
     assert q.markup_entfernt and len(w.dom_sends) == 2 and w.dom_sends[1][1] is not None
+    assert q.toast == t("COACH_WETTIDEE_DENKT")
     assert "(2)" in w.dom_sends[1][0]
     k2 = state.get(DOM)["wett_idee_id"]
     assert k2 != k1 and state.get(DOM)["wett_idee_neu"] == 1
@@ -283,6 +318,100 @@ def test_impuls_reihenfolge():
     assert sorted(n for n, _ in sched._impuls_reihenfolge(k, "")) == ["coach_quiz", "wett_idee"]
 
 
+def test_schwerpunkt_prompt_auswahl_und_neu():
+    assert "SCHWERPUNKT" not in fp.wett_idee(["Kaffee ans Bett"], [], [], [])[0]
+    system, _ = fp.wett_idee(["Kaffee ans Bett"], [], [], [], schwerpunkt="Filmabend")
+    assert "SCHWERPUNKT" in system and "„Filmabend\"" in system
+    # Treffer überleben das Subsample immer, Schreibweise egal, Reihenfolge bleibt
+    zeilen = [f"Vorliebe {i}" for i in range(12)]
+    zeilen[9] = "Film-Abend auf dem Boden"
+    for _ in range(20):
+        auswahl, treffer = cq._auswahl_mit_schwerpunkt(zeilen, 8, "Filmabend")
+        assert len(auswahl) == 8 and treffer == ["Film-Abend auf dem Boden"] and zeilen[9] in auswahl
+        assert auswahl == [z for z in zeilen if z in auswahl]
+    assert cq._auswahl_mit_schwerpunkt(zeilen, 8, "")[1] == []
+    # Schwerpunkt landet im Generator-Prompt und bleibt beim „Andere Idee"-Wurf
+    w = _Welt([GUT, GUT + " (2)"]).install()
+    assert _run(cq.sende_wett_idee(None, schwerpunkt="Filmabend")) is True
+    assert state.get(DOM)["wett_idee_schwerpunkt"] == "Filmabend"
+    _press(f"wettidee:neu:{state.get(DOM)['wett_idee_id']}")
+    assert state.get(DOM)["wett_idee_schwerpunkt"] == "Filmabend" and len(w.dom_sends) == 2
+    # Ohne Schwerpunkt bleibt alles beim Alten
+    _Welt([GUT]).install()
+    _run(cq.sende_wett_idee(None))
+    assert state.get(DOM)["wett_idee_schwerpunkt"] == ""
+
+
+def test_coach_impuls_wunsch_und_quiz_schalter():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    _Welt([]).install()
+    heute = datetime.now(ZoneInfo(sched.config.TIMEZONE)).date().isoformat()
+    gesendet: list = []
+    patches: list = []
+    alt = (sched.config.COACH_IMPULS, sched.config.COACH_IMPULS_QUIZ, sched.config.COACH_IMPULS_CHANCE,
+           sched._flow_aktiv, sched.zeiten.ist_im_fenster, sched.qdrant.patch_profile_fields,
+           cq.sende_wett_idee, cq.sende_spontane_frage)
+    profil: dict = {}
+
+    fehlversuche = [0]
+
+    async def fake_wette(bot, schwerpunkt=""):
+        if fehlversuche[0]:
+            fehlversuche[0] -= 1
+            return False
+        gesendet.append(("wett_idee", schwerpunkt))
+        return True
+
+    async def fake_quiz(bot):
+        gesendet.append(("coach_quiz", ""))
+        return True
+
+    async def fake_patch(user_id, fields, **kw):
+        patches.append(fields)
+        return "ok"
+
+    try:
+        sched.config.COACH_IMPULS = True
+        sched._flow_aktiv = lambda *a, **k: False
+        sched.zeiten.ist_im_fenster = lambda *a, **k: True
+        sched.qdrant.get_user_profile = AsyncMock(side_effect=lambda rolle: profil)
+        sched.qdrant.patch_profile_fields = fake_patch
+        cq.sende_wett_idee = fake_wette
+        cq.sende_spontane_frage = fake_quiz
+        sched._impuls_claim = None
+
+        # Wunsch für heute: sofort, ohne Würfel/Abstand, Wunsch wird geleert –
+        # zwei verworfene Entwürfe im selben Tick verhindern den Versand nicht
+        sched.config.COACH_IMPULS_CHANCE = 0.0
+        fehlversuche[0] = 2
+        profil.update({"coach_impuls_letzte_am": datetime.now().astimezone().isoformat(),
+                       "coach_wette_wunsch": {"datum": heute, "schwerpunkt": "Filmabend"}})
+        _run(sched.coach_impuls_job(None))
+        assert gesendet == [("wett_idee", "Filmabend")]
+        assert patches[-1]["coach_wette_wunsch"] is None and patches[-1]["coach_impuls_letzter_typ"] == "wett_idee"
+
+        # Wunsch von gestern verfällt, nichts wird gesendet
+        gesendet.clear(); patches.clear(); sched._impuls_claim = None
+        profil["coach_wette_wunsch"] = {"datum": "2000-01-01", "schwerpunkt": "Filmabend"}
+        _run(sched.coach_impuls_job(None))
+        assert gesendet == [] and patches == [{"coach_wette_wunsch": None}]
+
+        # Quiz-Schalter aus: auch nach einer Wette kommt kein Quiz, nur wieder Wette
+        gesendet.clear(); patches.clear(); sched._impuls_claim = None
+        sched.config.COACH_IMPULS_CHANCE = 1.0
+        sched.config.COACH_IMPULS_QUIZ = False
+        profil.clear()
+        profil.update({"coach_impuls_letzter_typ": "wett_idee"})
+        _run(sched.coach_impuls_job(None))
+        assert gesendet == [("wett_idee", "")]
+    finally:
+        (sched.config.COACH_IMPULS, sched.config.COACH_IMPULS_QUIZ, sched.config.COACH_IMPULS_CHANCE,
+         sched._flow_aktiv, sched.zeiten.ist_im_fenster, sched.qdrant.patch_profile_fields,
+         cq.sende_wett_idee, cq.sende_spontane_frage) = alt
+        sched._impuls_claim = None
+
+
 def test_locale_keys():
     for key in ("COACH_IMPULS_WETTE", "BUTTON_WETTIDEE_SENDEN", "BUTTON_WETTIDEE_NEU",
                 "COACH_WETTIDEE_GESENDET", "COACH_WETTIDEE_VERALTET", "COACH_WETTIDEE_FEHLER",
@@ -294,11 +423,14 @@ def test_locale_keys():
 def _run_alle():
     test_meta_schluss_entfernen()
     test_idee_verstoesse()
+    test_vorwort_safeword_und_richtungs_regel()
     test_generieren_retry_und_abbruch()
     test_sende_wett_idee_mit_buttons()
     test_callback_senden()
     test_callback_neu_mit_deckel()
     test_impuls_reihenfolge()
+    test_schwerpunkt_prompt_auswahl_und_neu()
+    test_coach_impuls_wunsch_und_quiz_schalter()
     test_locale_keys()
     print("✅ Alle Wettvorschlag-Tests bestanden")
 

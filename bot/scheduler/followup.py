@@ -1035,6 +1035,7 @@ async def blitz_check_job(bot: Bot) -> None:
 # dem Send, dazwischen liegt die LLM-Generierung).
 _IMPULS_KOLLISION = timedelta(hours=2)
 _impuls_claim: datetime | None = None
+_WUNSCH_WETTE_VERSUCHE = 3
 
 
 def _impuls_slot_frei(anderer_anker: str) -> bool:
@@ -1168,10 +1169,16 @@ def _impuls_reihenfolge(kandidaten: list, letzter_typ: str) -> list:
 @_job_guard
 async def coach_impuls_job(bot: Bot) -> None:
     """Coach-Impuls ☕ (Env-Gate COACH_IMPULS): der Coach meldet sich von sich
-    aus bei der Domina – spontane Quiz-Frage (Lern- oder Sklaven-Wissen) oder
-    eine fertige Wett-Idee zum Weitergeben. Spiegel des Spiel-Impulses:
-    Fenster ∩ kinderfreie Zeiten, Throttle-Anker coach_impuls_letzte_am im
-    Domina-Profil, Würfel-Log, Kollisions-Sperre (s. _impuls_slot_frei)."""
+    aus bei der Domina – spontane Quiz-Frage (Lern- oder Sklaven-Wissen, per
+    COACH_IMPULS_QUIZ abschaltbar) oder eine fertige Wett-Idee zum Weitergeben.
+    Spiegel des Spiel-Impulses: Fenster ∩ kinderfreie Zeiten, Throttle-Anker
+    coach_impuls_letzte_am im Domina-Profil, Würfel-Log, Kollisions-Sperre
+    (s. _impuls_slot_frei).
+
+    Wunsch-Wettvorschlag: steht im Domina-Profil coach_wette_wunsch =
+    {"datum": "YYYY-MM-DD", "schwerpunkt": "…"} für HEUTE, geht beim nächsten
+    Tick im Fenster eine Wett-Idee mit diesem Schwerpunkt raus – ohne Würfel,
+    Abstand und Kollisions-Sperre. Ein Wunsch von gestern verfällt still."""
     global _impuls_claim
     # Vor allen Gates: liegengebliebene Quiz-Auflösung nachreichen – auch ein
     # manuelles /quiz kann verfallen, unabhängig vom COACH_IMPULS-Schalter.
@@ -1187,6 +1194,36 @@ async def coach_impuls_job(bot: Bot) -> None:
         return
     domina_profile = await qdrant.get_user_profile("domina") or {}
     if not zeiten.ist_im_fenster(jetzt_lokal, domina_profile.get("kinderfreie_zeiten", []) or []):
+        return
+
+    from bot.handlers import coach_quiz  # lazy: zirkulären Import vermeiden
+    wunsch = domina_profile.get("coach_wette_wunsch") or {}
+    heute = jetzt_lokal.date().isoformat()
+    if wunsch and str(wunsch.get("datum", "")) < heute:
+        await qdrant.patch_profile_fields("domina", {"coach_wette_wunsch": None})
+        logger.info("Wunsch-Wettvorschlag vom %s verfallen – nicht zugestellt.", wunsch.get("datum"))
+    elif wunsch and str(wunsch.get("datum", "")) == heute:
+        mein_claim = datetime.now(timezone.utc)
+        _impuls_claim = mein_claim  # Spiel-Impuls im selben Tick fernhalten
+        schwerpunkt = str(wunsch.get("schwerpunkt") or "")
+        # Mehrere Anläufe pro Tick: ein ausdrücklicher Wunsch soll nicht an einem
+        # einzelnen verworfenen Entwurf eine halbe Stunde hängen (Live 16.09. 20:34).
+        gesendet = False
+        for versuch in range(1, _WUNSCH_WETTE_VERSUCHE + 1):
+            if await coach_quiz.sende_wett_idee(bot, schwerpunkt=schwerpunkt):
+                gesendet = True
+                break
+            logger.info("Wunsch-Wettvorschlag: Anlauf %d/%d ohne Versand.", versuch, _WUNSCH_WETTE_VERSUCHE)
+        if not gesendet:
+            if _impuls_claim is mein_claim:
+                _impuls_claim = None
+            logger.info("Wunsch-Wettvorschlag nicht gesendet – nächster Tick.")
+            return
+        await qdrant.patch_profile_fields(
+            "domina", {"coach_impuls_letzte_am": datetime.now(timezone.utc).isoformat(),
+                       "coach_impuls_letzter_typ": "wett_idee",
+                       "coach_wette_wunsch": None})
+        logger.info("Wunsch-Wettvorschlag gesendet (Schwerpunkt: %s).", schwerpunkt or "–")
         return
 
     jetzt = datetime.now(timezone.utc)
@@ -1210,11 +1247,9 @@ async def coach_impuls_job(bot: Bot) -> None:
     mein_claim = datetime.now(timezone.utc)
     _impuls_claim = mein_claim
 
-    from bot.handlers import coach_quiz  # lazy: zirkulären Import vermeiden
-    kandidaten = [
-        ("coach_quiz", coach_quiz.sende_spontane_frage),
-        ("wett_idee", coach_quiz.sende_wett_idee),
-    ]
+    kandidaten = [("wett_idee", coach_quiz.sende_wett_idee)]
+    if config.COACH_IMPULS_QUIZ:
+        kandidaten.insert(0, ("coach_quiz", coach_quiz.sende_spontane_frage))
     # Strikt abwechseln statt würfeln (Live 15.09.: Quiz, Quiz, dann erst Wette –
     # die Dom-Seite hatte „noch nie einen Wettvorschlag"). Fallback statt stillem
     # Ausfall bleibt (Owner-Frage 06.09.): schlägt der Zweig fehl (z.B. leere
