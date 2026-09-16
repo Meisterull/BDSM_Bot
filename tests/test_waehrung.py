@@ -190,6 +190,9 @@ def test_wett_frist_tage():
     assert ws.wett_frist_tage("bis übermorgen", heute) == 2
     assert ws.wett_frist_tage("Bis Freitag zehn Liegestütze", heute) == 2
     assert ws.wett_frist_tage("Wer zuerst lacht, verliert", heute) == ws.WETT_FRIST_DEFAULT_TAGE
+    assert ws.wett_frist_tage("Wer heute Abend länger durchhält, gewinnt.", heute) == 1
+    assert ws.wett_frist_tage("Who lasts longer tonight wins", heute) == 1
+    assert ws.wett_frist_tage("heute anfangen, in den nächsten drei Tagen …", heute) == 3
     assert ws.wett_frist_tage("in 30 Tagen", heute) == ws.WETT_FRIST_MAX_TAGE
     assert ws.wett_frist_tage("", heute) == ws.WETT_FRIST_DEFAULT_TAGE
 

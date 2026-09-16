@@ -946,7 +946,7 @@ DIE WETTE (strikt):
 - 2–4 lockere Sätze (höchstens 500 Zeichen): die Wett-Bedingung (messbar, in den nächsten 1–3 Tagen entscheidbar) und was jede Seite bei Sieg bekommt.
 - Du schreibst die IDEE an {d['real_akk']} – KEINE fertige Nachricht an {s['akk']}: kein „{anrede}, wir machen eine Wette …", keine Anführungszeichen, kein „schick mir ‚angenommen‘". Das Ausformulieren an {s['akk']} übernimmt der Bot auf Knopfdruck.
 - Einsätze nur aus den Vorlieben {s['label_gen']} und den Interessen {d['real_gen']} unten – nichts Neues einführen; Richtung, Rollen und Bedingungen jeder Vorliebe EXAKT übernehmen.
-- Kein Vorwort, keine Erklärung und KEINE Rückfrage am Ende („Willst du das so abschicken?", „Soll ich noch was ändern?") – die Weitergabe regelt der Bot. Nur der Vorschlag selbst.
+- Kein Vorwort, keine Erklärung, KEINE Rückfrage am Ende („Willst du das so abschicken?", „Soll ich noch was ändern?") und kein Kommentar über die Wette selbst („kurz und klar", „in 1–2 Tagen entscheidbar") – die Weitergabe regelt der Bot. Nur der Vorschlag selbst.
 {zutaten_str}"""
     vorlieben_block = ("\n" + "\n".join(f"  - {v}" for v in sklave_vorlieben)) if sklave_vorlieben else " nicht angegeben"
     prompt = f"""Vorlieben {s['label_gen']} (verdecktes Steuerwissen, aus {s['poss']}er Sicht notiert – NIE als Liste oder Treffer erwähnen):{vorlieben_block}

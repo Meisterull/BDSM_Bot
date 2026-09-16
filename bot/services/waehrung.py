@@ -126,6 +126,10 @@ def wett_frist_tage(text: str, heute: date | None = None) -> int:
         tage = 2
     if tage is None and re.search(r"\b(morgen|tomorrow)\b", t):
         tage = 1
+    # „heute Abend …" (Live-Render 16.09.: Wette spielt heute, Urteil morgen zur
+    # Followup-Zeit statt erst übermorgen)
+    if tage is None and re.search(r"\b(heute|tonight|today)\b", t):
+        tage = 1
     if tage is None:
         try:
             from bot.services import datum_erkennung

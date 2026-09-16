@@ -366,6 +366,27 @@ _NACHSATZ_RE = re.compile(
 _LETZTER_FRAGESATZ_RE = re.compile(r"(?:^|(?<=[.!?…])\s+)([^.!?…\n]*\?)\s*$")
 
 
+# Coach-Kommentar ÜBER die Wette am Ende („Kurz, klar und in 1–2 Tagen
+# entscheidbar.") – Live-Render 16.09.: kein Fragesatz, also vom Nachsatz-Schnitt
+# nicht erfasst. Nur ein kurzer letzter Satz/Absatz mit Meta-Vokabular fällt.
+_META_SCHLUSS_RE = re.compile(
+    r"(entscheidbar|messbar|kurz(?:,| und) klar|zum weitergeben|abschicken|anpassen"
+    r"|so passt|fertig zum|meta|coach)", re.I)
+
+
+def _meta_schluss_entfernen(text: str) -> str:
+    """Schneidet einen abschließenden Kommentar-Satz (≤ 120 Zeichen, Meta-Vokabular)
+    ab – nur wenn davor noch Text steht."""
+    t = (text or "").strip()
+    m = re.search(r"(?:^|(?<=[.!?…])\s+|\n\s*)([^.!?…\n]{1,118}[.!…]?)\s*$", t)
+    if not m or m.start(1) == 0:
+        return t
+    letzter = m.group(1)
+    if _META_SCHLUSS_RE.search(letzter) and not re.search(r"gewinn|verlier|wette:", letzter, re.I):
+        return t[:m.start(1)].rstrip()
+    return t
+
+
 def _nachsatz_entfernen(text: str) -> str:
     """Schneidet abschließende Rückfrage-Sätze ab (nur wenn davor noch Text steht)."""
     t = (text or "").strip()
@@ -469,7 +490,7 @@ async def _wett_idee_generieren() -> str | None:
     idee = await _generiere(prompt)
     if not idee:
         return None
-    idee = _nachsatz_entfernen(idee)
+    idee = _meta_schluss_entfernen(_nachsatz_entfernen(idee))
     funde = _formel_verstoesse(idee) + _idee_verstoesse(idee)
     if funde:
         logger.info("Wett-Idee mit Mängeln (%s) – generiere einmal neu.", "; ".join(funde))
@@ -482,7 +503,7 @@ async def _wett_idee_generieren() -> str | None:
             "'…, den du magst') und ohne Kommentar, wovon du dich absetzt."
         )
         if neu:
-            neu = _nachsatz_entfernen(neu)
+            neu = _meta_schluss_entfernen(_nachsatz_entfernen(neu))
             if len(_formel_verstoesse(neu) + _idee_verstoesse(neu)) <= len(funde):
                 idee = neu
     rest = _idee_verstoesse(idee)

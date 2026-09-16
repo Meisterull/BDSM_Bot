@@ -165,6 +165,19 @@ def _press(data: str):
 # Tests
 # --------------------------------------------------------------------------
 
+def test_meta_schluss_entfernen():
+    idee = ("Wer von euch beiden heute Abend länger durchhält, gewinnt.\n\n"
+            "Verliert er, trägt er den Plug. Verlierst du, bekommt er Milking.\n\n"
+            "Kurz, klar und in 1–2 Tagen entscheidbar.")
+    assert cq._meta_schluss_entfernen(idee).endswith("bekommt er Milking.")
+    assert cq._meta_schluss_entfernen("Wer gewinnt, bestimmt den Abend. Kurz und klar.") == "Wer gewinnt, bestimmt den Abend."
+    # Echter letzter Satz mit Wett-Inhalt bleibt, auch wenn „messbar" drin steht
+    bleibt = "Wer bis Freitag mehr schafft, gewinnt. Verliert er, ist der Einsatz messbar hart: eine Stunde knien."
+    assert cq._meta_schluss_entfernen(bleibt) == bleibt
+    assert cq._meta_schluss_entfernen("Kurz und klar.") == "Kurz und klar."
+    assert cq._meta_schluss_entfernen(GUT) == GUT
+
+
 def test_idee_verstoesse():
     _Welt([]).install()
     assert cq._idee_verstoesse(GUT) == []
@@ -279,6 +292,7 @@ def test_locale_keys():
 
 
 def _run_alle():
+    test_meta_schluss_entfernen()
     test_idee_verstoesse()
     test_generieren_retry_und_abbruch()
     test_sende_wett_idee_mit_buttons()
