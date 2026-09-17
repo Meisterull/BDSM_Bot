@@ -151,6 +151,41 @@ def wette_an_sklaven(idee: str, einsatz: int = 0) -> tuple[str, str]:
     return system, user
 
 
+def wett_ergebnis_an_dom(idee: str, sub_gewonnen: bool, automatisch: bool = False) -> tuple[str, str]:
+    """Wette entschieden (handlers/waehrung): der Coach sagt der Dom-Seite, was
+    jetzt ansteht – Einsatz exakt aus der Abmachung. Owner-Wunsch 17.09.2026:
+    hat sie gewonnen, darf es gemein und anfeuernd sein („Hab Spaß und zeig
+    keine Gnade"). Punkte, Stand und Einspruch hängt der Bot deterministisch an."""
+    from bot.prompts import coach_persona
+    s, d = rollen.sub(), rollen.dom()
+    sub_gross = s["label_nom"][:1].upper() + s["label_nom"][1:]
+    if sub_gewonnen:
+        lage = (f"{sub_gross} hat die Wette GEWONNEN – {d['nom']} hat verloren. Gönn {s['dat']} "
+                f"{s['poss']} Glück spöttisch und erinnere {d['real_akk']}, was {d['nom']} {s['dat']} "
+                f"jetzt laut Abmachung schuldet – frech und trocken, nicht beleidigt.")
+    else:
+        grund = f" ({s['nom']} hat sich nicht gemeldet – das zählt als verloren)" if automatisch else ""
+        lage = (f"{sub_gross} hat die Wette VERLOREN{grund} – {d['nom']} hat gewonnen. Feier den "
+                f"Sieg frech und gemein und heiz {d['dat']} ein, den Einsatz gnadenlos einzutreiben – "
+                f"im Ton von „Hab Spaß und zeig keine Gnade, du hast gewonnen“.")
+    system = (
+        coach_persona.fuer_strukturierten_output()
+        + f"\n\n{lage}\n"
+        f"Sag es {d['real_dat']} als vertraute beste Freundin in höchstens drei Sätzen – "
+        f"was jetzt passiert, mit Einsatz, Richtung und Rollen EXAKT wie in der Abmachung unten: nur "
+        f"den Teil, der zu diesem Ausgang gehört, nichts dazu erfinden, nichts weglassen. Die "
+        f"Abmachung ist an {d['akk']} formuliert: „du“ meint {d['real_akk']}, „{s['nom']}“ meint {s['label_akk']}.\n"
+        f"Du weißt nicht, wie die Wette gelaufen ist – erfinde keinen Verlauf (wann oder woran "
+        f"{s['nom']} gescheitert ist bzw. wie {s['nom']} durchgehalten hat) und keine Details, die "
+        f"nicht in der Abmachung stehen (Hilfsmittel, Dauer, Ablauf). Gemein sein darf der Ton, "
+        f"nicht der Inhalt.\n"
+        f"Punkte, Kontostand und Einspruch nennt der Bot selbst – erwähne sie nicht. Kein Vorwort, "
+        f"keine Anrede-Floskel, keine Anführungszeichen, kein Markdown, keine Frage am Schluss."
+    )
+    user = nutzer_text("Abmachung der Wette", idee)
+    return system, user
+
+
 def strafe_fuer_ablehnung(strafe: str) -> tuple[str, str]:
     """Wette abgelehnt → die Dom-Seite hat eine Strafe gewählt oder selbst
     geschrieben (handlers/waehrung): die Herrin ordnet sie in eigener Stimme an.

@@ -436,18 +436,46 @@ def _sub_gross() -> str:
     return nom[:1].upper() + nom[1:]
 
 
-def _abmachung(w: dict) -> str:
-    """Die vereinbarte Wette für Ergebnis-Meldungen an die Dom-Seite – sie soll
-    wissen, was sie jetzt eintreibt bzw. einlöst (Owner-Wunsch 17.09.2026: die
-    Meldung nannte nur die Punkte). Die Idee ist schon an sie formuliert;
-    Rückfragen/Vorworte aus älteren Ideen fallen weg."""
+def _idee_bereinigt(w: dict) -> str:
+    """Gespeicherte Wett-Idee ohne Rückfragen/Vorworte älterer Ideen."""
     idee = (w.get("idee") or "").strip()
     if not idee:
         return ""
     from bot.handlers import coach_quiz  # lazy: coach_quiz importiert dieses Modul
-    idee = coach_quiz._meta_schluss_entfernen(
+    return coach_quiz._meta_schluss_entfernen(
         coach_quiz._nachsatz_entfernen(coach_quiz._vorwort_entfernen(idee)))
+
+
+def _abmachung(w: dict) -> str:
+    """Die vereinbarte Wette wörtlich – Fallback, wenn Grok ausfällt."""
+    idee = _idee_bereinigt(w)
     return t("WETTE_ABMACHUNG", idee=idee) if idee else ""
+
+
+async def _einsatz_text(w: dict, ergebnis: str, automatisch: bool = False) -> str:
+    """Zusatz für Ergebnis-/Einspruch-Meldungen an die Dom-Seite: sie soll wissen,
+    was sie jetzt eintreibt bzw. einlöst (Owner-Wunsch 17.09.2026: die Meldung
+    nannte nur die Punkte; formuliert über Grok im Coach-Ton, gemein, wenn sie
+    gewonnen hat). Limits-Treffer oder LLM-Fehler → Abmachung wörtlich."""
+    idee = _idee_bereinigt(w)
+    if not idee:
+        return ""
+    from bot.prompts import followup as fp
+    try:
+        text = grok.clean_text(await grok.simple(
+            fp.wett_ergebnis_an_dom(idee, sub_gewonnen=(ergebnis == "gewonnen"), automatisch=automatisch),
+            max_tokens=250))
+        if not text:
+            return _abmachung(w)
+        sp = await qdrant.get_user_profile("sklave") or {}
+        dp = await qdrant.get_user_profile("domina") or {}
+        if await limits_check.verletzungen(text, sp.get("hard_limits", []) or [], dp.get("grenzen", []) or []):
+            logger.info("Wett-Ergebnis-Text berührt Limits – Abmachung wörtlich (%s).", w.get("kennung"))
+            return _abmachung(w)
+        return f"\n\n{text}"
+    except Exception:
+        logger.exception("Wett-Ergebnis-Text (Grok) fehlgeschlagen – Abmachung wörtlich")
+        return _abmachung(w)
 
 
 def _annahme_buttons(kennung: str) -> InlineKeyboardMarkup:
@@ -914,7 +942,7 @@ async def _wette_abschliessen(bot, ergebnis: str, auto: bool = False) -> None:
             bot, t("WETTE_ERGEBNIS_DOM", ergebnis=t("WETTE_WORT_" + ergebnis.upper()),
                    einsatz=einsatz, stand=buchung["neu"], stunden=waehrung.EINSPRUCH_STUNDEN,
                    sub_nom=rollen.sub()["label_nom"], verfallen=t("WETTE_VERFALLEN_ZUSATZ") if auto else "",
-                   abmachung=_abmachung(w)),
+                   abmachung=await _einsatz_text(w, ergebnis, automatisch=auto)),
             reply_markup=markup)
     except Exception:
         logger.exception("Wett-Ergebnis an die Dom-Seite fehlgeschlagen")
@@ -948,7 +976,7 @@ async def callback_wetteeinspruch(update: Update, context: ContextTypes.DEFAULT_
     await qdrant.patch_profile_fields("sklave", {FELD_WETTE: w})
     await query.message.reply_text(
         t("WETTE_EINSPRUCH_OK", ergebnis=t("WETTE_WORT_" + neu_ergebnis.upper()), stand=buchung["neu"],
-          abmachung=_abmachung(w)))
+          abmachung=await _einsatz_text(w, neu_ergebnis)))
     try:
         await telegram_helper.send_sklave(
             context.bot, t("WETTE_EINSPRUCH_SUB", ergebnis=t("WETTE_WORT_" + neu_ergebnis.upper()),

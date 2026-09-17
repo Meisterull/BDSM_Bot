@@ -139,6 +139,22 @@ class _Welt:
         wh.sticker_reaktionen.sende_sklave = AsyncMock(return_value=True)
         ws.frist_iso = lambda tage: (datetime.now(timezone.utc) + timedelta(days=tage)).isoformat()
         wh._BOT = object()
+        # Wett-Ergebnis an die Dom-Seite läuft über Grok (17.09.2026)
+        self.grok_prompts: list = []
+        self.grok_fehler = False
+        self.limits_treffer: list = []
+
+        async def _simple(prompt, **kw):
+            self.grok_prompts.append(prompt)
+            if self.grok_fehler:
+                raise RuntimeError("LLM down")
+            return "Hab Spaß und zeig keine Gnade."
+
+        async def _verletzungen(text, *a, **kw):
+            return list(self.limits_treffer)
+        wh.grok.simple = _simple
+        wh.grok.clean_text = lambda x: (x or "").strip()
+        wh.limits_check.verletzungen = _verletzungen
         return self
 
     @property
@@ -364,7 +380,10 @@ def test_herrin_wette_kompletter_lauf():
     assert q.markup_entfernt and w.punkte == 250
     assert any("Gewonnen" in s for s, _ in w.sub_sends)
     assert w.dom_sends and "gewonnen" in w.dom_sends[-1][0] and w.dom_sends[-1][1] is not None
-    assert "Ausgemacht war: Wer in den nächsten zwei Tagen" in w.dom_sends[-1][0], "vereinbarter Einsatz fehlt"
+    assert "Hab Spaß und zeig keine Gnade." in w.dom_sends[-1][0], "Grok-Text zum Einsatz fehlt"
+    system, user = w.grok_prompts[-1]
+    assert "GEWONNEN" in system and "schuldet" in system and "Wer in den nächsten zwei Tagen" in user
+    assert "erfinde keinen Verlauf" in system and "höchstens drei Sätzen" in system
     assert w.profile["sklave"][wh.FELD_WETTE]["status"] == "entschieden"
     # Doppel-Tap → veraltet
     q = _press(wh.callback_wetteurteil, "wetteurteil:verloren:abc12345", SUB)
@@ -372,7 +391,8 @@ def test_herrin_wette_kompletter_lauf():
     # Einspruch kippt: +50 → −50 (Umbuchung 100)
     q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:abc12345", DOM)
     assert w.punkte == 150 and w.profile["sklave"][wh.FELD_WETTE]["status"] == "gekippt"
-    assert any("verloren" in r[0] and "Ausgemacht war" in r[0] for r in q.message.replies)
+    assert any("verloren" in r[0] and "keine Gnade" in r[0] for r in q.message.replies)
+    assert "VERLOREN" in w.grok_prompts[-1][0] and "gnadenlos" in w.grok_prompts[-1][0]
     assert any("Einspruch" in s and "verloren" in s for s, _ in w.sub_sends)
     q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:abc12345", DOM)
     assert w.punkte == 150 and any("nicht mehr möglich" in r[0] for r in q.message.replies)
@@ -389,9 +409,20 @@ def test_herrin_wette_verfaellt_und_einspruch_frist():
     assert any("Keine Meldung" in s for s, _ in w.sub_sends)
     assert "automatisch" in w.dom_sends[-1][0]
     # alte Idee mit angehängter Rückfrage: die Rückfrage fällt in der Meldung weg
+    assert "nicht gemeldet" in w.grok_prompts[-1][0]
     assert wh._abmachung({"idee": "Verliert er, kocht er. Willst du die Bedingung noch fieser machen?"}) \
         == "\n\nAusgemacht war: Verliert er, kocht er."
     assert wh._abmachung({}) == ""
+    # Fallbacks: Grok-Fehler oder Limits-Treffer → Abmachung wörtlich; ohne Idee nichts
+    alt_idee = {"idee": "Verliert er, kocht er zwei Abende."}
+    w.grok_fehler = True
+    assert _run(wh._einsatz_text(alt_idee, "verloren")) == "\n\nAusgemacht war: Verliert er, kocht er zwei Abende."
+    w.grok_fehler = False
+    w.limits_treffer = [{"limit": "X"}]
+    assert _run(wh._einsatz_text(alt_idee, "verloren")).startswith("\n\nAusgemacht war:")
+    w.limits_treffer = []
+    assert _run(wh._einsatz_text(alt_idee, "verloren")) == "\n\nHab Spaß und zeig keine Gnade."
+    assert _run(wh._einsatz_text({}, "verloren")) == ""
     # Einspruch nach 24 h nicht mehr
     w.profile["sklave"][wh.FELD_WETTE]["einspruch_bis"] = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:k2", DOM)
