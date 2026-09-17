@@ -202,6 +202,8 @@ def test_vorwort_safeword_und_richtungs_regel():
     assert cq._vorwort_entfernen("Er trägt die Schürze bis 22 Uhr: schafft er es, gewinnt er.") == "Er trägt die Schürze bis 22 Uhr: schafft er es, gewinnt er."
     assert cq._nachsatz_entfernen(GUT + " Gefällt dir das so, oder?") == GUT
     assert cq._nachsatz_entfernen(GUT + "\n\nWillst du den Einsatz noch etwas höher ansetzen?") == GUT
+    assert cq._nachsatz_entfernen(GUT + " Wie fühlst du dich damit – zu hart oder genau richtig?") == GUT
+    assert cq._nachsatz_entfernen(GUT + " Klingt das nach deinem Abend?") == GUT
     assert cq._nachsatz_entfernen("Wer gewinnt, bestimmt den Abend. Wer schafft mehr?") == "Wer gewinnt, bestimmt den Abend. Wer schafft mehr?"
     assert cq._nachsatz_entfernen(GUT + "\n\nPasst das so für dich?") == GUT
     assert cq._vorwort_entfernen(GUT) == GUT
@@ -244,7 +246,7 @@ def test_generieren_retry_und_abbruch():
     # Prompt-Härtung: Idee an sie, keine fertige Nachricht, Anrede als Negativ-Beispiel
     system, _ = fp.wett_idee(["Kaffee ans Bett"], [], [], [])
     assert "KEINE fertige Nachricht" in system and "Kleine Maus, wir machen" in system
-    assert "höchstens 500 Zeichen" in system
+    assert "höchstens 500 Zeichen" in system and "JE SEITE EIN Einsatz" in system
 
 
 def test_sende_wett_idee_mit_buttons():
@@ -336,6 +338,26 @@ def test_impuls_reihenfolge():
     assert [n for n, _ in sched._impuls_reihenfolge(k, "coach_quiz")] == ["wett_idee", "coach_quiz"]
     assert [n for n, _ in sched._impuls_reihenfolge(k, "wett_idee")] == ["coach_quiz", "wett_idee"]
     assert sorted(n for n, _ in sched._impuls_reihenfolge(k, "")) == ["coach_quiz", "wett_idee"]
+
+
+def test_verlauf_im_prompt():
+    """17.09.2026: die letzten Wetten mit Ausgang fließen in den Vorschlag ein –
+    gegen dieselbe Messlatte in neuer Verpackung."""
+    assert "LETZTE WETTEN" not in fp.wett_idee(["Kaffee ans Bett"], [], [], [])[0]
+    system, _ = fp.wett_idee(["Kaffee ans Bett"], [], [], [], letzte_wetten=[
+        {"datum": "2026-09-16", "ergebnis": "verloren", "idee": "Er trägt die Schürze den ganzen Tag."},
+        {"datum": "2026-09-12", "ergebnis": "abgelehnt", "idee": "Wer zuerst lacht, verliert."},
+        {"datum": "2026-09-10", "ergebnis": "verfallen", "idee": "Kein Handy bis Freitag."}])
+    assert "[16.09., er hat verloren] Er trägt die Schürze" in system
+    assert "er hat die Wette abgelehnt" in system and "zählt als verloren" in system
+    assert "zähl die Wetten nie auf" in system
+    # Der Generator reicht den Verlauf aus dem Sub-Profil durch
+    w = _Welt([GUT]).install()
+    w.profile["sklave"]["herrin_wetten_verlauf"] = [
+        {"datum": "2026-09-16", "ergebnis": "verloren", "idee": "Er trägt die Schürze den ganzen Tag."}]
+    _run(cq._wett_idee_generieren())
+    from bot.handlers import waehrung as waehrung_h
+    assert waehrung_h.letzte_wetten(w.profile["sklave"])[0]["ergebnis"] == "verloren"
 
 
 def test_schwerpunkt_prompt_auswahl_und_neu():
@@ -449,6 +471,7 @@ def _run_alle():
     test_callback_senden()
     test_callback_neu_mit_deckel()
     test_impuls_reihenfolge()
+    test_verlauf_im_prompt()
     test_schwerpunkt_prompt_auswahl_und_neu()
     test_coach_impuls_wunsch_und_quiz_schalter()
     test_locale_keys()

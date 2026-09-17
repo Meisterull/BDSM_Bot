@@ -357,6 +357,74 @@ def test_spiel_impuls_gate():
         config.SPIEL_IMPULS = alt
 
 
+def test_spiel_impuls_pool():
+    """Quiz-Schalter (17.09.2026): ohne Quiz und ohne offene Aufgabe bleibt der
+    Pool leer – der Impuls setzt aus, statt doch ein Quiz zu schicken."""
+    from bot import config
+    from bot.scheduler import followup
+    from bot.handlers import quiz, wette
+    from bot.services import paare, qdrant, zeiten
+    gesendet = []
+    alt = (config.SPIEL_IMPULS, config.SPIEL_IMPULS_QUIZ, config.SPIEL_IMPULS_CHANCE,
+           followup._flow_aktiv, zeiten.ist_im_fenster, qdrant.get_user_profile,
+           qdrant.patch_profile_fields, quiz.sende_spontane_frage, wette.angebots_lage,
+           wette.sende_spontanes_angebot, followup._impuls_claim,
+           paare.sub_chat_id, paare.dom_chat_id)
+    lage = ["keine_aufgabe"]
+
+    async def _profil(rolle):
+        return {}
+
+    async def _quiz(bot):
+        gesendet.append("quiz")
+        return True
+
+    async def _wette(bot):
+        gesendet.append("wette")
+        return True
+    try:
+        config.SPIEL_IMPULS, config.SPIEL_IMPULS_CHANCE = True, 1.0
+        followup._flow_aktiv = lambda *a, **k: False
+        zeiten.ist_im_fenster = lambda *a, **k: True
+        qdrant.get_user_profile = _profil
+        qdrant.patch_profile_fields = lambda *a, **k: _profil("x")
+        quiz.sende_spontane_frage, wette.sende_spontanes_angebot = _quiz, _wette
+        paare.sub_chat_id, paare.dom_chat_id = (lambda: "222"), (lambda: "111")
+
+        async def _lage(profil):
+            return lage[0]
+        wette.angebots_lage = _lage
+        # Quiz aus + keine Aufgabe → nichts, Claim wieder frei
+        config.SPIEL_IMPULS_QUIZ = False
+        followup._impuls_claim = None
+        asyncio.run(followup.spiel_impuls_job(None))
+        assert gesendet == [] and followup._impuls_claim is None
+        # Quiz aus, aber Wette möglich → Wette
+        lage[0] = "ok"
+        followup._impuls_claim = None
+        asyncio.run(followup.spiel_impuls_job(None))
+        assert gesendet == ["wette"]
+        # Quiz an, keine Aufgabe → Quiz
+        gesendet.clear(); lage[0] = "keine_aufgabe"
+        config.SPIEL_IMPULS_QUIZ = True
+        followup._impuls_claim = None
+        asyncio.run(followup.spiel_impuls_job(None))
+        assert gesendet == ["quiz"]
+    finally:
+        (config.SPIEL_IMPULS, config.SPIEL_IMPULS_QUIZ, config.SPIEL_IMPULS_CHANCE,
+         followup._flow_aktiv, zeiten.ist_im_fenster, qdrant.get_user_profile,
+         qdrant.patch_profile_fields, quiz.sende_spontane_frage, wette.angebots_lage,
+         wette.sende_spontanes_angebot, followup._impuls_claim,
+         paare.sub_chat_id, paare.dom_chat_id) = alt
+
+
+def test_impuls_kollision_dauer():
+    from bot import config
+    from bot.scheduler import followup
+    assert followup._IMPULS_KOLLISION.total_seconds() == config.IMPULS_KOLLISION_MINUTEN * 60
+    assert 30 <= config.IMPULS_KOLLISION_MINUTEN <= 60, "blockt einen Takt, nicht den Abend"
+
+
 def _run():
     test_ist_im_fenster()
     test_event_parse_datum()
@@ -370,6 +438,8 @@ def _run():
     test_wette_bleibt_bei_blitz()
     test_wette_verloren_bei_nicht_erledigt()
     test_wette_angebots_lage()
+    test_spiel_impuls_pool()
+    test_impuls_kollision_dauer()
     test_spiel_impuls_gate()
     print("✅ Alle Spaß-Feature-Tests bestanden")
 

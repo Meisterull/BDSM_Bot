@@ -968,9 +968,14 @@ KEIN [AUFGABE: ...] Tag – das ist nur ein Vorschlag, keine automatische Aufgab
     return system, _aufgaben_kontext(ausfuehrlich=True, **kwargs)
 
 
+_WETT_AUSGANG = {"gewonnen": "er hat gewonnen", "verloren": "er hat verloren",
+                 "verfallen": "er hat sich nicht gemeldet, zählt als verloren",
+                 "abgelehnt": "er hat die Wette abgelehnt"}
+
+
 def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
               domina_interessen: list = None, verbrauchte_zutaten: list = None,
-              schwerpunkt: str = "") -> tuple[str, str]:
+              schwerpunkt: str = "", letzte_wetten: list = None) -> tuple[str, str]:
     """Coach-Impuls: fertige Wett-Idee für die Domina, zum Weitergeben an den Sub.
     Dieselben Bausteine wie die Aufgaben-Vorschläge (Live-Befund 07.09.: der
     erste Generator kannte weder Rollen-Rahmen noch Richtungs-Regel noch
@@ -993,6 +998,20 @@ def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
             "\nVERBRAUCHTE ZUTATEN (kamen in den letzten Aufgaben-Vorschlägen schon vor – "
             "heute in KEINEM Einsatz, auch nicht als Beiwerk):\n"
             + "\n".join(f"  • {z}" for z in verbrauchte_zutaten) + "\n"
+        )
+    verlauf_str = ""
+    if letzte_wetten:
+        zeilen = []
+        for e in letzte_wetten[-5:]:
+            teile = str(e.get("datum", "")).split("-")
+            datum = f"{teile[2]}.{teile[1]}." if len(teile) == 3 else str(e.get("datum", ""))
+            ausgang = _WETT_AUSGANG.get(e.get("ergebnis", ""), e.get("ergebnis", ""))
+            zeilen.append(f"  • [{datum}, {ausgang}] {str(e.get('idee', ''))[:220]}")
+        verlauf_str = (
+            "\nLETZTE WETTEN (mit Ausgang): Bedingung UND Einsatz sollen diesmal andere sein – "
+            "nicht dieselbe Messlatte in neuer Verpackung. Auf den letzten Ausgang darfst du dich "
+            "locker beziehen (ein Halbsatz), aber zähl die Wetten nie auf:\n"
+            + "\n".join(zeilen) + "\n"
         )
     schwerpunkt_str = ""
     if schwerpunkt:
@@ -1017,8 +1036,9 @@ DIE WETTE (strikt):
 - Safeword, Grenzen und Aftercare gelten immer und sind nie Teil der Wette.
 - Du schreibst die IDEE an {d['real_akk']} – KEINE fertige Nachricht an {s['akk']}: kein „{anrede}, wir machen eine Wette …", keine Anführungszeichen, kein „schick mir ‚angenommen‘". Das Ausformulieren an {s['akk']} übernimmt der Bot auf Knopfdruck.
 - Einsätze nur aus den Vorlieben {s['label_gen']} und den Interessen {d['real_gen']} unten – nichts Neues einführen; Richtung, Rollen und Bedingungen jeder Vorliebe EXAKT übernehmen.
+- JE SEITE EIN Einsatz – keine Kette aus mehreren Praktiken („… plus … plus …"). Ein klarer Gewinn, ein klarer Preis.
 - Kein Vorwort, keine Erklärung, KEINE Rückfrage am Ende („Willst du das so abschicken?", „Soll ich noch was ändern?") und kein Kommentar über die Wette selbst („kurz und klar", „in 1–2 Tagen entscheidbar") – die Weitergabe regelt der Bot. Nur der Vorschlag selbst.
-{schwerpunkt_str}{zutaten_str}"""
+{schwerpunkt_str}{verlauf_str}{zutaten_str}"""
     vorlieben_block = ("\n" + "\n".join(f"  - {v}" for v in sklave_vorlieben)) if sklave_vorlieben else " nicht angegeben"
     prompt = f"""Vorlieben {s['label_gen']} (verdecktes Steuerwissen, aus {s['poss']}er Sicht notiert – NIE als Liste oder Treffer erwähnen):{vorlieben_block}
 Absolute Grenzen {s['label_gen']} (NIEMALS): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine'}

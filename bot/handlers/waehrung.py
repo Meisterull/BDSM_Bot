@@ -41,7 +41,9 @@ from bot.messages import t
 logger = logging.getLogger(__name__)
 
 _BOT = None                      # Bot-Handle für Hook (neuer Wunsch) – main.start()
-FELD_WETTE = "herrin_wette"      # Sub-Profil
+FELD_WETTE = "herrin_wette"      # Sub-Profil (die EINE offene/letzte Wette)
+FELD_WETT_VERLAUF = "herrin_wetten_verlauf"   # Sub-Profil: die letzten Wetten mit Ausgang
+WETT_VERLAUF_MAX = 5             # so viele fließen in den nächsten Vorschlag ein
 FELD_SCHWELLE = "punkte_schwelle_gemeldet"
 FELD_RUHE = "sparziel_ruhe"      # Dom-Profil: {wunsch_lower: iso}
 FELD_FRAGE_AM = "sparziel_frage_am"
@@ -436,6 +438,38 @@ def _sub_gross() -> str:
     return nom[:1].upper() + nom[1:]
 
 
+async def _verlauf_eintragen(w: dict, ergebnis: str) -> None:
+    """Entschiedene/abgelehnte Wette in den Verlauf schreiben (Owner-Wunsch
+    17.09.2026): der nächste Wettvorschlag soll Bedingung und Einsatz nicht
+    wiederholen und sich auf den Ausgang beziehen können. Kippt ein Einspruch
+    das Urteil, wird der vorhandene Eintrag korrigiert statt ein zweiter
+    angelegt. Best-effort – ein Fehler hier darf den Flow nie stoppen."""
+    idee = _idee_bereinigt(w)
+    if not idee:
+        return
+    try:
+        profil = await qdrant.get_user_profile("sklave") or {}
+        verlauf = [e for e in (profil.get(FELD_WETT_VERLAUF) or []) if isinstance(e, dict)]
+        kennung = w.get("kennung", "")
+        eintrag = {"kennung": kennung, "idee": idee[:300], "ergebnis": ergebnis,
+                   "datum": _jetzt().astimezone(ZoneInfo(config.TIMEZONE)).strftime("%Y-%m-%d")}
+        if verlauf and verlauf[-1].get("kennung") == kennung:
+            verlauf[-1] = eintrag
+        else:
+            verlauf.append(eintrag)
+        await qdrant.patch_profile_fields(
+            "sklave", {FELD_WETT_VERLAUF: verlauf[-WETT_VERLAUF_MAX:]})
+    except Exception:
+        logger.exception("Wett-Verlauf konnte nicht geschrieben werden")
+
+
+def letzte_wetten(profil: dict | None) -> list[dict]:
+    """Die letzten Wetten mit Ausgang – Kontext für den nächsten Vorschlag
+    (handlers/coach_quiz._wett_idee_generieren)."""
+    verlauf = [e for e in ((profil or {}).get(FELD_WETT_VERLAUF) or []) if isinstance(e, dict)]
+    return verlauf[-WETT_VERLAUF_MAX:]
+
+
 def _idee_bereinigt(w: dict) -> str:
     """Gespeicherte Wett-Idee ohne Rückfragen/Vorworte älterer Ideen."""
     idee = (w.get("idee") or "").strip()
@@ -557,6 +591,7 @@ async def callback_wetteantwort(update: Update, context: ContextTypes.DEFAULT_TY
     w.update({"status": "abgelehnt", "abgelehnt_am": jetzt, "letzte_aktion_am": jetzt,
               "abzug": None, "strafe_optionen": [], "strafe_neu": 0})
     await qdrant.patch_profile_fields("sklave", {FELD_WETTE: w})
+    await _verlauf_eintragen(w, "abgelehnt")
     logger.info("Herrin-Wette abgelehnt (%s).", kennung)
     try:
         await telegram_helper.send_sklave(context.bot, t("WETTE_ABGELEHNT_SUB"))
@@ -946,6 +981,7 @@ async def _wette_abschliessen(bot, ergebnis: str, auto: bool = False) -> None:
             reply_markup=markup)
     except Exception:
         logger.exception("Wett-Ergebnis an die Dom-Seite fehlgeschlagen")
+    await _verlauf_eintragen(w, "verfallen" if auto else ergebnis)
     logger.info("Herrin-Wette %s (%s%s).", ergebnis, kennung, ", verfallen" if auto else "")
     await nach_punkteaenderung(bot, buchung["alt"], buchung["neu"], push=(ergebnis == "gewonnen"))
 
@@ -983,6 +1019,7 @@ async def callback_wetteeinspruch(update: Update, context: ContextTypes.DEFAULT_
                            stand=buchung["neu"]))
     except Exception:
         logger.exception("Einspruch-Meldung an den Sub fehlgeschlagen")
+    await _verlauf_eintragen(w, neu_ergebnis)
     logger.info("Herrin-Wette gekippt → %s (%s).", neu_ergebnis, kennung)
     await nach_punkteaenderung(context.bot, buchung["alt"], buchung["neu"], push=False)
 

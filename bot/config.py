@@ -153,6 +153,14 @@ SPIEL_IMPULS = os.getenv("SPIEL_IMPULS", "") == "1"
 SPIEL_IMPULS_FENSTER = os.getenv("SPIEL_IMPULS_FENSTER", "09:00-21:00")
 SPIEL_IMPULS_CHANCE = float(os.getenv("SPIEL_IMPULS_CHANCE", "0.04"))    # pro 30-Min-Check
 SPIEL_IMPULS_MIN_ABSTAND_TAGE = int(os.getenv("SPIEL_IMPULS_MIN_ABSTAND_TAGE", "1"))
+# Quiz-Zweig des Spiel-Impulses abschaltbar (17.09.2026): 0 = der Sub bekommt
+# spontan nur noch Wett-Angebote. Sein manuelles /quiz bleibt.
+SPIEL_IMPULS_QUIZ = os.getenv("SPIEL_IMPULS_QUIZ", "1") == "1"
+# Gegenseitige Sperre der beiden Impulse: nach einem Impuls bleibt der andere
+# Kanal so lange still. 45 Min blockieren zuverlässig den unmittelbar folgenden
+# 30-Min-Takt, geben den Abend aber wieder frei (Live 17.09.: mit 2 h fiel der
+# Coach-Impuls komplett aus, weil der Spiel-Impuls um 20:47 zuerst dran war).
+IMPULS_KOLLISION_MINUTEN = int(os.getenv("IMPULS_KOLLISION_MINUTEN", "45"))
 
 # Coach-Impuls ☕: Spiegel des Spiel-Impulses auf der Domina-Seite – der Coach
 # stellt spontan eine Quiz-Frage (Coach-Quiz) oder schlägt eine Wett-Idee zum

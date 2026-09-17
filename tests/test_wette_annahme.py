@@ -461,6 +461,38 @@ def test_wette_abruf():
         cq._wett_idee_generieren, cq._wett_idee_zustellen, cq.state.is_paused = alt
 
 
+def test_verlauf_wird_geschrieben():
+    """Jede endgültige Wette landet im Verlauf (max. 5); ein Einspruch korrigiert
+    den vorhandenen Eintrag, statt einen zweiten anzulegen."""
+    w = _Welt().install()
+    _abgelehnt(w)
+    verlauf = w.profile["sklave"][wh.FELD_WETT_VERLAUF]
+    assert len(verlauf) == 1 and verlauf[0]["ergebnis"] == "abgelehnt" and verlauf[0]["kennung"] == "k1"
+    assert IDEE[:50] in verlauf[0]["idee"] and verlauf[0]["datum"].count("-") == 2
+    # Entschiedene Wette: neuer Eintrag; Einspruch korrigiert ihn
+    w.profile["sklave"][wh.FELD_WETTE] = {"kennung": "k2", "idee": "Zweite Wette: er kocht.",
+                                          "einsatz": 50, "status": "gefragt"}
+    _run(wh._wette_abschliessen(None, "verloren"))
+    verlauf = w.profile["sklave"][wh.FELD_WETT_VERLAUF]
+    assert [e["ergebnis"] for e in verlauf] == ["abgelehnt", "verloren"]
+    _press(wh.callback_wetteeinspruch, "wetteeinspruch:k2", DOM)
+    verlauf = w.profile["sklave"][wh.FELD_WETT_VERLAUF]
+    assert len(verlauf) == 2 and verlauf[-1]["ergebnis"] == "gewonnen", "Einspruch korrigiert"
+    # Deckel bei 5
+    for i in range(5):
+        w.profile["sklave"][wh.FELD_WETTE] = {"kennung": f"x{i}", "idee": f"Wette {i}: er wischt.",
+                                              "einsatz": 50, "status": "gefragt"}
+        _run(wh._wette_abschliessen(None, "verloren"))
+    verlauf = w.profile["sklave"][wh.FELD_WETT_VERLAUF]
+    assert len(verlauf) == 5 and [e["kennung"] for e in verlauf] == ["x0", "x1", "x2", "x3", "x4"]
+    assert wh.letzte_wetten({}) == [] and wh.letzte_wetten(w.profile["sklave"]) == verlauf
+    # Verfallene Wette wird als solche vermerkt
+    w.profile["sklave"][wh.FELD_WETTE] = {"kennung": "auto", "idee": "Letzte Wette: er schweigt.",
+                                          "einsatz": 50, "status": "gefragt"}
+    _run(wh._wette_abschliessen(None, "verloren", auto=True))
+    assert w.profile["sklave"][wh.FELD_WETT_VERLAUF][-1]["ergebnis"] == "verfallen"
+
+
 def test_lage_und_anzeige():
     assert wh.lage_text({}) == ""
     assert "Antwort" in wh.lage_text({wh.FELD_WETTE: {"status": "angeboten"}})
@@ -503,6 +535,7 @@ def _run_alle():
     test_eigene_strafe()
     test_ablehnung_automatisch_nach_24h()
     test_wette_abruf()
+    test_verlauf_wird_geschrieben()
     test_lage_und_anzeige()
     test_prompts_und_verdrahtung()
     print("✅ Alle Wett-Annahme-Tests bestanden")

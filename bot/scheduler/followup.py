@@ -1057,8 +1057,8 @@ async def blitz_check_job(bot: Bot) -> None:
 # feuerten beide – zwei Quizze gleichzeitig in beiden Kanälen). Persistente
 # Anker (spiel_/coach_impuls_letzte_am) decken Tick-übergreifend ab, der
 # In-Prozess-Claim das Rennen innerhalb EINES Ticks (Anker fällt erst nach
-# dem Send, dazwischen liegt die LLM-Generierung).
-_IMPULS_KOLLISION = timedelta(hours=2)
+# dem Send, dazwischen liegt die LLM-Generierung). Dauer: IMPULS_KOLLISION_MINUTEN.
+_IMPULS_KOLLISION = timedelta(minutes=config.IMPULS_KOLLISION_MINUTEN)
 _impuls_claim: datetime | None = None
 _WUNSCH_WETTE_VERSUCHE = 3
 
@@ -1123,14 +1123,21 @@ async def spiel_impuls_job(bot: Bot) -> None:
     _impuls_claim = mein_claim
 
     from bot.handlers import quiz, wette  # lazy: zirkulären Import vermeiden
-    spiele = [("quiz", quiz.sende_spontane_frage)]
+    spiele = []
+    if config.SPIEL_IMPULS_QUIZ:
+        spiele.append(("quiz", quiz.sende_spontane_frage))
     lage = await wette.angebots_lage(sklave_profile)
     if lage == "ok":
         spiele.append(("wette", wette.sende_spontanes_angebot))
     else:
         # Sichtbar machen statt still schrumpfen (Owner-Frage 06.09.: "Wetten
         # kamen nie") – ohne offene reguläre Aufgabe gibt es nichts zu wetten.
-        logger.info("Spiel-Impuls: Wette nicht anbietbar (%s) – nur Quiz im Pool.", lage)
+        logger.info("Spiel-Impuls: Wette nicht anbietbar (%s).", lage)
+    if not spiele:
+        logger.info("Spiel-Impuls: nichts im Pool (Quiz aus, Wette nicht anbietbar) – ausgesetzt.")
+        if _impuls_claim is mein_claim:
+            _impuls_claim = None
+        return
     random.shuffle(spiele)
     gesendet = None
     for name, senden in spiele:

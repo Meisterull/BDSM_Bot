@@ -373,7 +373,8 @@ async def sende_spontane_frage(bot) -> bool:
 # abschneiden statt auf die Prompt-Regel hoffen (Lernmuster Detektor > Regel).
 _NACHSATZ_RE = re.compile(
     r"(abschick|weitergeb|weiterleit|so\s+(rüber|raus)|ändern|anpass|soll ich|"
-    r"willst du|möchtest du|magst du|sollen wir|passt (das|dir das|dir so)|was meinst du|"
+    r"willst du|möchtest du|magst du|sollen wir|fühlst du|findest du|klingt (das|dir)|"
+    r"zu hart|zu viel|passt (das|dir das|dir so)|was meinst du|"
     r"was sagst du|einverstanden|passt\b|anmacht|gefällt|\boder\s*\?\s*$)", re.IGNORECASE)
 _LETZTER_FRAGESATZ_RE = re.compile(r"(?:^|(?<=[.!?…])\s+)([^.!?…\n]*\?)\s*$")
 
@@ -544,10 +545,13 @@ async def _wett_idee_generieren(schwerpunkt: str = "") -> str | None:
 
     sk_hl = sklave_profil.get("hard_limits", []) or []
     do_gr = domina_profil.get("grenzen", []) or []
+    # Die letzten Wetten mit Ausgang (Owner-Wunsch 17.09.): Bedingung/Einsatz
+    # nicht wiederholen, Bezug auf den letzten Ausgang erlaubt.
+    from bot.handlers import waehrung as waehrung_h
     system, prompt = followup_prompts.wett_idee(
         sklave_vorlieben=vorlieben, sklave_hard_limits=sk_hl,
         domina_interessen=interessen, verbrauchte_zutaten=zutaten,
-        schwerpunkt=schwerpunkt,
+        schwerpunkt=schwerpunkt, letzte_wetten=waehrung_h.letzte_wetten(sklave_profil),
     )
 
     async def _generiere(p: str) -> str | None:
