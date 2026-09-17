@@ -522,10 +522,11 @@ MESSAGES = {
     "WETTE_WORT_GEWONNEN": "won",
     "WETTE_WORT_VERLOREN": "lost",
     "WETTE_VERFALLEN_ZUSATZ": " (no report from him, automatic)",
-    "WETTE_ERGEBNIS_DOM": "🎲 Bet: {sub_nom} has {ergebnis}{verfallen}. {einsatz} points booked, balance {stand}.\n\nNot right? Objection is open for {stunden} hours.",
+    "WETTE_ERGEBNIS_DOM": "🎲 Bet: {sub_nom} has {ergebnis}{verfallen}. {einsatz} points booked, balance {stand}.{abmachung}\n\nNot right? Objection is open for {stunden} hours.",
+    "WETTE_ABMACHUNG": "\n\nThe deal was: {idee}",
     "BUTTON_WETTE_EINSPRUCH": "⚖️ Objection",
     "WETTE_EINSPRUCH_VERALTET": "Objection no longer possible.",
-    "WETTE_EINSPRUCH_OK": "⚖️ Overturned: the bet counts as {ergebnis}. Balance now {stand}.",
+    "WETTE_EINSPRUCH_OK": "⚖️ Overturned: the bet counts as {ergebnis}. Balance now {stand}.{abmachung}",
     "WETTE_EINSPRUCH_SUB": "⚖️ Objection from above: the bet counts as {ergebnis}. Balance {stand}.",
     # Accept / decline a bet (handlers/waehrung, 16.09.2026 evening)
     "BUTTON_WETTE_ANNEHMEN": "✅ Accept",

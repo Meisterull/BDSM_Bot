@@ -372,6 +372,24 @@ _MAGST_RE = re.compile(
     re.IGNORECASE)
 
 
+def _begruendungs_formel_entfernen(text: str) -> str:
+    """Notbremse (Live 17.09.2026): Retry schlechter als das Original → das
+    Original ging MIT „Das passt jetzt gut, weil …" raus. Die Begründung ist
+    genau ein Satz und verzichtbar – Sätze mit der passt-Formel fallen weg,
+    solange danach noch Text bleibt."""
+    saetze = re.split(r"(?<=[.!?…])(\s+)", text or "")
+    behalten = []
+    for teil in saetze:
+        if teil.strip() and (_PASST_WEIL_RE.search(teil) or _PASST_ZU_RE.search(teil)):
+            if behalten and not behalten[-1].strip():
+                behalten.pop()  # Trennzeichen vor dem entfernten Satz mit weg
+            continue
+        behalten.append(teil)
+    rest = "".join(behalten).strip()
+    rest = re.sub(r"\n{3,}", "\n\n", rest)
+    return rest if len(rest) >= 40 else (text or "")
+
+
 def _formel_verstoesse(text: str) -> list[str]:
     funde = []
     if _PASST_WEIL_RE.search(text or ""):
@@ -792,6 +810,13 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
                 vorschlag = neu
                 if _formel_verstoesse(neu):
                     logger.info("Auch der Retry nutzt Schablonen – akzeptiere best-effort.")
+            else:
+                logger.info("Retry %s – Original bleibt.",
+                            "leer" if not neu else "hat mehr Schablonen")
+            geschnitten = _begruendungs_formel_entfernen(vorschlag)
+            if geschnitten != vorschlag:
+                logger.info("Begründungs-Formel deterministisch entfernt.")
+                vorschlag = geschnitten
 
         # Kürzen falls zu lang (Telegram Limit 4096, Prefix ~50 Zeichen)
         if len(vorschlag) > 4000:

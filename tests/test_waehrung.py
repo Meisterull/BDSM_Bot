@@ -364,6 +364,7 @@ def test_herrin_wette_kompletter_lauf():
     assert q.markup_entfernt and w.punkte == 250
     assert any("Gewonnen" in s for s, _ in w.sub_sends)
     assert w.dom_sends and "gewonnen" in w.dom_sends[-1][0] and w.dom_sends[-1][1] is not None
+    assert "Ausgemacht war: Wer in den nächsten zwei Tagen" in w.dom_sends[-1][0], "vereinbarter Einsatz fehlt"
     assert w.profile["sklave"][wh.FELD_WETTE]["status"] == "entschieden"
     # Doppel-Tap → veraltet
     q = _press(wh.callback_wetteurteil, "wetteurteil:verloren:abc12345", SUB)
@@ -371,7 +372,7 @@ def test_herrin_wette_kompletter_lauf():
     # Einspruch kippt: +50 → −50 (Umbuchung 100)
     q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:abc12345", DOM)
     assert w.punkte == 150 and w.profile["sklave"][wh.FELD_WETTE]["status"] == "gekippt"
-    assert any("verloren" in r[0] for r in q.message.replies)
+    assert any("verloren" in r[0] and "Ausgemacht war" in r[0] for r in q.message.replies)
     assert any("Einspruch" in s and "verloren" in s for s, _ in w.sub_sends)
     q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:abc12345", DOM)
     assert w.punkte == 150 and any("nicht mehr möglich" in r[0] for r in q.message.replies)
@@ -387,6 +388,10 @@ def test_herrin_wette_verfaellt_und_einspruch_frist():
     assert w.punkte == 150 and w.profile["sklave"][wh.FELD_WETTE]["ergebnis"] == "verloren"
     assert any("Keine Meldung" in s for s, _ in w.sub_sends)
     assert "automatisch" in w.dom_sends[-1][0]
+    # alte Idee mit angehängter Rückfrage: die Rückfrage fällt in der Meldung weg
+    assert wh._abmachung({"idee": "Verliert er, kocht er. Willst du die Bedingung noch fieser machen?"}) \
+        == "\n\nAusgemacht war: Verliert er, kocht er."
+    assert wh._abmachung({}) == ""
     # Einspruch nach 24 h nicht mehr
     w.profile["sklave"][wh.FELD_WETTE]["einspruch_bis"] = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:k2", DOM)

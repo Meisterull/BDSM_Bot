@@ -436,6 +436,20 @@ def _sub_gross() -> str:
     return nom[:1].upper() + nom[1:]
 
 
+def _abmachung(w: dict) -> str:
+    """Die vereinbarte Wette für Ergebnis-Meldungen an die Dom-Seite – sie soll
+    wissen, was sie jetzt eintreibt bzw. einlöst (Owner-Wunsch 17.09.2026: die
+    Meldung nannte nur die Punkte). Die Idee ist schon an sie formuliert;
+    Rückfragen/Vorworte aus älteren Ideen fallen weg."""
+    idee = (w.get("idee") or "").strip()
+    if not idee:
+        return ""
+    from bot.handlers import coach_quiz  # lazy: coach_quiz importiert dieses Modul
+    idee = coach_quiz._meta_schluss_entfernen(
+        coach_quiz._nachsatz_entfernen(coach_quiz._vorwort_entfernen(idee)))
+    return t("WETTE_ABMACHUNG", idee=idee) if idee else ""
+
+
 def _annahme_buttons(kennung: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton(t("BUTTON_WETTE_ANNEHMEN"), callback_data=f"wetteantwort:annehmen:{kennung}"),
@@ -899,7 +913,8 @@ async def _wette_abschliessen(bot, ergebnis: str, auto: bool = False) -> None:
         await telegram_helper.send_domina(
             bot, t("WETTE_ERGEBNIS_DOM", ergebnis=t("WETTE_WORT_" + ergebnis.upper()),
                    einsatz=einsatz, stand=buchung["neu"], stunden=waehrung.EINSPRUCH_STUNDEN,
-                   sub_nom=rollen.sub()["label_nom"], verfallen=t("WETTE_VERFALLEN_ZUSATZ") if auto else ""),
+                   sub_nom=rollen.sub()["label_nom"], verfallen=t("WETTE_VERFALLEN_ZUSATZ") if auto else "",
+                   abmachung=_abmachung(w)),
             reply_markup=markup)
     except Exception:
         logger.exception("Wett-Ergebnis an die Dom-Seite fehlgeschlagen")
@@ -932,7 +947,8 @@ async def callback_wetteeinspruch(update: Update, context: ContextTypes.DEFAULT_
     w.update({"status": "gekippt", "ergebnis": neu_ergebnis, "gekippt_am": _jetzt().isoformat()})
     await qdrant.patch_profile_fields("sklave", {FELD_WETTE: w})
     await query.message.reply_text(
-        t("WETTE_EINSPRUCH_OK", ergebnis=t("WETTE_WORT_" + neu_ergebnis.upper()), stand=buchung["neu"]))
+        t("WETTE_EINSPRUCH_OK", ergebnis=t("WETTE_WORT_" + neu_ergebnis.upper()), stand=buchung["neu"],
+          abmachung=_abmachung(w)))
     try:
         await telegram_helper.send_sklave(
             context.bot, t("WETTE_EINSPRUCH_SUB", ergebnis=t("WETTE_WORT_" + neu_ergebnis.upper()),

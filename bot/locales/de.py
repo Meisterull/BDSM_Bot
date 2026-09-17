@@ -522,10 +522,11 @@ MESSAGES = {
     "WETTE_WORT_GEWONNEN": "gewonnen",
     "WETTE_WORT_VERLOREN": "verloren",
     "WETTE_VERFALLEN_ZUSATZ": " (keine Meldung von ihm, automatisch)",
-    "WETTE_ERGEBNIS_DOM": "🎲 Wette: {sub_nom} hat {ergebnis}{verfallen}. {einsatz} Punkte gebucht, Stand {stand}.\n\nStimmt nicht? Einspruch gilt {stunden} Stunden.",
+    "WETTE_ERGEBNIS_DOM": "🎲 Wette: {sub_nom} hat {ergebnis}{verfallen}. {einsatz} Punkte gebucht, Stand {stand}.{abmachung}\n\nStimmt nicht? Einspruch gilt {stunden} Stunden.",
+    "WETTE_ABMACHUNG": "\n\nAusgemacht war: {idee}",
     "BUTTON_WETTE_EINSPRUCH": "⚖️ Einspruch",
     "WETTE_EINSPRUCH_VERALTET": "Einspruch nicht mehr möglich.",
-    "WETTE_EINSPRUCH_OK": "⚖️ Gekippt: die Wette gilt als {ergebnis}. Stand jetzt {stand}.",
+    "WETTE_EINSPRUCH_OK": "⚖️ Gekippt: die Wette gilt als {ergebnis}. Stand jetzt {stand}.{abmachung}",
     "WETTE_EINSPRUCH_SUB": "⚖️ Einspruch von oben: die Wette gilt als {ergebnis}. Stand {stand}.",
     # Wette annehmen / ablehnen (handlers/waehrung, 16.09.2026 abends)
     "BUTTON_WETTE_ANNEHMEN": "✅ Annehmen",

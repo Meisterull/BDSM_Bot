@@ -483,6 +483,30 @@ def test_formel_verstoesse():
     assert not _f._formel_verstoesse("Das passt gut. Er zögert, weil er müde ist.")
 
 
+def test_begruendungs_formel_notbremse():
+    """17.09.2026: Retry schlechter als das Original → Original mit
+    „Das passt jetzt gut, weil …" ging raus. Der Satz fällt jetzt deterministisch weg."""
+    from bot.scheduler import followup as _f
+    text = ("Du, heute mal ganz simpel.\n\n"
+            "Lass ihn zehn Minuten die Schürze tragen, während er dir Tee bringt. Kein Jammern.\n\n"
+            "Das passt jetzt gut, weil er zuletzt so brav „ja“ gesagt hat – Zeit, dass er es spürt.\n\n"
+            "Gib ihm danach einen kleinen Klaps.")
+    neu = _f._begruendungs_formel_entfernen(text)
+    assert "passt" not in neu and not _f._formel_verstoesse(neu)
+    assert neu == ("Du, heute mal ganz simpel.\n\n"
+                   "Lass ihn zehn Minuten die Schürze tragen, während er dir Tee bringt. Kein Jammern.\n\n"
+                   "Gib ihm danach einen kleinen Klaps.")
+    # Satz mitten im Absatz
+    assert _f._begruendungs_formel_entfernen(
+        "Lass ihn heute knien, bis der Tee fertig ist. Passt perfekt zu ihm. Danach darf er aufstehen."
+    ) == "Lass ihn heute knien, bis der Tee fertig ist. Danach darf er aufstehen."
+    # Bliebe zu wenig übrig → Text unverändert; ohne Formel → unverändert
+    kurz = "Das passt, weil er müde ist."
+    assert _f._begruendungs_formel_entfernen(kurz) == kurz
+    sauber = "Das passt gut. Er zögert, weil er müde ist."
+    assert _f._begruendungs_formel_entfernen(sauber) == sauber
+
+
 def test_vorschlag_abschluss():
     from bot.scheduler import followup as _f
     assert _f._vorschlag_abschluss(
@@ -700,6 +724,7 @@ def main():
         asyncio.run(coro())
         print(f"✅ {coro.__name__}")
     test_formel_verstoesse()
+    test_begruendungs_formel_notbremse()
     print("✅ test_formel_verstoesse")
     test_vorschlag_abschluss()
     print("✅ test_vorschlag_abschluss")

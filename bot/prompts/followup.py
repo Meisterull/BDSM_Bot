@@ -698,7 +698,7 @@ def _aufgaben_kontext(
         else:
             pflicht_zeile = "Der Vorschlag MUSS aus mindestens einer dieser Kategorien stammen.\n"
         kategorie_str = (
-            f"\nKATEGORIEN FÜR HEUTE (wähle eine oder kombiniere zwei davon):\n"
+            f"\nKATEGORIEN FÜR HEUTE (wähle eine oder kombiniere zwei davon – zwei nur, wenn sie stimmig in EINE machbare Szene passen):\n"
             f"{kat_liste}\n"
             f"{pflicht_zeile}"
             f"{cross_hinweis}"
