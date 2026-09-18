@@ -338,7 +338,15 @@ def _vorschlag_abschluss(inhalt: str) -> str:
 # rutschte am 5. Folgetag wieder durch). Bekanntes Lernmuster: Prompt-Regeln
 # brauchen einen Detektor + Retry (wie _ist_echo/_ist_spiegel_anfang im Chat).
 _PASST_WEIL_RE = re.compile(r"\bpasst\b[^.!?\n]{0,60}\bweil\b", re.IGNORECASE)
-_WIE_WAERS_RE = re.compile(r"^\W{0,8}wie\s+w[äa]r['’`]?s\b", re.IGNORECASE)
+# Ausweich-Variante (Live 18.09.2026): nach dem „passt …, weil"-Retry schrieb das
+# Modell „Das kommt jetzt genau richtig, weil …" – derselbe Satzbau, anderes Verb.
+_JETZT_RICHTIG_WEIL_RE = re.compile(
+    r"\b(?:kommt|sitzt|ist)\b[^.!?\n]{0,40}\b(?:genau\s+richtig|gerade\s+richtig|goldrichtig|"
+    r"wie\s+gerufen|(?:jetzt|heute)\s+(?:genau\s+)?(?:richtig|dran|passend))\b[^.!?\n]{0,40}\bweil\b",
+    re.IGNORECASE)
+# „Hey, wie wär's …" steht wörtlich im Verbot, rutschte aber durch: „Hey" sind
+# Wortzeichen, das alte \W-Fenster sah nur Satzzeichen (Live 18.09., Rollenspiel-Idee).
+_WIE_WAERS_RE = re.compile(r"^\W{0,8}(?:hey\W{1,3})?wie\s+w[äa]r['’`]?s\b", re.IGNORECASE)
 # Ohne ?-Fenster (Nachtest 15.08.: lange Varianten wie „…, bevor du
 # entscheidest, ob's reicht …?" lagen außerhalb des 80-Zeichen-Fensters).
 # Die Frage an die Domina ist praktisch immer der Schluss-Satz – ein seltener
@@ -380,7 +388,8 @@ def _begruendungs_formel_entfernen(text: str) -> str:
     saetze = re.split(r"(?<=[.!?…])(\s+)", text or "")
     behalten = []
     for teil in saetze:
-        if teil.strip() and (_PASST_WEIL_RE.search(teil) or _PASST_ZU_RE.search(teil)):
+        if teil.strip() and (_PASST_WEIL_RE.search(teil) or _PASST_ZU_RE.search(teil)
+                             or _JETZT_RICHTIG_WEIL_RE.search(teil)):
             if behalten and not behalten[-1].strip():
                 behalten.pop()  # Trennzeichen vor dem entfernten Satz mit weg
             continue
@@ -390,10 +399,34 @@ def _begruendungs_formel_entfernen(text: str) -> str:
     return rest if len(rest) >= 40 else (text or "")
 
 
+# ---------- Meta-Rückfragen über den Vorschlag selbst ----------
+# Live 17./18.09.2026: „Wie fühlst du dich bei der Vorstellung, ihm das so zu
+# schreiben?", „Klingt genau nach …, oder?" – Marotte des Modells, keine echte
+# Gesprächsfrage. Echte Anschlussfragen („Wie hat er zuletzt reagiert?") bleiben.
+_META_RUECKFRAGE_RE = re.compile(
+    r"(fühlst du dich|wie klingt|klingt (?:das|dir|genau|nach)|machbar|bei der vorstellung|"
+    r"was (?:meinst|sagst|hältst) du|passt (?:das|dir)|zu hart|zu viel|,\s*oder\s*\?\s*$)",
+    re.IGNORECASE)
+
+
+def _meta_rueckfrage_entfernen(text: str) -> str:
+    """Schneidet im LETZTEN Absatz Fragesätze ab, die den Vorschlag selbst zum
+    Thema machen. Bleibt danach zu wenig übrig, bleibt der Text unverändert."""
+    t = (text or "").strip()
+    kopf, trenner, letzter = t.rpartition("\n\n")
+    saetze = re.split(r"(?<=[.!?…])\s+", letzter)
+    behalten = [s for s in saetze
+                if not (s.rstrip().endswith("?") and _META_RUECKFRAGE_RE.search(s))]
+    if len(behalten) == len(saetze):
+        return t
+    rest = (kopf + trenner + " ".join(behalten)).strip() if behalten else kopf.strip()
+    return rest if len(rest) >= 40 else t
+
+
 def _formel_verstoesse(text: str) -> list[str]:
     funde = []
-    if _PASST_WEIL_RE.search(text or ""):
-        funde.append('Begründungs-Formel „passt …, weil"')
+    if _PASST_WEIL_RE.search(text or "") or _JETZT_RICHTIG_WEIL_RE.search(text or ""):
+        funde.append('Begründungs-Formel „passt/kommt genau richtig …, weil"')
     elif _PASST_ZU_RE.search(text or ""):
         funde.append('Begründungs-Formel „passt (perfekt) zu dir/ihm …"')
     if _WIE_WAERS_RE.search(text or ""):
@@ -703,6 +736,58 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     )
 
 
+async def _machbarkeits_maengel(vorschlag: str) -> list[str]:
+    """Zweiter Durchlauf (18.09.2026): das Reasoning-Modell prüft den fertigen
+    Vorschlag NUR auf körperliche Machbarkeit und richtige Geräte-Benutzung
+    (Inventar mit Benutzungsangaben). Die Regel im Generier-Prompt allein verlor
+    (Live 17.+18.09.: Knebel und Lecken zugleich, falsche Lage im Stuhl).
+    Leer = stimmig ODER Prüfung nicht möglich (fail-open, der Vorschlag geht raus)."""
+    from bot.services import inventar
+    try:
+        roh = await grok.simple(fp.machbarkeits_pruefung(vorschlag, inventar.vorhanden()),
+                                reasoning=True, temperature=0, max_tokens=500)
+        daten = grok.parse_json(roh)
+        if not isinstance(daten, dict) or daten.get("ok", True):
+            return []
+        return [str(m).strip()[:240] for m in (daten.get("maengel") or []) if str(m).strip()][:3]
+    except Exception:
+        logger.exception("Machbarkeits-Prüfung fehlgeschlagen – Vorschlag gilt als stimmig")
+        return []
+
+
+async def _machbarkeit_sichern(vorschlag: str, prompt: str, system: str,
+                               sk_hl: list, do_gr: list) -> str:
+    """Prüfung + genau EIN neuer Entwurf mit der Mängelliste. Der neue Entwurf
+    gewinnt, wenn er nicht mehr Mängel hat als der alte (er kennt sie ja);
+    sonst bleibt das Original."""
+    maengel = await _machbarkeits_maengel(vorschlag)
+    if not maengel:
+        return vorschlag
+    logger.info("Vorschlag körperlich nicht stimmig (%s) – generiere einmal neu.", "; ".join(maengel))
+    retry_prompt = (
+        prompt + "\n\nACHTUNG: Dein letzter Entwurf war körperlich nicht stimmig:\n"
+        + "\n".join(f"- {m}" for m in maengel)
+        + "\n\nDer Entwurf:\n\"\"\"\n" + vorschlag[:1500] + "\n\"\"\"\n"
+        "Schreib den Vorschlag neu – die Idee darf bleiben, aber jeder Schritt muss machbar "
+        "sein und jedes Gerät so benutzt werden, wie es im Inventar steht. Lieber eine "
+        "Handlung weniger als eine verkeilte Szene."
+    )
+    neu = await limits_check.generate_mit_limit_retry(
+        retry_prompt, sk_hl, do_gr, system=system, reasoning=True)
+    if not neu:
+        logger.info("Machbarkeits-Retry leer – Original bleibt.")
+        return vorschlag
+    if _formel_verstoesse(neu):
+        neu = _begruendungs_formel_entfernen(neu)
+    rest = await _machbarkeits_maengel(neu)
+    if len(rest) <= len(maengel):
+        if rest:
+            logger.info("Auch der Retry hat Mängel (%s) – akzeptiere best-effort.", "; ".join(rest))
+        return neu
+    logger.info("Machbarkeits-Retry hat mehr Mängel – Original bleibt.")
+    return vorschlag
+
+
 async def _send_tiny_task_vorschlag(bot: Bot) -> None:
     try:
         if _flow_aktiv(paare.dom_chat_id(), "Tiny-Task-Vorschlag"):
@@ -798,7 +883,7 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
                 prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN "
                 "Schablonen benutzt: " + "; ".join(funde) + ". Formuliere den Vorschlag "
                 "neu – der Inhalt darf bleiben, aber ohne diese Muster: Begründung ohne "
-                "'passt…weil'/'passt (perfekt) zu …'-Bau und ohne Profil-Abgleich "
+                "'passt…weil'/'kommt genau richtig, weil'/'passt (perfekt) zu …'-Bau und ohne Profil-Abgleich "
                 "('holt/trifft genau seine …', '…, den du magst'), "
                 "kein Kommentar, wovon du dich absetzt ('ohne dass es wieder …'), "
                 "Schluss ohne 'Wie lange…?'-Frage."
@@ -817,6 +902,13 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
             if geschnitten != vorschlag:
                 logger.info("Begründungs-Formel deterministisch entfernt.")
                 vorschlag = geschnitten
+
+        # Körperliche Machbarkeit als zweiter Durchlauf, danach Meta-Rückfragen kappen.
+        vorschlag = await _machbarkeit_sichern(vorschlag, prompt, system, sk_hl, do_gr)
+        gekappt = _meta_rueckfrage_entfernen(vorschlag)
+        if gekappt != vorschlag:
+            logger.info("Meta-Rückfrage am Schluss entfernt.")
+            vorschlag = gekappt
 
         # Kürzen falls zu lang (Telegram Limit 4096, Prefix ~50 Zeichen)
         if len(vorschlag) > 4000:
@@ -1607,7 +1699,9 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
     system = (
         f"Schlag der Domina ein Rollenspiel-Szenario für heute Abend vor – wie eine vertraute Freundin, die eine Idee hat.\n\n"
         f"{coach_persona.fuer_coach_prompt()}\n\n"
-        f"Drei bis vier Sätze, locker. Erwähne dass sie es mit /rollenspiel starten kann."
+        f"{fp._formel_verbot()}\n\n"
+        f"Drei bis vier Sätze, locker. Erwähne dass sie es mit /rollenspiel starten kann. "
+        f"Keine Rückfrage, ob ihr die Idee gefällt."
     )
     prompt = (
         f"Szenario: '{szenario['name']}' – {szenario['beschreibung']}\n"
@@ -1616,6 +1710,19 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
 
     try:
         vorschlag = await grok.simple(prompt, system=system)
+        # Gleiche Detektor-Mechanik wie beim Aufgaben-Vorschlag (Live 18.09.: die Idee
+        # begann mit dem verbotenen Einstieg und endete mit einer Profil-Rückfrage).
+        funde = _formel_verstoesse(vorschlag or "")
+        if funde:
+            logger.info("Rollenspiel-Idee nutzt verbotene Schablonen (%s) – generiere einmal neu.",
+                        "; ".join(funde))
+            neu = await grok.simple(
+                prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN Schablonen "
+                "benutzt: " + "; ".join(funde) + ". Formuliere die Idee neu – anderer Einstieg, "
+                "kein Profil-Abgleich, keine Rückfrage.", system=system)
+            if neu and len(_formel_verstoesse(neu)) <= len(funde):
+                vorschlag = neu
+        vorschlag = _meta_rueckfrage_entfernen(_begruendungs_formel_entfernen(vorschlag or ""))
         if _nach_llm_verworfen(domina_chat, "Rollenspiel-Vorschlag"):
             return
         await telegram_helper.send_domina(bot, t("ROLLENSPIEL_IDEE", vorschlag=vorschlag), parse_mode="Markdown")

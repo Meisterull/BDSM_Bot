@@ -507,6 +507,102 @@ def test_begruendungs_formel_notbremse():
     assert _f._begruendungs_formel_entfernen(sauber) == sauber
 
 
+def test_ausweich_formel_und_hey_einstieg():
+    """18.09.2026: nach dem „passt …, weil"-Retry wich das Modell auf „Das kommt
+    jetzt genau richtig, weil …" aus; „Hey, wie wär's" rutschte am \\W-Fenster vorbei."""
+    from bot.scheduler import followup as _f
+    assert _f._formel_verstoesse("Das kommt jetzt genau richtig, weil er zuletzt so schnell reagiert hat.")
+    assert _f._formel_verstoesse("Das ist heute dran, weil er gestern gemault hat.")
+    assert _f._formel_verstoesse("Hey, wie wär’s, wenn du heute eine Inspektion machst?")
+    assert not _f._formel_verstoesse("Er kommt zu spät, weil er müde ist. Lass ihn dafür den Tisch decken.")
+    assert not _f._formel_verstoesse("Das ist richtig fies. Er zögert, weil er müde ist.")
+    text = ("Lass ihn heute den Tee servieren, ohne ein Wort zu sagen. "
+            "Das kommt jetzt genau richtig, weil er zuletzt so vorlaut war. Danach räumt er ab.")
+    assert _f._begruendungs_formel_entfernen(text) == (
+        "Lass ihn heute den Tee servieren, ohne ein Wort zu sagen. Danach räumt er ab.")
+
+
+def test_meta_rueckfrage_entfernen():
+    from bot.scheduler import followup as _f
+    basis = "Lass ihn heute den Tee servieren, ohne ein Wort zu sagen. Danach räumt er ab."
+    assert _f._meta_rueckfrage_entfernen(
+        basis + "\n\nWie fühlst du dich bei der Vorstellung, ihm das so direkt zu schreiben?") == basis
+    assert _f._meta_rueckfrage_entfernen(basis + " Klingt das machbar?") == basis
+    # Rückfrage mitten im letzten Absatz fällt, der Hinweis danach bleibt
+    assert _f._meta_rueckfrage_entfernen(
+        basis + "\n\nKlingt genau nach deinem Ton, oder? Starten kannst du es mit /rollenspiel."
+    ) == basis + "\n\nStarten kannst du es mit /rollenspiel."
+    # Echte Anschlussfrage bleibt
+    echt = basis + " Wie hat er beim letzten Mal eigentlich reagiert?"
+    assert _f._meta_rueckfrage_entfernen(echt) == echt
+    # Bliebe zu wenig übrig → unverändert
+    assert _f._meta_rueckfrage_entfernen("Klingt das machbar?") == "Klingt das machbar?"
+    from bot.prompts import followup as _fp
+    assert "kommt/ist jetzt genau richtig" in _fp._formel_verbot()
+    assert "Rückfrage über den Vorschlag selbst" in _fp._formel_verbot()
+
+
+def test_machbarkeits_pruefung():
+    """18.09.2026: zweiter Durchlauf – Mängel → genau ein neuer Entwurf mit
+    Mängelliste; Prüfung fail-open; der bessere Entwurf gewinnt."""
+    from bot.scheduler import followup as _f
+    from bot.prompts import followup as _fp
+    from bot.services import inventar as _inv
+    system, user = _fp.machbarkeits_pruefung("Er deckt den Tisch.", ["Schürze (trägt er beim Servieren)"])
+    assert "NUR" in system and "JSON" in system and "Anatomie" in system
+    assert "Schürze (trägt er beim Servieren)" in user and "Er deckt den Tisch." in user
+    assert "kein Inventar" in _fp.machbarkeits_pruefung("x", [])[1]
+
+    alt = (_f.grok.simple, _f.limits_check.generate_mit_limit_retry, _inv.vorhanden)
+    antworten: list = []
+    retry_prompts: list = []
+
+    async def _simple(prompt, **kw):
+        assert kw.get("reasoning") is True and kw.get("temperature") == 0
+        a = antworten.pop(0)
+        if isinstance(a, Exception):
+            raise a
+        return a
+
+    async def _retry(prompt, *a, **kw):
+        retry_prompts.append(prompt)
+        return neu_entwurf[0]
+    neu_entwurf = ["Er deckt den Tisch und serviert danach den Tee."]
+    try:
+        _f.grok.simple, _f.limits_check.generate_mit_limit_retry = _simple, _retry
+        _inv.vorhanden = lambda: ["Schürze"]
+        run = lambda c: asyncio.new_event_loop().run_until_complete(c)
+        antworten[:] = ['{"ok": true}']
+        assert run(_f._machbarkeits_maengel("x")) == []
+        antworten[:] = ['{"ok": false, "maengel": ["A kollidiert mit B", "C", "D", "E"]}']
+        assert run(_f._machbarkeits_maengel("x")) == ["A kollidiert mit B", "C", "D"]
+        antworten[:] = ["kein json"]
+        assert run(_f._machbarkeits_maengel("x")) == []
+        antworten[:] = [RuntimeError("LLM down")]
+        assert run(_f._machbarkeits_maengel("x")) == []
+        # stimmig → kein Retry
+        antworten[:] = ['{"ok": true}']
+        assert run(_f._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt" and retry_prompts == []
+        # Mängel → Retry mit Mängelliste + Entwurf, neuer Entwurf stimmig → gewinnt
+        antworten[:] = ['{"ok": false, "maengel": ["Mund doppelt belegt"]}', '{"ok": true}']
+        assert run(_f._machbarkeit_sichern("alt", "P", "S", [], [])) == neu_entwurf[0]
+        assert "Mund doppelt belegt" in retry_prompts[-1] and "alt" in retry_prompts[-1]
+        # Retry mit MEHR Mängeln → Original bleibt
+        antworten[:] = ['{"ok": false, "maengel": ["eins"]}', '{"ok": false, "maengel": ["a", "b"]}']
+        assert run(_f._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt"
+        # Retry leer → Original bleibt
+        neu_entwurf[0] = None
+        antworten[:] = ['{"ok": false, "maengel": ["eins"]}']
+        assert run(_f._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt"
+    finally:
+        _f.grok.simple, _f.limits_check.generate_mit_limit_retry, _inv.vorhanden = alt
+
+
+def test_rollenspiel_zeit_versetzt():
+    from bot import config as _c
+    assert _c.ROLLENSPIEL_VORSCHLAG_TIME != _c.TINY_TASK_TIME, "zwei lange Nachrichten zur selben Minute"
+
+
 def test_vorschlag_abschluss():
     from bot.scheduler import followup as _f
     assert _f._vorschlag_abschluss(
@@ -725,6 +821,10 @@ def main():
         print(f"✅ {coro.__name__}")
     test_formel_verstoesse()
     test_begruendungs_formel_notbremse()
+    test_ausweich_formel_und_hey_einstieg()
+    test_meta_rueckfrage_entfernen()
+    test_machbarkeits_pruefung()
+    test_rollenspiel_zeit_versetzt()
     print("✅ test_formel_verstoesse")
     test_vorschlag_abschluss()
     print("✅ test_vorschlag_abschluss")

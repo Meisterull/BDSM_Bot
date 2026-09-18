@@ -121,7 +121,9 @@ def hm(zeit: str) -> tuple:
 TINY_TASK_TIME = os.getenv("TINY_TASK_TIME", "18:00")
 STIMMUNG_TIME = os.getenv("STIMMUNG_TIME", "19:00")
 ZIEL_ERINNERUNG_TIME = os.getenv("ZIEL_ERINNERUNG_TIME", "20:00")            # montags
-ROLLENSPIEL_VORSCHLAG_TIME = os.getenv("ROLLENSPIEL_VORSCHLAG_TIME", "18:00")  # Fr+Sa
+# 19:00 statt 18:00 (18.09.2026): freitags/samstags kamen Rollenspiel-Idee und
+# Aufgaben-Vorschlag sonst innerhalb einer Minute – zwei lange Nachrichten auf einmal.
+ROLLENSPIEL_VORSCHLAG_TIME = os.getenv("ROLLENSPIEL_VORSCHLAG_TIME", "19:00")  # Fr+Sa
 WOCHENPLANUNG_TIME = os.getenv("WOCHENPLANUNG_TIME", "19:00")                # sonntags
 TINY_TASK_FEEDBACK_TIME = os.getenv("TINY_TASK_FEEDBACK_TIME", "21:30")
 TRAINING_ERINNERUNG_TIME = os.getenv("TRAINING_ERINNERUNG_TIME", "20:00")

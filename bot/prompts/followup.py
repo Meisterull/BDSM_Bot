@@ -920,10 +920,45 @@ def _formel_verbot() -> str:
     return f"""FORMULIERUNGS-VIELFALT (strikt): Baue die Nachricht anders auf als zuletzt – variiere Einstieg, Aufbau und Schluss.
 Diese abgenutzten Schablonen-Sätze sind VERBOTEN (auch leicht abgewandelt):
 - Einstieg: "Hey, wie wär's mit …" / "Wie wär's heute mal mit …" / "Wie wär's, wenn du …"
-- Begründung: "Das passt (genau) zu {s['dat']}, weil …" / "Passt (perfekt) zu dir/{s['dat']} …" (auch ohne "weil") / "Das holt/zieht/trifft genau {s['poss']}e … (Rolle/Seite/Lust) raus" / "Genau {s['poss']} Ding" / "…, den/die du magst" – jede Treffer-Meldung, die den Task mit {s['poss']}em Profil oder dem Profil {d['real_gen']} abgleicht
+- Begründung: "Das passt (genau) zu {s['dat']}, weil …" / "Das kommt/ist jetzt genau richtig, weil …" / "Passt (perfekt) zu dir/{s['dat']} …" (auch ohne "weil") / "Das holt/zieht/trifft genau {s['poss']}e … (Rolle/Seite/Lust) raus" / "Genau {s['poss']} Ding" / "…, den/die du magst" – jede Treffer-Meldung, die den Task mit {s['poss']}em Profil oder dem Profil {d['real_gen']} abgleicht
 - Meta-Kommentar: "ohne dass es wieder … wird/abdriftet" / "ohne dass {s['nom']} sich hinter … verstecken kann" – erwähne NIE, wovon du dich absetzt
-- Abschluss: "Klingt das machbar?" / "Wie lange willst du das laufen/ihn so stehen lassen?" (jede "Wie lange willst du …?"-Variante)
+- Abschluss: "Klingt das machbar?" / "Wie fühlst du dich bei der Vorstellung …?" / "…, oder?" – keine Rückfrage über den Vorschlag selbst / "Wie lange willst du das laufen/ihn so stehen lassen?" (jede "Wie lange willst du …?"-Variante)
 Der Inhalt (Aufgabe + kurze Begründung) bleibt – nur die Formulierung muss frisch sein."""
+
+
+def machbarkeits_pruefung(vorschlag: str, inventar: list = None) -> tuple[str, str]:
+    """Zweiter Durchlauf nach der Generierung (scheduler._machbarkeits_maengel):
+    reine Mechanik-Prüfung eines Aufgaben-Vorschlags, kein Geschmacks- oder
+    Moralurteil. Antwort als JSON, damit der Scheduler die Mängel in den
+    Retry-Prompt legen kann."""
+    def _koerper(geschlecht: str) -> str:
+        return "Frau (kein Penis, kein Sperma)" if geschlecht == "frau" else "Mann (Penis, Sperma)"
+    system = (
+        "Du prüfst einen Aufgaben-Vorschlag für ein Paar NUR darauf, ob er körperlich machbar ist "
+        "und die Geräte richtig benutzt werden. Kein Urteil über Geschmack, Härte, Ton oder Moral – "
+        "nur Mechanik.\n\n"
+        "Prüfpunkte:\n"
+        "1. Belegung: Jede Körperstelle und jeder Gegenstand ist zur selben Zeit nur für EINE Sache "
+        "belegt (ein Knebel im Mund heißt: kein Lecken, kein Sprechen; ein Gegenstand ist nie an zwei "
+        "Stellen zugleich).\n"
+        "2. Haltung: Position und Lage passen zu dem, was gleichzeitig passieren soll – und zur "
+        "Benutzungsangabe im Inventar (steht dort, wer wo liegt oder sitzt, gilt genau das).\n"
+        "3. Reihenfolge: Kein Schritt hebt den vorherigen auf oder setzt etwas voraus, das noch nicht "
+        "passiert ist; keine Wiederholung eines Schritts, nur um ein Element unterzubringen.\n"
+        "4. Allein/zu zweit: Was eine Person allein tun soll, geht allein.\n"
+        f"5. Anatomie: dominante Seite = {_koerper(rollen.dom_geschlecht())}, devote Seite = "
+        f"{_koerper(rollen.sub_geschlecht())}. Spielzeug/Strapon ejakuliert nie.\n\n"
+        "Melde nur klare Widersprüche – keine Spitzfindigkeiten und nichts, was sich mit gesundem "
+        "Menschenverstand von selbst regelt.\n"
+        'Antworte NUR als JSON: {"ok": true} oder {"ok": false, "maengel": ["…"]} – höchstens drei '
+        "Mängel, je ein kurzer, konkreter Satz (was kollidiert womit). Kein Text außerhalb des JSON."
+    )
+    if inventar:
+        inventar_str = "\n".join(f"- {g}" for g in inventar)
+    else:
+        inventar_str = "(kein Inventar hinterlegt)"
+    user = f"{nutzer_text('Vorschlag', vorschlag)}\n\nInventar (mit Benutzungsangaben):\n{inventar_str}"
+    return system, user
 
 
 def tiny_task_vorschlag(**kwargs) -> tuple[str, str]:
