@@ -628,8 +628,34 @@ def _strafe_wahl_text(w: dict) -> str:
     return f"{kopf}\n\n{t('WETTE_STRAFE_WAHL')}\n\n{liste}"
 
 
+async def _nur_machbare(optionen: list[str]) -> tuple[list[str], list[str]]:
+    """Machbarkeits-Prüfung je Strafe (parallel, services/machbarkeit).
+    Rückgabe: (stimmige Strafen, Mängel der aussortierten – für den Retry-Prompt)."""
+    from bot.services import machbarkeit
+    ergebnisse = await asyncio.gather(*(machbarkeit.maengel(o, art="strafe") for o in optionen))
+    gut = [o for o, m in zip(optionen, ergebnisse) if not m]
+    maengel = [f"„{o[:80]}“: {m[0]}" for o, m in zip(optionen, ergebnisse) if m]
+    return gut, maengel
+
+
 async def _ablehnungs_strafen_generieren(idee: str) -> list[str]:
-    """Drei kurze Strafen (Reasoning, Limits-Retry). Leer = nichts Brauchbares."""
+    """Drei kurze Strafen (Reasoning, Limits-Retry), jede einzeln auf körperliche
+    Machbarkeit geprüft (18.09.2026). Bleiben weniger als zwei stimmige, gibt es
+    EINEN neuen Satz mit der Mängelliste; gezeigt werden nur stimmige (höchstens
+    drei). Leer = nichts Brauchbares – die Dom-Seite kann würfeln oder selbst schreiben."""
+    roh = await _ablehnungs_strafen_roh(idee)
+    if not roh:
+        return []
+    gut, maengel = await _nur_machbare(roh)
+    if len(gut) >= 2 or not maengel:
+        return gut[:3]
+    logger.info("Strafvorschläge körperlich nicht stimmig (%s) – generiere einmal neu.", "; ".join(maengel))
+    neu, _ = await _nur_machbare(await _ablehnungs_strafen_roh(idee, maengel))
+    return (gut + [o for o in neu if o not in gut])[:3]
+
+
+async def _ablehnungs_strafen_roh(idee: str, maengel: list[str] | None = None) -> list[str]:
+    """Rohe Strafen-Liste aus dem LLM; `maengel` = Hinweise aus der Prüfung des ersten Satzes."""
     from bot.prompts import bestrafung
     sp = await qdrant.get_user_profile("sklave") or {}
     dp = await qdrant.get_user_profile("domina") or {}
@@ -640,11 +666,14 @@ async def _ablehnungs_strafen_generieren(idee: str) -> list[str]:
         logger.exception("Strafen-Historie nicht lesbar – ohne")
         letzte = []
     hl, gr = sp.get("hard_limits", []) or [], dp.get("grenzen", []) or []
+    system, user = bestrafung.ablehnungs_strafen(
+        idee, hl, sp.get("vorlieben", []) or [], sp.get("kategorie_reaktionen", {}) or {},
+        letzte, sp.get("dossier", "") or "")
+    if maengel:
+        user += ("\n\nACHTUNG: Diese Strafen aus deinem letzten Entwurf waren körperlich nicht "
+                 "stimmig – schlag andere, einfachere vor:\n" + "\n".join(f"- {m}" for m in maengel))
     roh = await limits_check.generate_mit_limit_retry(
-        bestrafung.ablehnungs_strafen(
-            idee, hl, sp.get("vorlieben", []) or [], sp.get("kategorie_reaktionen", {}) or {},
-            letzte, sp.get("dossier", "") or ""),
-        sklave_hard_limits=hl, domina_grenzen=gr, reasoning=True, max_tokens=600)
+        (system, user), sklave_hard_limits=hl, domina_grenzen=gr, reasoning=True, max_tokens=600)
     if not roh:
         return []
     try:

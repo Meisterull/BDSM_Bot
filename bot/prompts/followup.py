@@ -926,17 +926,27 @@ Diese abgenutzten Schablonen-Sätze sind VERBOTEN (auch leicht abgewandelt):
 Der Inhalt (Aufgabe + kurze Begründung) bleibt – nur die Formulierung muss frisch sein."""
 
 
-def machbarkeits_pruefung(vorschlag: str, inventar: list = None) -> tuple[str, str]:
-    """Zweiter Durchlauf nach der Generierung (scheduler._machbarkeits_maengel):
-    reine Mechanik-Prüfung eines Aufgaben-Vorschlags, kein Geschmacks- oder
-    Moralurteil. Antwort als JSON, damit der Scheduler die Mängel in den
-    Retry-Prompt legen kann."""
+_PRUEF_ART = {
+    "aufgabe": ("einen Aufgaben-Vorschlag", "Vorschlag", ""),
+    "wette": ("eine Wett-Idee (Bedingung + was jede Seite bei Sieg bekommt)", "Wett-Idee",
+              "Prüfe die Bedingung und jeden Einsatz für sich. Dass ein Einsatz nur in EINEM der "
+              "beiden Ausgänge eintritt, ist kein Widerspruch; ob die Wette fair oder messbar ist, "
+              "prüfst du nicht.\n"),
+    "strafe": ("eine einzelne Strafe (ein Satz im Stil einer Aufgabenliste)", "Strafe", ""),
+}
+
+
+def machbarkeits_pruefung(vorschlag: str, inventar: list = None, art: str = "aufgabe") -> tuple[str, str]:
+    """Zweiter Durchlauf nach der Generierung (services/machbarkeit): reine
+    Mechanik-Prüfung, kein Geschmacks- oder Moralurteil. Antwort als JSON, damit
+    der Aufrufer die Mängel in den Retry-Prompt legen kann. art: aufgabe | wette | strafe."""
     def _koerper(geschlecht: str) -> str:
         return "Frau (kein Penis, kein Sperma)" if geschlecht == "frau" else "Mann (Penis, Sperma)"
+    was, label, zusatz = _PRUEF_ART.get(art, _PRUEF_ART["aufgabe"])
     system = (
-        "Du prüfst einen Aufgaben-Vorschlag für ein Paar NUR darauf, ob er körperlich machbar ist "
+        f"Du prüfst {was} für ein Paar NUR darauf, ob das Beschriebene körperlich machbar ist "
         "und die Geräte richtig benutzt werden. Kein Urteil über Geschmack, Härte, Ton oder Moral – "
-        "nur Mechanik.\n\n"
+        f"nur Mechanik.\n{zusatz}\n"
         "Prüfpunkte:\n"
         "1. Belegung: Jede Körperstelle und jeder Gegenstand ist zur selben Zeit nur für EINE Sache "
         "belegt (ein Knebel im Mund heißt: kein Lecken, kein Sprechen; ein Gegenstand ist nie an zwei "
@@ -957,7 +967,7 @@ def machbarkeits_pruefung(vorschlag: str, inventar: list = None) -> tuple[str, s
         inventar_str = "\n".join(f"- {g}" for g in inventar)
     else:
         inventar_str = "(kein Inventar hinterlegt)"
-    user = f"{nutzer_text('Vorschlag', vorschlag)}\n\nInventar (mit Benutzungsangaben):\n{inventar_str}"
+    user = f"{nutzer_text(label, vorschlag)}\n\nInventar (mit Benutzungsangaben):\n{inventar_str}"
     return system, user
 
 
@@ -1008,9 +1018,26 @@ _WETT_AUSGANG = {"gewonnen": "er hat gewonnen", "verloren": "er hat verloren",
                  "abgelehnt": "er hat die Wette abgelehnt"}
 
 
+def _wie_lange_her(datum_iso: str, heute=None) -> str:
+    """„heute" / „gestern" / „vor N Tagen" statt eines nackten Datums: das Modell
+    kennt das heutige Datum nicht und erfand sonst Zeitbezüge (Live 18.09.2026:
+    „letzte Woche" für eine Wette vom Vortag)."""
+    from datetime import date, datetime
+    from zoneinfo import ZoneInfo
+    try:
+        tag = date.fromisoformat(str(datum_iso)[:10])
+    except ValueError:
+        return str(datum_iso)
+    heute = heute or datetime.now(ZoneInfo(config.TIMEZONE)).date()
+    tage = (heute - tag).days
+    if tage <= 0:
+        return "heute"
+    return "gestern" if tage == 1 else f"vor {tage} Tagen"
+
+
 def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
               domina_interessen: list = None, verbrauchte_zutaten: list = None,
-              schwerpunkt: str = "", letzte_wetten: list = None) -> tuple[str, str]:
+              schwerpunkt: str = "", letzte_wetten: list = None, heute=None) -> tuple[str, str]:
     """Coach-Impuls: fertige Wett-Idee für die Domina, zum Weitergeben an den Sub.
     Dieselben Bausteine wie die Aufgaben-Vorschläge (Live-Befund 07.09.: der
     erste Generator kannte weder Rollen-Rahmen noch Richtungs-Regel noch
@@ -1038,14 +1065,14 @@ def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
     if letzte_wetten:
         zeilen = []
         for e in letzte_wetten[-5:]:
-            teile = str(e.get("datum", "")).split("-")
-            datum = f"{teile[2]}.{teile[1]}." if len(teile) == 3 else str(e.get("datum", ""))
+            datum = _wie_lange_her(e.get("datum", ""), heute)
             ausgang = _WETT_AUSGANG.get(e.get("ergebnis", ""), e.get("ergebnis", ""))
             zeilen.append(f"  • [{datum}, {ausgang}] {str(e.get('idee', ''))[:220]}")
         verlauf_str = (
             "\nLETZTE WETTEN (mit Ausgang): Bedingung UND Einsatz sollen diesmal andere sein – "
             "nicht dieselbe Messlatte in neuer Verpackung. Auf den letzten Ausgang darfst du dich "
-            "locker beziehen (ein Halbsatz), aber zähl die Wetten nie auf:\n"
+            "locker beziehen (ein Halbsatz, Zeitangabe nur wie hier vermerkt), aber zähl die "
+            "Wetten nie auf:\n"
             + "\n".join(zeilen) + "\n"
         )
     schwerpunkt_str = ""

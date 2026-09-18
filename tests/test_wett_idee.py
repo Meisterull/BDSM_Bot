@@ -156,6 +156,15 @@ class _Welt:
         cq.state.is_paused = lambda *a, **k: False
         persona_config.sklave_anrede = lambda: "Kleine Maus"
         state.set_mode(DOM, "chat")
+        # Machbarkeits-Prüfung (services/machbarkeit): pro Aufruf eine Mängelliste, Default stimmig
+        from bot.services import machbarkeit
+        self.pruef_ergebnisse: list = []
+        self.pruef_aufrufe: list = []
+
+        async def _maengel(text, art="aufgabe"):
+            self.pruef_aufrufe.append((text, art))
+            return self.pruef_ergebnisse.pop(0) if self.pruef_ergebnisse else []
+        machbarkeit.maengel = _maengel
         return self
 
     @property
@@ -340,15 +349,44 @@ def test_impuls_reihenfolge():
     assert sorted(n for n, _ in sched._impuls_reihenfolge(k, "")) == ["coach_quiz", "wett_idee"]
 
 
+def test_machbarkeit_im_wett_generator():
+    """18.09.2026: Bedingung/Einsätze werden auf körperliche Machbarkeit geprüft –
+    Mängel fahren im selben Retry mit; bleiben sie, geht nichts raus."""
+    # Mängel im ersten Entwurf → Retry mit Mängel-Hinweis, zweiter Entwurf stimmig
+    w = _Welt([GUT, GUT + " (neu)"]).install()
+    w.pruef_ergebnisse = [["Gerät doppelt belegt"], []]
+    assert _run(cq._wett_idee_generieren()) == GUT + " (neu)"
+    assert [a for _, a in w.pruef_aufrufe] == ["wette", "wette"]
+    assert "Gerät doppelt belegt" in w.retry_calls[1] and "körperlich aufgehen" in w.retry_calls[1]
+    assert "kein fertiger Nachrichtentext" not in w.retry_calls[1], "Drift-Hinweis nur bei Drift"
+    # Mängel bleiben auch im Retry → kein Versand
+    w = _Welt([GUT, GUT + " (neu)"]).install()
+    w.pruef_ergebnisse = [["Gerät doppelt belegt"], ["immer noch"]]
+    assert _run(cq._wett_idee_generieren()) is None
+    # Retry schlechter als das Original (mehr Mängel) → Original bleibt gewertet → None wegen Restmangel
+    w = _Welt([GUT, GUT + " (neu)"]).install()
+    w.pruef_ergebnisse = [["eins"], ["a", "b"]]
+    assert _run(cq._wett_idee_generieren()) is None
+    # stimmig → kein Retry
+    w = _Welt([GUT]).install()
+    assert _run(cq._wett_idee_generieren()) == GUT and len(w.retry_calls) == 1
+    system, user = fp.machbarkeits_pruefung("Wer zuerst lacht, verliert.", [], art="wette")
+    assert "Wett-Idee" in system and "jeden Einsatz für sich" in system and "Wett-Idee" in user
+    assert "einzelne Strafe" in fp.machbarkeits_pruefung("x", [], art="strafe")[0]
+
+
 def test_verlauf_im_prompt():
     """17.09.2026: die letzten Wetten mit Ausgang fließen in den Vorschlag ein –
     gegen dieselbe Messlatte in neuer Verpackung."""
     assert "LETZTE WETTEN" not in fp.wett_idee(["Kaffee ans Bett"], [], [], [])[0]
-    system, _ = fp.wett_idee(["Kaffee ans Bett"], [], [], [], letzte_wetten=[
+    from datetime import date
+    system, _ = fp.wett_idee(["Kaffee ans Bett"], [], [], [], heute=date(2026, 9, 17), letzte_wetten=[
         {"datum": "2026-09-16", "ergebnis": "verloren", "idee": "Er trägt die Schürze den ganzen Tag."},
         {"datum": "2026-09-12", "ergebnis": "abgelehnt", "idee": "Wer zuerst lacht, verliert."},
-        {"datum": "2026-09-10", "ergebnis": "verfallen", "idee": "Kein Handy bis Freitag."}])
-    assert "[16.09., er hat verloren] Er trägt die Schürze" in system
+        {"datum": "2026-09-17", "ergebnis": "verfallen", "idee": "Kein Handy bis Freitag."}])
+    # relative Zeitangaben statt nackter Daten (das Modell kennt „heute" nicht)
+    assert "[gestern, er hat verloren] Er trägt die Schürze" in system
+    assert "[vor 5 Tagen, er hat die Wette abgelehnt]" in system and "[heute, er hat sich nicht gemeldet" in system
     assert "er hat die Wette abgelehnt" in system and "zählt als verloren" in system
     assert "zähl die Wetten nie auf" in system
     # Der Generator reicht den Verlauf aus dem Sub-Profil durch
@@ -471,6 +509,7 @@ def _run_alle():
     test_callback_senden()
     test_callback_neu_mit_deckel()
     test_impuls_reihenfolge()
+    test_machbarkeit_im_wett_generator()
     test_verlauf_im_prompt()
     test_schwerpunkt_prompt_auswahl_und_neu()
     test_coach_impuls_wunsch_und_quiz_schalter()

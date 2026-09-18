@@ -294,6 +294,8 @@ def test_wett_idee_rahmen_und_nachsatz():
             coach_quiz.qdrant.get_recent_tiny_tasks, coach_quiz.telegram_helper.send_domina,
             coach_quiz.state.is_paused, coach_quiz.state.get_mode, coach_quiz.qdrant.patch_profile_fields)
     coach_quiz.qdrant.patch_profile_fields = AsyncMock(return_value="ok")
+    from bot.services import machbarkeit
+    machbarkeit.maengel = AsyncMock(return_value=[])
     coach_quiz.limits_check.generate_mit_limit_retry = fake_retry
     coach_quiz.qdrant.get_user_profile = AsyncMock(return_value={
         "vorlieben": ["Fesseln mag ich"], "hard_limits": [], "interessen": [], "grenzen": []})

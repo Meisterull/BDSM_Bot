@@ -567,23 +567,35 @@ async def _wett_idee_generieren(schwerpunkt: str = "") -> str | None:
     idee = await _generiere(prompt)
     if not idee:
         return None
+    # Machbarkeits-Prüfung (18.09.2026, services/machbarkeit): Bedingung und
+    # Einsätze müssen körperlich aufgehen. Ihre Mängel fahren im selben EINEN
+    # Retry mit wie Schablonen und Drift – kein zweiter Generier-Durchlauf extra.
+    from bot.services import machbarkeit
     idee = _meta_schluss_entfernen(_nachsatz_entfernen(_vorwort_entfernen(idee)))
     funde = _formel_verstoesse(idee) + _idee_verstoesse(idee)
-    if funde:
-        logger.info("Wett-Idee mit Mängeln (%s) – generiere einmal neu.", "; ".join(funde))
+    unmachbar = await machbarkeit.maengel(idee, art="wette")
+    if funde or unmachbar:
+        logger.info("Wett-Idee mit Mängeln (%s) – generiere einmal neu.", "; ".join(funde + unmachbar))
         s = rollen.sub()
-        neu = await _generiere(
-            prompt + "\n\nACHTUNG: Dein letzter Entwurf hatte diese Mängel: " + "; ".join(funde)
-            + ". Formuliere die Wette neu – der Inhalt darf bleiben, aber als kurze IDEE an sie "
-            "(kein fertiger Nachrichtentext, keine Anführungszeichen, keine Anrede an "
-            f"{s['label_akk']}), ohne Profil-Abgleich ('passt zu …', 'genau {s['poss']}e …', "
-            "'…, den du magst') und ohne Kommentar, wovon du dich absetzt."
-        )
+        achtung = "\n\nACHTUNG: Dein letzter Entwurf hatte diese Mängel: " + "; ".join(funde + unmachbar) + "."
+        if funde:
+            achtung += (
+                " Formuliere die Wette neu – der Inhalt darf bleiben, aber als kurze IDEE an sie "
+                "(kein fertiger Nachrichtentext, keine Anführungszeichen, keine Anrede an "
+                f"{s['label_akk']}), ohne Profil-Abgleich ('passt zu …', 'genau {s['poss']}e …', "
+                "'…, den du magst') und ohne Kommentar, wovon du dich absetzt.")
+        if unmachbar:
+            achtung += (
+                " Bedingung und Einsätze müssen körperlich aufgehen und jedes Gerät so benutzt "
+                "werden, wie es im Inventar steht – nimm lieber einen einfacheren Einsatz.")
+        neu = await _generiere(prompt + achtung)
         if neu:
             neu = _meta_schluss_entfernen(_nachsatz_entfernen(_vorwort_entfernen(neu)))
-            if len(_formel_verstoesse(neu) + _idee_verstoesse(neu)) <= len(funde):
-                idee = neu
-    rest = _idee_verstoesse(idee)
+            neu_unmachbar = await machbarkeit.maengel(neu, art="wette")
+            if (len(_formel_verstoesse(neu) + _idee_verstoesse(neu)) + len(neu_unmachbar)
+                    <= len(funde) + len(unmachbar)):
+                idee, unmachbar = neu, neu_unmachbar
+    rest = _idee_verstoesse(idee) + unmachbar
     if rest:
         logger.info("Wett-Idee auch nach Retry unbrauchbar (%s) – kein Versand.", "; ".join(rest))
         logger.debug("Verworfene Wett-Idee: %r", idee)

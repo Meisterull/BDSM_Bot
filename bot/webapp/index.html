@@ -447,7 +447,7 @@ async function wetteHolen() {
     if (!r.ok) {
       m.textContent = r.status === 409 ? "🎲 Es ist noch eine Wette offen – " + (d.fehler || "") : "Fehler: " + (d.fehler || r.status);
     } else {
-      m.textContent = "✅ Kommt gleich im Chat – dauert bis zu einer Minute.";
+      m.textContent = "✅ Kommt gleich im Chat – dauert ein bis zwei Minuten.";
       el("wette-thema").value = "";
       tg?.HapticFeedback?.notificationOccurred("success");
     }

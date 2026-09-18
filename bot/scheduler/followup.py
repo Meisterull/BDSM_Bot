@@ -737,22 +737,10 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
 
 
 async def _machbarkeits_maengel(vorschlag: str) -> list[str]:
-    """Zweiter Durchlauf (18.09.2026): das Reasoning-Modell prüft den fertigen
-    Vorschlag NUR auf körperliche Machbarkeit und richtige Geräte-Benutzung
-    (Inventar mit Benutzungsangaben). Die Regel im Generier-Prompt allein verlor
-    (Live 17.+18.09.: Knebel und Lecken zugleich, falsche Lage im Stuhl).
-    Leer = stimmig ODER Prüfung nicht möglich (fail-open, der Vorschlag geht raus)."""
-    from bot.services import inventar
-    try:
-        roh = await grok.simple(fp.machbarkeits_pruefung(vorschlag, inventar.vorhanden()),
-                                reasoning=True, temperature=0, max_tokens=500)
-        daten = grok.parse_json(roh)
-        if not isinstance(daten, dict) or daten.get("ok", True):
-            return []
-        return [str(m).strip()[:240] for m in (daten.get("maengel") or []) if str(m).strip()][:3]
-    except Exception:
-        logger.exception("Machbarkeits-Prüfung fehlgeschlagen – Vorschlag gilt als stimmig")
-        return []
+    """Zweiter Durchlauf (18.09.2026): körperliche Machbarkeit + richtige
+    Geräte-Benutzung des fertigen Vorschlags – Details in services/machbarkeit."""
+    from bot.services import machbarkeit  # lazy wie die Nachbarn
+    return await machbarkeit.maengel(vorschlag, art="aufgabe")
 
 
 async def _machbarkeit_sichern(vorschlag: str, prompt: str, system: str,

@@ -172,6 +172,14 @@ class _Welt:
         wh.nach_punkteaenderung = AsyncMock(return_value=None)
         wh._tagsueber = lambda: True
         wh.im_hintergrund = self.hintergrund.append
+        # Machbarkeits-Prüfung je Strafe: Texte in self.unmachbar gelten als nicht stimmig
+        from bot.services import machbarkeit
+        self.unmachbar: set = set()
+
+        async def _maengel(text, art="aufgabe"):
+            assert art == "strafe"
+            return ["geht so nicht"] if text in self.unmachbar else []
+        machbarkeit.maengel = _maengel
         ws.frist_iso = lambda tage: (datetime.now(timezone.utc) + timedelta(days=tage)).isoformat()
         state.is_paused = lambda *a, **k: False
         for cid in (DOM, SUB):
@@ -461,6 +469,33 @@ def test_wette_abruf():
         cq._wett_idee_generieren, cq._wett_idee_zustellen, cq.state.is_paused = alt
 
 
+def test_strafen_machbarkeit():
+    """18.09.2026: jede Strafe wird einzeln geprüft; unter zwei stimmigen gibt es
+    EINEN neuen Satz mit der Mängelliste, gezeigt werden nur stimmige."""
+    w = _Welt().install()
+    # eine von drei fällt → zwei stimmige reichen, kein zweiter LLM-Lauf
+    w.unmachbar = {STRAFEN[1]}
+    assert _run(wh._ablehnungs_strafen_generieren(IDEE)) == [STRAFEN[0], STRAFEN[2]]
+    assert len(w.llm_prompts) == 1
+    # zwei fallen → neuer Satz mit Mängel-Hinweis; stimmige aus beiden Sätzen, ohne Doppelte
+    w = _Welt().install()
+    w.unmachbar = {STRAFEN[1], STRAFEN[2]}
+    neue = ["Den Flur saugen, bevor sie nach Hause kommt", STRAFEN[0], "Drei Tage kein Nachtisch"]
+    saetze = [json.dumps({"strafen": STRAFEN}), json.dumps({"strafen": neue})]
+
+    async def _generate(prompt, **kw):
+        w.llm_prompts.append(prompt)
+        return saetze.pop(0)
+    wh.limits_check.generate_mit_limit_retry = _generate
+    assert _run(wh._ablehnungs_strafen_generieren(IDEE)) == [STRAFEN[0], neue[0], neue[2]]
+    assert len(w.llm_prompts) == 2
+    assert "körperlich nicht stimmig" in w.llm_prompts[1][1] and "geht so nicht" in w.llm_prompts[1][1]
+    # alles unstimmig, auch im zweiten Satz → leer (Dom-Seite sieht den Hinweis-Text)
+    w = _Welt().install()
+    w.unmachbar = set(STRAFEN)
+    assert _run(wh._ablehnungs_strafen_generieren(IDEE)) == []
+
+
 def test_verlauf_wird_geschrieben():
     """Jede endgültige Wette landet im Verlauf (max. 5); ein Einspruch korrigiert
     den vorhandenen Eintrag, statt einen zweiten anzulegen."""
@@ -535,6 +570,7 @@ def _run_alle():
     test_eigene_strafe()
     test_ablehnung_automatisch_nach_24h()
     test_wette_abruf()
+    test_strafen_machbarkeit()
     test_verlauf_wird_geschrieben()
     test_lage_und_anzeige()
     test_prompts_und_verdrahtung()
