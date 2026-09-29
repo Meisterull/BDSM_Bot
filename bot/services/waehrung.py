@@ -141,7 +141,9 @@ def wett_frist_tage(text: str, heute: date | None = None) -> int:
     if tage is None:
         try:
             from bot.services import datum_erkennung
-            termin = datum_erkennung.finde_termin(text)
+            # Bezugsdatum durchreichen – sonst rechnet der Wochentag ab dem
+            # echten Heute und die Differenz gegen ein übergebenes `heute` kippt.
+            termin = datum_erkennung.finde_termin(text, heute)
             if termin:
                 tage = (termin[0] - (heute or date.today())).days
         except Exception:

@@ -86,15 +86,23 @@ async def _ist_ablehnungsgrund(tiny_task_inhalt: str, text: str) -> bool:
     Ablehnungsgrund zum Vorschlag ODER ein anderes Anliegen (Frage/Auftrag/
     neues Thema)? Vorher wurde JEDER Freitext als Ablehnungsgrund gespeichert –
     live vergiftet durch „Kannst du ihm den Wochenplan senden?" (Review D7, B2).
-    Fail-safe: bei LLM-Fehlern wie bisher als Ablehnungsgrund behandeln."""
+    Fail-safe: bei LLM-Fehlern wie bisher als Ablehnungsgrund behandeln.
+    Vor dem LLM ein deterministischer Detektor: ein Auftrag an den Bot („schreib
+    ihm …", „Aufgabe: …") ist nie ein Ablehnungsgrund – das LLM wertete ihn
+    als solchen, sobald er thematisch zum Vorschlag passte (live 28.09.2026)."""
     from bot.prompts import followup as fp
+    from bot.handlers import domina  # lazy: zirkulären Import vermeiden
+    if domina.ist_auftrag_an_bot(text):
+        return False
     system = (
         "Der Bot hat die Domina gefragt, warum sie einen Aufgaben-Vorschlag nicht übernommen hat.\n"
         "Klassifiziere ihre Antwort:\n"
         "- ABLEHNUNG: eine Begründung oder Kritik zum Vorschlag (auch knapp: "
         "'zu langweilig', 'keine Zeit gehabt', 'passt gerade nicht')\n"
-        "- ANDERES: ein anderes Anliegen – eine Frage, ein Auftrag an den Bot, "
-        "Smalltalk oder ein neues Thema, das sich nicht auf den Vorschlag bezieht\n"
+        "- ANDERES: ein anderes Anliegen – eine Frage, ein Auftrag an den Bot "
+        "(dem Sub etwas ausrichten, ihm eine eigene Aufgabe geben), Smalltalk oder "
+        "ein neues Thema. Eine EIGENE Aufgabe oder Anweisung für den Sub ist immer "
+        "ANDERES, auch wenn sie thematisch zum Vorschlag passt.\n"
         "Antworte NUR mit ABLEHNUNG oder ANDERES."
     )
     prompt = (

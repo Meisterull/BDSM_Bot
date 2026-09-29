@@ -336,6 +336,11 @@ async def _klassifiziere(text: str) -> str:
     """Freitext im Check-in-Mode einordnen (temp 0). Fail-safe: SONSTIGES
     (= Antwort auf die Frage, keine automatische Schaltung)."""
     from bot.prompts import followup as fp
+    from bot.handlers import domina  # lazy: zirkulären Import vermeiden
+    # Auftrag an den Bot („schreib ihm …") nie als Antwort verbuchen – gleicher
+    # Detektor wie tiny_task_feedback (dort live 28.09.2026 fehlgeroutet).
+    if domina.ist_auftrag_an_bot(text):
+        return "ANDERES"
     system = (
         "Der Coach hat die dominante Seite gefragt, warum sie sich seit über einer Woche "
         "nicht gemeldet hat. Klassifiziere ihre Antwort:\n"

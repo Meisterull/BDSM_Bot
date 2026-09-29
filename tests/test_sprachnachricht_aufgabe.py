@@ -117,6 +117,32 @@ def test_klingt_nach_auftrag():
     assert domina.klingt_nach_auftrag("Mach ich.", "Schreibe ihm, er muss stillhalten")
 
 
+def test_ist_auftrag_an_bot():
+    """Weiche der Rückfrage-Modes (tiny_task_feedback, stille_checkin): ein
+    Imperativ an den Bot ist nie eine Antwort auf die Rückfrage."""
+    ja = [
+        "Schick meinem Spielzeug bitte diese Anweisung: heute Abend das Bad putzen.",
+        "schreib ihm, er soll um acht bereit sein",
+        "Sag ihm bitte, dass ich später komme",
+        "Gib dem Sub heute eine Aufgabe",
+        "Richte ihm aus, dass er warten soll",
+        "Aufgabe: eine Stunde knien",
+        "Tell him to wait for me",
+    ]
+    nein = [
+        "zu langweilig, sowas hatten wir oft",
+        "keine Zeit gehabt",
+        "passt gerade nicht, er muss diese Woche viel arbeiten",
+        "Das war mir zu hart",
+        "Ich sage es dir morgen",
+        "",
+    ]
+    for text in ja:
+        assert domina.ist_auftrag_an_bot(text), f"sollte Auftrag an den Bot sein: {text!r}"
+    for text in nein:
+        assert not domina.ist_auftrag_an_bot(text), f"sollte KEIN Auftrag an den Bot sein: {text!r}"
+
+
 # --------------------------------------------------------------------------
 # Stubs für handle() / Callback
 # --------------------------------------------------------------------------
@@ -367,6 +393,7 @@ def test_locale_keys_vorhanden():
 def _run_alle():
     test_sprech_tags_fremdformen()
     test_klingt_nach_auftrag()
+    test_ist_auftrag_an_bot()
     test_handle_sprachnachricht_mit_auftrag_detektor()
     test_handle_beide_tags_nimmt_aufgabentext()
     test_handle_reine_nachricht_ohne_angebot()

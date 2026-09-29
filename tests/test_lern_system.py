@@ -1412,6 +1412,20 @@ async def test_tinyfb_klassifikation():
         assert markiert.get("p1", ("", ""))[0] == "abgelehnt", markiert
         assert praef == [(("Dienst",), "abgelehnt")], praef
         assert _state_mod.get_mode(cid) == "chat"
+
+        # Fall 3: Auftrag an den Bot, der thematisch zum Vorschlag passt – das
+        # LLM sagte live ABLEHNUNG; der Detektor routet trotzdem in den Chat
+        # und fragt das LLM gar nicht erst.
+        markiert.clear(); praef.clear(); chat_calls.clear()
+        _state_mod.get(cid)["tiny_task_feedback_id"] = "p2"
+        _state_mod.set_mode(cid, "tiny_task_feedback")
+        tfb.grok.simple = AsyncMock(return_value="ABLEHNUNG")
+        auftrag = "Schreib ihm bitte: Er soll heute Abend das Bad putzen."
+        await tfb.handle(_mk_update(auftrag), MagicMock())
+        assert chat_calls == [auftrag], chat_calls
+        assert not markiert and not praef, (markiert, praef)
+        assert _state_mod.get_mode(cid) == "tiny_task_feedback", "Feedback muss offen bleiben"
+        tfb.grok.simple.assert_not_called()
     finally:
         (tfb.qdrant.get_tiny_task_by_id, tfb.qdrant.mark_tiny_task_status,
          tfb.grok.simple, _dom.handle, tfb.kategorie_logik.record_domina_praeferenz,

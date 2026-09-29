@@ -224,6 +224,28 @@ def klingt_nach_auftrag(*texte: str) -> bool:
     return False
 
 
+# Imperativ an den BOT, dem Sub etwas auszurichten/aufzugeben („schreib ihm …",
+# „gib meinem Sub eine Aufgabe"). Für die Freitext-Weichen der
+# Rückfrage-Modes (tiny_task_feedback, stille_checkin): dort entschied nur ein
+# LLM, ob der Text zur Rückfrage gehört – live 28.09.2026 wurde ein Auftrag,
+# der thematisch zum Vorschlag passte, 5/5 als Ablehnungsgrund gewertet
+# (Aufgabe nie zugestellt, Grund + Negativ-Präferenz falsch verbucht).
+_AN_BOT_RE = re.compile(
+    r"\b(?:schreib|schick|sag|gib|erteil|richte|teil|send|stell)e?\b[^.!?\n]{0,30}?"
+    r"\b(?:ihm|ihr|(?:meine[mnr]|de[mnr]|deine[mnr]|unsere[mnr])\s+\w+)\b"
+    r"|\b(?:tell|write|send|give|text|message)\s+(?:him|her|my\s+\w+|the\s+\w+)\b",
+    re.I)
+
+
+def ist_auftrag_an_bot(text: str) -> bool:
+    """Deterministischer Detektor: bittet die Dom-Seite den Bot, dem Sub etwas
+    auszurichten oder aufzugeben? Bewusst grob – ein Fehltreffer kostet nur,
+    dass ein Freitext im Coach-Chat landet und die Rückfrage offen bleibt."""
+    if not text:
+        return False
+    return bool(grok.extract_keyword_task(text)[0] or _AN_BOT_RE.search(text))
+
+
 def _nachfrage_wann(tage: int) -> str:
     """„am Mittwoch, 16.09.2026 um 17:30" – Nachfrage-Zeitpunkt des Paares."""
     from zoneinfo import ZoneInfo

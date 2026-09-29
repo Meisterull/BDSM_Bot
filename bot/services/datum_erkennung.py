@@ -95,13 +95,14 @@ def _wochentag_treffer(text: str, heute: date) -> tuple[date, str] | None:
     return None
 
 
-def finde_termin(text: str) -> tuple[date, str] | None:
+def finde_termin(text: str, heute: date | None = None) -> tuple[date, str] | None:
     """Erstes erkanntes ZUKÜNFTIGES Datum im Text als (datum, gefundener_ausdruck),
     sonst None. Priorität: explizites Datum > übermorgen > morgen > Wochentag.
-    'heute' ergibt bewusst None (= sofort erteilen)."""
+    'heute' ergibt bewusst None (= sofort erteilen). `heute`: Bezugsdatum,
+    Default = jetzt in der Bot-Zeitzone."""
     if not text:
         return None
-    heute = _heute()
+    heute = heute or _heute()
 
     treffer = _datum_treffer(text, heute)
     if treffer and treffer[0] > heute:
