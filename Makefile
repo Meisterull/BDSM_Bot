@@ -25,6 +25,7 @@ test:
 	python3 tests/test_wett_idee.py
 	python3 tests/test_wette_annahme.py
 	python3 tests/test_waehrung.py
+	python3 tests/test_followup_nachholen.py
 
 # Image bauen – nur wenn die Tests grün sind.
 build: test

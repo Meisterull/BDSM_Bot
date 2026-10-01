@@ -34,7 +34,7 @@ from bot.handlers import (
 
 from bot.handlers import serie_handler
 from bot.scheduler.followup import (
-    followup_job, stimmung_job, ziel_erinnerung_job, training_job,
+    followup_job, followup_nachhol_job, stimmung_job, ziel_erinnerung_job, training_job,
     lernkurve_job, rollenspiel_vorschlag_job, wochenplanung_job, geheimnis_job,
     kommentar_analyse_job, training_erinnerung_job, tiny_task_feedback_job,
     tiny_task_vorschlag_job, resurface_job, lerntagebuch_job,
@@ -1036,6 +1036,13 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
 
     scheduler.add_job(_fuer_paar(followup_job, pid), "cron", hour=hour, minute=minute,
                       args=[bot], id=f"daily_followup_p{pid}", replace_existing=True)
+    # Nachhol-Läufe (+1/+2/+3 h): greifen nur, wenn der Hauptlauf an einem
+    # laufenden Mode des Subs scheiterte (unbeantwortete Stimmungsfrage).
+    for stunden in (1, 2, 3):
+        gesamt = hour * 60 + minute + stunden * 60
+        scheduler.add_job(_fuer_paar(followup_nachhol_job, pid), "cron",
+                          hour=(gesamt // 60) % 24, minute=gesamt % 60, args=[bot],
+                          id=f"followup_nachholen{stunden}_p{pid}", replace_existing=True)
     if config.TRAINING_ENABLED:
         scheduler.add_job(_fuer_paar(training_job, pid), "cron", day_of_week="tue,thu",
                           hour=(training_total // 60) % 24, minute=training_total % 60,

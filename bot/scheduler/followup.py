@@ -1559,6 +1559,49 @@ async def followup_job(bot: Bot) -> None:
     # Hängende Ketten einsammeln (Review D8/H3)
     await _process_kette_tasks(bot)
 
+    _merke_nachholen(await _followup_fragen(bot))
+
+    # Tiny Task für Domina läuft als separater Abend-Job (siehe tiny_task_vorschlag_job)
+
+
+# Nachhol-Merker je Sub-Chat: der Kalendertag (Bot-Zeitzone), an dem die
+# tägliche Nachfrage an einem laufenden Mode des Subs scheiterte. Live
+# 01.10.2026: die unbeantwortete Stimmungsfrage hält den Mode 2 h, der
+# Follow-up-Job fällt mitten hinein und lief nur einmal am Tag – an jedem Tag
+# ohne Stimmungs-Antwort fiel die Nachfrage ersatzlos aus. Bewusst nur im
+# Speicher: ein Neustart im Nachhol-Fenster verliert auch den blockierenden
+# Mode, die Aufgabe bleibt 'offen' und kommt am Folgetag wieder dran.
+_followup_nachholen: dict = {}
+
+
+def _merke_nachholen(blockiert: bool) -> None:
+    sklave_chat = paare.sub_chat_id()
+    if blockiert:
+        _followup_nachholen[sklave_chat] = datetime.now(ZoneInfo(config.TIMEZONE)).date()
+    else:
+        _followup_nachholen.pop(sklave_chat, None)
+
+
+@_job_guard
+async def followup_nachhol_job(bot: Bot) -> None:
+    """Nachhol-Lauf der täglichen Nachfrage (main.plane_zeit_jobs: +1/+2/+3 h
+    nach der Follow-up-Zeit). Tut nur etwas, wenn der Hauptlauf HEUTE an einem
+    laufenden Mode gescheitert ist – die „eine Frage pro Tag" bleibt gewahrt."""
+    sklave_chat = paare.sub_chat_id()
+    heute = datetime.now(ZoneInfo(config.TIMEZONE)).date()
+    if _followup_nachholen.get(sklave_chat) != heute:
+        _followup_nachholen.pop(sklave_chat, None)
+        return
+    state.clear_if_stale(sklave_chat)
+    logger.info("Follow-up Nachhol-Lauf gestartet.")
+    _merke_nachholen(await _followup_fragen(bot))
+
+
+async def _followup_fragen(bot: Bot) -> bool:
+    """Stellt die tägliche Nachfrage an den Sub. True = an einem laufenden Mode
+    gescheitert, bevor eine Frage rausging (→ Nachhol-Lauf)."""
+    blockiert = False
+    gesendet = False
     # Follow-up an Sklave – Existenz-Check zuerst, der Kontext (Streak/Stimmung/
     # nicht_erledigt) wird nur geladen, wenn es überhaupt offene Followups gibt.
     tasks = await qdrant.get_open_followup_tasks()
@@ -1591,6 +1634,7 @@ async def followup_job(bot: Bot) -> None:
             sklave_mode = state.get_mode(sklave_chat)
             if sklave_mode not in ("chat", None):
                 logger.info("Follow-up übersprungen – Sklave in Mode '%s'", sklave_mode)
+                blockiert = not gesendet
                 break
             try:
                 # Zeitbezug: an welchem Tag war die Aufgabe gedacht? (Followup kommt meist
@@ -1609,6 +1653,7 @@ async def followup_job(bot: Bot) -> None:
                 # einen Flow begonnen oder ein Safeword gesendet haben.
                 if state.is_paused() or state.get_mode(sklave_chat) not in ("chat", None):
                     logger.info("Follow-up nach Generierung verworfen – Pause/Mode im LLM-Fenster geändert.")
+                    blockiert = not gesendet and not state.is_paused()
                     break
                 from bot.handlers import followup_response
                 # „Ich sehe alles"-Sticker gelegentlich vor der Kontroll-Frage
@@ -1621,6 +1666,7 @@ async def followup_job(bot: Bot) -> None:
                 # get_open_followup_tasks (filtert nur status=offen) den Task bei
                 # einem Sendefehler nie wieder ab.
                 await qdrant.update_task(point_id, {"status": "gefragt"})
+                gesendet = True
                 # Returnwert beachten (D9/A4, wie der Serie-Pfad): False heißt,
                 # ein Flow kam zwischen Re-Check und Set – der Task steht auf
                 # 'gefragt', die Chat-Recovery fängt ihn bei seiner nächsten
@@ -1631,8 +1677,7 @@ async def followup_job(bot: Bot) -> None:
                 logger.info("Follow-up gesendet für Task: %s", point_id)
             except Exception as e:
                 logger.exception("Fehler beim Follow-up für Task %s", point_id)
-
-    # Tiny Task für Domina läuft als separater Abend-Job (siehe tiny_task_vorschlag_job)
+    return blockiert
 
 
 @_job_guard
