@@ -2,6 +2,7 @@
 APScheduler Jobs – Follow-up, Tiny Task, Stimmung, Ziel-Erinnerung, Training.
 """
 import functools
+from contextvars import ContextVar
 import logging
 import random
 import re
@@ -24,12 +25,69 @@ from bot.messages import t
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Nachholen blockierter Einmal-Jobs
+# ---------------------------------------------------------------------------
+# Jobs, die einmal am Tag/in der Woche laufen, prüfen vorher den Chat-Mode
+# (_flow_aktiv) und fielen bisher ersatzlos aus, wenn dort gerade ein Flow
+# offen war (live 01.10.2026: Nachfrage 17:30 mitten in der unbeantworteten
+# Stimmungsfrage; 27.09.: Wochenplanung im offenen Stille-Check-in). Ein mit
+# @_nachholbar markierter Job, der an einem MODE scheitert, wird vorgemerkt;
+# nachhol_tick_job holt ihn nach, sobald der Chat frei ist. Safeword-Pause und
+# Coach-Ruhe sind gewollte Stopps und lösen kein Nachholen aus.
+# Bewusst nur im Speicher: ein Neustart verliert auch den blockierenden Mode.
+_blockiert_cv: ContextVar = ContextVar("job_blockiert", default=None)
+_nachhol_lauf: ContextVar = ContextVar("nachhol_lauf", default=False)
+_nachhol: dict = {}   # (paar_id, job_name) -> {"fn", "chat", "seit", "max_stunden"}
+
+
+def _melde_blockiert(chat_id: str) -> None:
+    """Vom Mode-Guard eines Jobs aufgerufen: dieser Lauf scheiterte an einem
+    laufenden Flow in `chat_id`. Außerhalb eines @_nachholbar-Jobs ein No-op."""
+    box = _blockiert_cv.get()
+    if box is not None:
+        box.append(chat_id)
+
+
+def _nachholbar(max_stunden: int):
+    """Markiert einen Einmal-Job als nachholbar. `max_stunden`: so lange wird
+    ab dem regulären Lauf versucht – kürzer als der Abstand zum nächsten
+    regulären Lauf wählen, sonst käme der Job doppelt (täglich: 5, wöchentlich: 26)."""
+    def deko(fn):
+        @functools.wraps(fn)
+        async def wrapper(bot, *args, **kwargs):
+            box: list = []
+            token = _blockiert_cv.set(box)
+            try:
+                ergebnis = await fn(bot, *args, **kwargs)
+            finally:
+                _blockiert_cv.reset(token)
+            schluessel = (paare.aktueller_kontext(), fn.__name__)
+            if box:
+                alt = _nachhol.get(schluessel)
+                if not alt:
+                    logger.info("%s wird nachgeholt, sobald der Chat frei ist.", fn.__name__)
+                # Die Frist zählt ab dem REGULÄREN Lauf, nicht ab jedem Nachhol-Versuch.
+                seit = alt["seit"] if (alt and _nachhol_lauf.get()) else datetime.now(timezone.utc)
+                _nachhol[schluessel] = {"fn": wrapper, "chat": box[0], "seit": seit,
+                                        "max_stunden": max_stunden}
+            else:
+                _nachhol.pop(schluessel, None)
+            return ergebnis
+        return wrapper
+    return deko
+
+
 def _zweiwochen_takt() -> bool:
     """True in geraden ISO-Wochen – deterministischer 2-Wochen-Takt für die
     cron-registrierten Jobs (lernkurve/coach_reflexion/profil_pflege).
     Ersetzt IntervalTrigger(weeks=2): der verlor bei jedem Deploy seine Phase
     (Anker = nächstes Wochentags-Vorkommen → bei häufigen Deploys faktisch
-    wöchentlich) und drifte nach jeder DST-Umstellung um eine Stunde."""
+    wöchentlich) und drifte nach jeder DST-Umstellung um eine Stunde.
+    Ein Nachhol-Lauf hat den Takt beim regulären Lauf schon bestanden – am
+    Folgetag (neue ISO-Woche nach einem Sonntags-Job) gilt er weiter."""
+    if _nachhol_lauf.get():
+        return True
     return datetime.now(ZoneInfo(config.TIMEZONE)).isocalendar().week % 2 == 0
 
 
@@ -151,6 +209,7 @@ def _flow_aktiv(chat_id: str, job_name: str) -> bool:
     mode = state.get_mode(chat_id)
     if mode not in ("chat", None):
         logger.info("%s übersprungen – Chat in Mode '%s'", job_name, mode)
+        _melde_blockiert(chat_id)
         return True
     return False
 
@@ -162,6 +221,8 @@ def _nach_llm_verworfen(chat_id: str, job_name: str) -> bool:
     followup_job/serie (Trace 06.07., Kleinkram)."""
     if state.is_paused() or state.get_mode(chat_id) not in ("chat", None):
         logger.info("%s nach Generierung verworfen – Pause/Mode im LLM-Fenster geändert.", job_name)
+        if not state.is_paused():
+            _melde_blockiert(chat_id)
         return True
     return False
 
@@ -944,6 +1005,7 @@ async def _letzte_domina_aktivitaet() -> datetime | None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=5)
 async def luecken_check_job(bot: Bot) -> None:
     """Schlägt der Domina nach LUECKEN_INTERVALL_TAGE Tagen ohne Aufgaben-/Szenen-
     Aktivität EINEN Task-Vorschlag vor – nur bei Opt-in (sie gibt jeden frei)."""
@@ -976,6 +1038,7 @@ async def luecken_check_job(bot: Bot) -> None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=5)
 async def stille_checkin_job(bot: Bot) -> None:
     """Stille-Check-in 🔕 (täglich STILLE_CHECKIN_TIME): fragt die Domina nach
     STILLE_CHECKIN_TAGE Tagen ohne jede Eingabe selbst, was gerade los ist.
@@ -1405,8 +1468,10 @@ async def blitz_ablauf_job(bot: Bot) -> None:
                                  task.get("qdrant_point_id"))
 
 
-async def _process_serie_tasks(bot: Bot) -> None:
-    """Aktiviert fällige Serie-Tasks."""
+async def _process_serie_tasks(bot: Bot) -> bool:
+    """Aktiviert fällige Serie-Tasks. True = in diesem Lauf ging eine Serien-
+    Aufgabe an den Sub (dann ist sein Mode 'followup' kein blockierter Lauf)."""
+    gesendet = False
     try:
         now_iso = datetime.now(timezone.utc).isoformat()
         results, _ = await qdrant.run_io(client.scroll, 
@@ -1438,6 +1503,8 @@ async def _process_serie_tasks(bot: Bot) -> None:
             sklave_mode = state.get_mode(paare.sub_chat_id())
             if sklave_mode not in ("chat", None):
                 logger.info("Serie Task übersprungen – Sklave in Mode '%s'", sklave_mode)
+                if not gesendet:
+                    _melde_blockiert(paare.sub_chat_id())
                 break
 
             anweisung = await grok.simple(fp.aufgabe_an_sklaven(aufgabe), max_tokens=250)
@@ -1445,8 +1512,11 @@ async def _process_serie_tasks(bot: Bot) -> None:
             # Fenster geändert haben.
             if state.is_paused() or state.get_mode(paare.sub_chat_id()) not in ("chat", None):
                 logger.info("Serie Task nach Generierung verworfen – Pause/Mode im LLM-Fenster geändert.")
+                if not gesendet and not state.is_paused():
+                    _melde_blockiert(paare.sub_chat_id())
                 break
             await telegram_helper.send_sklave(bot, anweisung, voice_text=anweisung)
+            gesendet = True
             # Status/State erst NACH erfolgreichem Senden – sonst landet der Sklave
             # im Followup-Mode für eine Aufgabe, die er (bei Sende-/LLM-Fehler) nie erhält.
             sklave_chat = paare.sub_chat_id()
@@ -1462,6 +1532,7 @@ async def _process_serie_tasks(bot: Bot) -> None:
             logger.info("Serie Task aktiviert: Tag %s/%s", tag, gesamt)
     except Exception as e:
         logger.exception("Fehler bei Serie Tasks")
+    return gesendet
 
 
 # Hängende Ketten: so lange wartet der Sweep ab der ersten Beobachtung (bzw.
@@ -1547,6 +1618,7 @@ async def _process_kette_tasks(bot: Bot) -> None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=5)
 async def followup_job(bot: Bot) -> None:
     logger.info("Follow-up Job gestartet: %s", datetime.now(timezone.utc).isoformat())
 
@@ -1554,54 +1626,22 @@ async def followup_job(bot: Bot) -> None:
     state.clear_if_stale(paare.sub_chat_id())
 
     # Serie Tasks aktivieren
-    await _process_serie_tasks(bot)
+    serie_gesendet = await _process_serie_tasks(bot)
 
     # Hängende Ketten einsammeln (Review D8/H3)
     await _process_kette_tasks(bot)
 
-    _merke_nachholen(await _followup_fragen(bot))
+    await _followup_fragen(bot, schon_gesendet=serie_gesendet)
 
     # Tiny Task für Domina läuft als separater Abend-Job (siehe tiny_task_vorschlag_job)
 
 
-# Nachhol-Merker je Sub-Chat: der Kalendertag (Bot-Zeitzone), an dem die
-# tägliche Nachfrage an einem laufenden Mode des Subs scheiterte. Live
-# 01.10.2026: die unbeantwortete Stimmungsfrage hält den Mode 2 h, der
-# Follow-up-Job fällt mitten hinein und lief nur einmal am Tag – an jedem Tag
-# ohne Stimmungs-Antwort fiel die Nachfrage ersatzlos aus. Bewusst nur im
-# Speicher: ein Neustart im Nachhol-Fenster verliert auch den blockierenden
-# Mode, die Aufgabe bleibt 'offen' und kommt am Folgetag wieder dran.
-_followup_nachholen: dict = {}
-
-
-def _merke_nachholen(blockiert: bool) -> None:
-    sklave_chat = paare.sub_chat_id()
-    if blockiert:
-        _followup_nachholen[sklave_chat] = datetime.now(ZoneInfo(config.TIMEZONE)).date()
-    else:
-        _followup_nachholen.pop(sklave_chat, None)
-
-
-@_job_guard
-async def followup_nachhol_job(bot: Bot) -> None:
-    """Nachhol-Lauf der täglichen Nachfrage (main.plane_zeit_jobs: +1/+2/+3 h
-    nach der Follow-up-Zeit). Tut nur etwas, wenn der Hauptlauf HEUTE an einem
-    laufenden Mode gescheitert ist – die „eine Frage pro Tag" bleibt gewahrt."""
-    sklave_chat = paare.sub_chat_id()
-    heute = datetime.now(ZoneInfo(config.TIMEZONE)).date()
-    if _followup_nachholen.get(sklave_chat) != heute:
-        _followup_nachholen.pop(sklave_chat, None)
-        return
-    state.clear_if_stale(sklave_chat)
-    logger.info("Follow-up Nachhol-Lauf gestartet.")
-    _merke_nachholen(await _followup_fragen(bot))
-
-
-async def _followup_fragen(bot: Bot) -> bool:
-    """Stellt die tägliche Nachfrage an den Sub. True = an einem laufenden Mode
-    gescheitert, bevor eine Frage rausging (→ Nachhol-Lauf)."""
-    blockiert = False
-    gesendet = False
+async def _followup_fragen(bot: Bot, schon_gesendet: bool = False) -> None:
+    """Stellt die tägliche Nachfrage an den Sub. Scheitert sie an einem
+    laufenden Mode, bevor in diesem Lauf irgendetwas an ihn rausging, wird der
+    Lauf zum Nachholen gemeldet (live 01.10.2026: unbeantwortete Stimmungsfrage).
+    `schon_gesendet`: eine Serien-Aufgabe ging in diesem Lauf bereits raus."""
+    gesendet = schon_gesendet
     # Follow-up an Sklave – Existenz-Check zuerst, der Kontext (Streak/Stimmung/
     # nicht_erledigt) wird nur geladen, wenn es überhaupt offene Followups gibt.
     tasks = await qdrant.get_open_followup_tasks()
@@ -1634,7 +1674,8 @@ async def _followup_fragen(bot: Bot) -> bool:
             sklave_mode = state.get_mode(sklave_chat)
             if sklave_mode not in ("chat", None):
                 logger.info("Follow-up übersprungen – Sklave in Mode '%s'", sklave_mode)
-                blockiert = not gesendet
+                if not gesendet:
+                    _melde_blockiert(sklave_chat)
                 break
             try:
                 # Zeitbezug: an welchem Tag war die Aufgabe gedacht? (Followup kommt meist
@@ -1653,7 +1694,8 @@ async def _followup_fragen(bot: Bot) -> bool:
                 # einen Flow begonnen oder ein Safeword gesendet haben.
                 if state.is_paused() or state.get_mode(sklave_chat) not in ("chat", None):
                     logger.info("Follow-up nach Generierung verworfen – Pause/Mode im LLM-Fenster geändert.")
-                    blockiert = not gesendet and not state.is_paused()
+                    if not gesendet and not state.is_paused():
+                        _melde_blockiert(sklave_chat)
                     break
                 from bot.handlers import followup_response
                 # „Ich sehe alles"-Sticker gelegentlich vor der Kontroll-Frage
@@ -1677,10 +1719,43 @@ async def _followup_fragen(bot: Bot) -> bool:
                 logger.info("Follow-up gesendet für Task: %s", point_id)
             except Exception as e:
                 logger.exception("Fehler beim Follow-up für Task %s", point_id)
-    return blockiert
 
 
 @_job_guard
+async def nachhol_tick_job(bot: Bot) -> None:
+    """Holt vorgemerkte Einmal-Jobs nach (s. _nachholbar), sobald der Chat frei
+    ist – nur im Abendfenster NACHHOL_FENSTER und höchstens EIN Job pro Tick,
+    damit nach einem langen Flow keine Nachrichten-Salve kommt."""
+    pid = paare.aktueller_kontext()
+    jetzt = datetime.now(timezone.utc)
+    for schluessel, e in list(_nachhol.items()):
+        if schluessel[0] == pid and jetzt - e["seit"] > timedelta(hours=e["max_stunden"]):
+            _nachhol.pop(schluessel, None)
+            logger.info("Nachholen von %s aufgegeben – Chat blieb zu lange belegt.", schluessel[1])
+    offen = sorted(((k, e) for k, e in _nachhol.items() if k[0] == pid),
+                   key=lambda ke: ke[1]["seit"])
+    if not offen:
+        return
+    if not zeiten.ist_im_fenster(datetime.now(ZoneInfo(config.TIMEZONE)), [config.NACHHOL_FENSTER]):
+        return
+    for schluessel, e in offen:
+        state.clear_if_stale(e["chat"])
+        if state.get_mode(e["chat"]) not in ("chat", None):
+            continue
+        logger.info("Nachhol-Lauf: %s", schluessel[1])
+        token = _nachhol_lauf.set(True)
+        try:
+            await e["fn"](bot)
+        except Exception:
+            _nachhol.pop(schluessel, None)   # kein Fehler-Dauerfeuer bis zur Frist
+            raise
+        finally:
+            _nachhol_lauf.reset(token)
+        return
+
+
+@_job_guard
+@_nachholbar(max_stunden=5)
 async def tiny_task_vorschlag_job(bot: Bot) -> None:
     """Abendlicher Tiny-Task-Vorschlag an die Domina."""
     logger.info("Tiny-Task-Vorschlag-Job gestartet.")
@@ -1688,6 +1763,7 @@ async def tiny_task_vorschlag_job(bot: Bot) -> None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=5)
 async def rollenspiel_vorschlag_job(bot: Bot) -> None:
     """Fr+Sa 18:00 – schlägt passendes Rollenspiel-Szenario vor wenn keines aktiv."""
     from bot.handlers.rollenspiel import SZENARIEN_BIBLIOTHEK
@@ -1765,6 +1841,7 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=26)
 async def lernkurve_job(bot: Bot) -> None:
     """Alle 2 Wochen (gerade ISO-Wochen) – Analyse der Lernkurve an Domina."""
     if not _zweiwochen_takt():
@@ -1825,6 +1902,7 @@ async def stimmung_job(bot: Bot) -> None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=26)
 async def ziel_erinnerung_job(bot: Bot) -> None:
     from bot.handlers.ziele import send_ziel_erinnerung
     # Bisher der einzige Domina-Send-Job ganz ohne Flow-Check (Trace 06.07.)
@@ -1891,6 +1969,7 @@ Zwei bis vier Sätze. Kein [AUFGABE: ...] Tag."""
 
 
 @_job_guard
+@_nachholbar(max_stunden=26)
 async def wochenplanung_job(bot: Bot) -> None:
     """Sonntags 10:00 – automatischer Wochenplan für die Domina."""
     from bot.handlers import wochenplanung
@@ -1921,6 +2000,7 @@ async def wochenplanung_job(bot: Bot) -> None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=26)
 async def kommentar_analyse_job(bot: Bot) -> None:
     """Wöchentlich – analysiert Domina-Kommentare und aktualisiert Persönlichkeitsprofil."""
     if _flow_aktiv(paare.dom_chat_id(), "Kommentar-Analyse"):
@@ -2001,6 +2081,7 @@ async def tiny_task_feedback_job(bot: Bot) -> None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=26)
 async def resurface_job(bot: Bot) -> None:
     """Wöchentlich – holt einen positiv bewerteten Task aus ~3 Monaten zurück."""
     try:
@@ -2421,6 +2502,7 @@ def _kurzbeschreibung_patch(profile_user: str, gruppe: list) -> str:
 
 
 @_job_guard
+@_nachholbar(max_stunden=26)
 async def profil_pflege_job(bot: Bot) -> None:
     """Alle 2 Wochen (gerade ISO-Wochen) – Auto-Profil-Pflege."""
     if not _zweiwochen_takt():
@@ -2434,6 +2516,7 @@ async def profil_pflege_job(bot: Bot) -> None:
 
 
 @_job_guard
+@_nachholbar(max_stunden=26)
 async def coach_reflexion_job(bot: Bot) -> None:
     """Alle 2 Wochen – Coach reflektiert ueber sich selbst.
 

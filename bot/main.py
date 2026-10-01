@@ -34,7 +34,7 @@ from bot.handlers import (
 
 from bot.handlers import serie_handler
 from bot.scheduler.followup import (
-    followup_job, followup_nachhol_job, stimmung_job, ziel_erinnerung_job, training_job,
+    followup_job, nachhol_tick_job, stimmung_job, ziel_erinnerung_job, training_job,
     lernkurve_job, rollenspiel_vorschlag_job, wochenplanung_job, geheimnis_job,
     kommentar_analyse_job, training_erinnerung_job, tiny_task_feedback_job,
     tiny_task_vorschlag_job, resurface_job, lerntagebuch_job,
@@ -812,6 +812,10 @@ async def post_init(application: Application) -> None:
     _sc_h, _sc_m = config.hm(config.STILLE_CHECKIN_TIME)
     scheduler.add_job(_pro_paar(stille_checkin_job), "cron", hour=_sc_h, minute=_sc_m,
                       args=[application.bot], id="stille_checkin", replace_existing=True)
+    # Nachhol-Tick für blockierte Einmal-Jobs – bewusst :05/:35, nie in derselben
+    # Minute wie die regulären Cron-Jobs (:00/:30).
+    scheduler.add_job(_pro_paar(nachhol_tick_job), "cron", minute="5,35",
+                      args=[application.bot], id="nachhol_tick", replace_existing=True)
     scheduler.add_job(_pro_paar(blitz_check_job), "interval", minutes=30,
                       args=[application.bot], id="blitz_check", replace_existing=True)
     scheduler.add_job(_pro_paar(blitz_ablauf_job), "interval", minutes=5,
@@ -1036,13 +1040,6 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
 
     scheduler.add_job(_fuer_paar(followup_job, pid), "cron", hour=hour, minute=minute,
                       args=[bot], id=f"daily_followup_p{pid}", replace_existing=True)
-    # Nachhol-Läufe (+1/+2/+3 h): greifen nur, wenn der Hauptlauf an einem
-    # laufenden Mode des Subs scheiterte (unbeantwortete Stimmungsfrage).
-    for stunden in (1, 2, 3):
-        gesamt = hour * 60 + minute + stunden * 60
-        scheduler.add_job(_fuer_paar(followup_nachhol_job, pid), "cron",
-                          hour=(gesamt // 60) % 24, minute=gesamt % 60, args=[bot],
-                          id=f"followup_nachholen{stunden}_p{pid}", replace_existing=True)
     if config.TRAINING_ENABLED:
         scheduler.add_job(_fuer_paar(training_job, pid), "cron", day_of_week="tue,thu",
                           hour=(training_total // 60) % 24, minute=training_total % 60,

@@ -152,6 +152,9 @@ BLITZ_MIN_ABSTAND_TAGE = int(os.getenv("BLITZ_MIN_ABSTAND_TAGE", "2"))
 # läuft alle 30 Min im Fenster ∩ kinderfreie Zeiten; Throttle-Anker
 # spiel_impuls_letzte_am im Sklaven-Profil.
 SPIEL_IMPULS = os.getenv("SPIEL_IMPULS", "") == "1"
+# Nachholen blockierter Einmal-Jobs (scheduler/followup.nachhol_tick_job): nur in
+# diesem Fenster, damit nichts nachts oder am Vormittag nachgereicht wird.
+NACHHOL_FENSTER = os.getenv("NACHHOL_FENSTER", "18:00-23:00")
 SPIEL_IMPULS_FENSTER = os.getenv("SPIEL_IMPULS_FENSTER", "09:00-21:00")
 SPIEL_IMPULS_CHANCE = float(os.getenv("SPIEL_IMPULS_CHANCE", "0.04"))    # pro 30-Min-Check
 SPIEL_IMPULS_MIN_ABSTAND_TAGE = int(os.getenv("SPIEL_IMPULS_MIN_ABSTAND_TAGE", "1"))
