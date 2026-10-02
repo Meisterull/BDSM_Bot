@@ -264,7 +264,8 @@ async def _sende_arc_vorschlag(bot: Bot, arc_tag: dict, domina_profile: dict, sk
 
     vorschlag = t(
         "ARC_TAG_VORSCHLAG", thema=arc_thema, tag=tag_nr, gesamt=arc_gesamt,
-        titel=titel, kategorie=kat, aufgabe=aufgabe, hinweis=angepasst_hinweis,
+        titel=titel, kategorie=kategorie_logik.anzeige_name(kat), aufgabe=aufgabe,
+        hinweis=angepasst_hinweis,
     )
     if _nach_llm_verworfen(paare.dom_chat_id(), "Arc-Tag-Vorschlag"):
         return

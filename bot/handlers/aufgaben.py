@@ -53,16 +53,21 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE,
     tasks_sorted = sorted(tasks, key=lambda t: t.get("erteilt_am", ""), reverse=True)
     top = tasks_sorted[:10]
 
-    filter_hint = f" _(Filter: {aktive_kategorie})_" if aktive_kategorie else ""
+    # anzeige_name/md_einbett_sicher: Kategorienamen mit Unterstrich
+    # („Paddle_Training") und Freitext standen roh im Markdown – je nach Anzahl
+    # der Unterstriche brach das Parsing (Klartext-Fallback) oder die Liste
+    # wurde still zu Kursiv-Spans verstümmelt.
+    filter_hint = (f" _(Filter: {kategorie_logik.anzeige_name(aktive_kategorie)})_"
+                   if aktive_kategorie else "")
     lines = [t("AUFGABEN_LISTE_TITEL", filter=filter_hint)]
     if zaehler:
         lines.append(zaehler)
 
     for i, task in enumerate(top, 1):
-        aufgabe = task.get("aufgabe", "–")
-        gefuehl = task.get("gefuehl") or "nicht angegeben"
+        aufgabe = telegram_helper.md_einbett_sicher(task.get("aufgabe", "–"))
+        gefuehl = telegram_helper.md_einbett_sicher(task.get("gefuehl") or "") or "nicht angegeben"
         erteilt = task.get("erteilt_am", "")[:10]
-        kategorie = task.get("kategorie", "allgemein")
+        kategorie = kategorie_logik.anzeige_name(task.get("kategorie", "allgemein"))
         serie = " 🔄" if task.get("serie_id") else ""
         lines.append(t(
             "AUFGABEN_EINTRAG", nr=i, aufgabe=aufgabe, serie=serie,
@@ -72,7 +77,7 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE,
     # Kategorie-Filter Buttons (Pool: Katalog + eigene Kategorien)
     lines.append(t("AUFGABEN_FILTER_KOPF"))
     for kat in await kategorie_logik.alle_kategorien_async():
-        lines.append(f"`/aufgaben_{config.kat_to_cmd(kat)}` = {kat}")
+        lines.append(f"`/aufgaben_{config.kat_to_cmd(kat)}` = {kategorie_logik.anzeige_name(kat)}")
 
     await telegram_helper.reply_markdown_safe(update.message, "\n".join(lines))
 
