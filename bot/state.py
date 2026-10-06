@@ -20,11 +20,12 @@ _state: dict = {}
 # Followup-/Stimmungs-Jobs (siehe eval-6). Nach dieser Zeit ohne Abschluss wird
 # der Mode automatisch auf "chat" zurückgesetzt.
 STALE_MODE_SECONDS = int(os.getenv("STALE_MODE_SECONDS", "1800"))  # 30 Min
-# Die Stimmungsfrage wartet nur passiv auf eine Antwort und blockiert keinen
-# UI-Flow – sie darf länger offen bleiben, damit eine späte Antwort noch als
-# Stimmung erfasst wird (Frage 16:00 → Antwort soll bis zum Tiny-Task-Vorschlag
+# Fenster, in dem eine GETIPPTE Nachricht noch als Antwort auf die
+# Stimmungsfrage zählt (Frage 16:00 → Antwort soll bis zum Tiny-Task-Vorschlag
 # 18:00 einfließen). Log-Befund 05.07.: Antwort nach 73 min wurde als normaler
-# Chat geroutet und ging als Stimmungs-Datum verloren.
+# Chat geroutet und ging als Stimmungs-Datum verloren. Seit 06.10.2026 ist das
+# nur noch eine Merkmarke (stimmung_offen_bis), kein Mode mehr – die offene
+# Frage blockiert keine Jobs.
 STALE_STIMMUNG_SECONDS = int(os.getenv("STALE_STIMMUNG_SECONDS", "7200"))  # 2 Std
 # Seit 06.10.2026 belegt die 21:30-Feedback-Frage den Chat nicht mehr (nur
 # Knöpfe, die jeden Stale-Reset überleben). Den Mode gibt es nur noch nach dem
@@ -201,6 +202,8 @@ FLOW_STATE_KEYS = (
     "skill_edit_kategorie",
     "tiny_task_feedback_id",
     "herrin_frage_task_id",
+    # Offene Stimmungsfrage (Merkmarke statt Mode): /abbrechen räumt sie mit ab
+    "stimmung_offen_bis",
     "privileg_aktiv_id",
     # Stille-Check-in: offene Rückfrage (aufgaben/nervt)
     "stille_rueckfrage",

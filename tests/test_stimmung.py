@@ -195,8 +195,108 @@ def test_satzanfaenge_dedupe_und_kurzfilter():
     assert _fp._satzanfaenge(["", None]) == []
 
 
+async def test_frage_ohne_mode_knopf_und_getippte_antwort():
+    """Die Stimmungsfrage belegt den Chat nicht mehr: fünf Knöpfe + Merkmarke.
+    Ein Tipp speichert die Stimmung (ausführlicher Wert, nicht das Etikett),
+    löst Reaktion und Dom-Hinweis aus; ein zweiter Tipp verbucht nichts doppelt.
+    Eine getippte Nachricht zählt im Fenster weiter als Antwort – danach nicht mehr."""
+    from unittest.mock import MagicMock
+    from bot import state as _state
+    sub = _config.SKLAVE_CHAT_ID
+
+    class _Knopf:                      # telegram ist lokal ein Stub (s. Kopf)
+        def __init__(self, text, callback_data=None):
+            self.text, self.callback_data = text, callback_data
+
+    class _Tasten:
+        def __init__(self, zeilen):
+            self.inline_keyboard = zeilen
+
+    orig = (_st.InlineKeyboardButton, _st.InlineKeyboardMarkup, _st.qdrant.save_training,
+            _st.qdrant.get_recent_stimmung_eintraege, _st.grok.simple, _st.telegram_helper.send_domina,
+            _config.STIMMUNG_ENABLED)
+    _st.InlineKeyboardButton, _st.InlineKeyboardMarkup = _Knopf, _Tasten
+    gespeichert = []
+    _st.qdrant.save_training = AsyncMock(side_effect=lambda rolle, daten: gespeichert.append(daten))
+    _st.qdrant.get_recent_stimmung_eintraege = AsyncMock(return_value=[])
+    _st.grok.simple = AsyncMock(return_value="Eine frische Frage an dich?")
+    _st.telegram_helper.send_domina = AsyncMock()
+    _config.STIMMUNG_ENABLED = True
+
+    def _tap(daten, mid=77):
+        upd = MagicMock()
+        upd.effective_chat.id = sub
+        upd.callback_query.data = daten
+        upd.callback_query.answer = AsyncMock()
+        upd.callback_query.edit_message_reply_markup = AsyncMock()
+        upd.callback_query.message.message_id = mid
+        upd.callback_query.message.reply_text = AsyncMock()
+        return upd
+
+    def _text(text):
+        upd = MagicMock()
+        upd.effective_chat.id = sub
+        upd.message.text = text
+        upd.message.reply_text = AsyncMock()
+        return upd
+
+    try:
+        _state._state.clear()
+        bot = MagicMock()
+        bot.send_message = AsyncMock()
+        await _st.frage_stellen(bot)
+        assert _state.get_mode(sub) in ("chat", None), "die Frage darf den Chat nicht belegen"
+        assert _st.wartet_auf_antwort(sub)
+        tasten = bot.send_message.call_args.kwargs["reply_markup"]
+        daten = [k.callback_data for zeile in tasten.inline_keyboard for k in zeile]
+        assert daten == [f"stimmung:{n}" for n in "12345"], daten
+        assert [d["typ"] for d in gespeichert] == ["stimmung_frage"]
+
+        # Ein Tipp: Stimmung gespeichert, Reaktion + Hinweis, Marke weg
+        ctx = MagicMock()
+        ctx.bot = bot
+        u = _tap("stimmung:4")
+        await _st.callback_button(u, ctx)
+        stimmungen = [d for d in gespeichert if d["typ"] == "stimmung"]
+        assert stimmungen == [{"typ": "stimmung", "zusammenfassung": t("STIMMUNG_WERT_4")}], stimmungen
+        assert t("STIMMUNG_WERT_4") != t("BUTTON_STIMMUNG_4")
+        u.callback_query.message.reply_text.assert_awaited_once()
+        _st.telegram_helper.send_domina.assert_awaited_once()
+        assert not _st.wartet_auf_antwort(sub) and _state.get_mode(sub) in ("chat", None)
+
+        # Zweiter Tipp auf dieselbe Frage und ein unbekannter Wert: nichts dazu
+        await _st.callback_button(_tap("stimmung:1"), ctx)
+        await _st.callback_button(_tap("stimmung:9", mid=78), ctx)
+        assert len([d for d in gespeichert if d["typ"] == "stimmung"]) == 1
+
+        # Fremder Chat darf nicht für ihn tippen
+        fremd = _tap("stimmung:2", mid=79)
+        fremd.effective_chat.id = _config.DOMINA_CHAT_ID
+        await _st.callback_button(fremd, ctx)
+        assert len([d for d in gespeichert if d["typ"] == "stimmung"]) == 1
+
+        # Getippte Antwort im Fenster zählt weiter als Stimmung …
+        await _st.frage_stellen(bot)
+        assert _st.wartet_auf_antwort(sub)
+        await _st.handle_antwort(_text("müde, aber zufrieden"), ctx)
+        assert [d["zusammenfassung"] for d in gespeichert if d["typ"] == "stimmung"][-1] == "müde, aber zufrieden"
+        assert not _st.wartet_auf_antwort(sub)
+
+        # … nach Ablauf des Fensters nicht mehr
+        await _st.frage_stellen(bot)
+        _state.get(sub)["stimmung_offen_bis"] = 1.0
+        assert not _st.wartet_auf_antwort(sub)
+        assert "stimmung_offen_bis" not in _state.get(sub)
+    finally:
+        _state._state.clear()
+        (_st.InlineKeyboardButton, _st.InlineKeyboardMarkup, _st.qdrant.save_training,
+         _st.qdrant.get_recent_stimmung_eintraege, _st.grok.simple, _st.telegram_helper.send_domina,
+         _config.STIMMUNG_ENABLED) = orig
+
+
 def main():
     for coro in (
+        test_frage_ohne_mode_knopf_und_getippte_antwort,
         test_alle_versuche_zu_aehnlich_faellt_auf_standardtext,
         test_frische_frage_wird_mit_richtung_zurueckgegeben,
         test_verworfener_kandidat_geht_in_die_naechste_sperrliste,

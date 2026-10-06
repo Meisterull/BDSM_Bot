@@ -306,6 +306,17 @@ MESSAGES = {
     "RUECKBLICK_PREFIX": "📊 *Dein Rückblick:*\n\n{analyse}",
     "TINYTASK_WARTE": "💡 Einen Moment, ich erstelle einen Vorschlag...",
     "STIMMUNG_FRAGE": "Wie geht es dir gerade? Wie ist deine Stimmung? 🖤",
+    # Fünf Knöpfe unter der Frage; gespeichert wird der ausführlichere WERT.
+    "BUTTON_STIMMUNG_1": "😞 mies",
+    "BUTTON_STIMMUNG_2": "😕 mau",
+    "BUTTON_STIMMUNG_3": "😐 okay",
+    "BUTTON_STIMMUNG_4": "🙂 gut",
+    "BUTTON_STIMMUNG_5": "🔥 aufgedreht",
+    "STIMMUNG_WERT_1": "mies – niedergeschlagen, kaum Energie",
+    "STIMMUNG_WERT_2": "mau – eher gedämpft, nicht so richtig da",
+    "STIMMUNG_WERT_3": "okay – neutral, nichts Besonderes",
+    "STIMMUNG_WERT_4": "gut – entspannt und zufrieden",
+    "STIMMUNG_WERT_5": "aufgedreht – wach und voller Energie",
     "STIMMUNG_HINWEIS_AN_DOMINA": "💭 Stimmung deines Sklaven: _{antwort}_\n\n{hinweis}",
     # --- Button-Labels -----------------------------------------------------------
     "BUTTON_ANNEHMEN": "✅ Annehmen",

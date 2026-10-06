@@ -532,6 +532,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     logger.info("Followup-State aus Qdrant wiederhergestellt (Task %s)", point_id)
                     await followup_response.handle(update, context)
                     return
+        # Offene Stimmungsfrage (Merkmarke, kein Mode – s. handlers/stimmung):
+        # die erste freie Nachricht im Fenster ist die Antwort darauf.
+        if mode == "chat" and stimmung.wartet_auf_antwort(chat_id):
+            await stimmung.handle_antwort(update, context)
+            return
         await sklave.handle(update, context)
 
 
@@ -935,6 +940,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(privileg.callback_einloesen,     pattern=r"^privileg:einloesen:"))
     app.add_handler(CallbackQueryHandler(privileg.callback_entscheidung,  pattern=r"^privileg:(bestaetigen|verweigern):"))
     app.add_handler(CallbackQueryHandler(tiny_task_feedback.callback_button, pattern=r"^tinyfb:"))
+    app.add_handler(CallbackQueryHandler(stimmung.callback_button, pattern=r"^stimmung:"))
     app.add_handler(CallbackQueryHandler(stille_checkin.callback,           pattern=r"^stille:"))
     app.add_handler(CallbackQueryHandler(wuerfel.callback,                pattern=r"^wuerfel:"))
     app.add_handler(CallbackQueryHandler(wette.callback,                  pattern=r"^wette:"))

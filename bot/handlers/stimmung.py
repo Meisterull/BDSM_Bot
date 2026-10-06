@@ -2,11 +2,20 @@
 Stimmungs-Tracking.
 Sklave kann jederzeit /stimmung schreiben wenn er sich mitteilen möchte.
 Kein täglicher aufdringlicher Job mehr – nur wenn STIMMUNG_ENABLED=true.
+
+OHNE CHAT-MODE (06.10.2026): Die Frage setzte früher den Mode 'stimmung' und
+hielt ihn bis zu 2 h. Blieb sie unbeantwortet, galt der Sub-Chat so lange als
+belegt – der Spiel-Impuls fiel jeden Nachmittag aus, das Follow-up des Tages
+auch. Jetzt trägt die Frage fünf Stimmungs-Knöpfe (ein Tipp genügt), und für
+eine GETIPPTE Antwort gibt es nur noch eine Merkmarke im State
+(`stimmung_offen_bis`): Die nächste freie Nachricht im Fenster zählt wie
+bisher als Stimmung, aber kein Job sieht den Chat mehr als belegt an.
 """
 import difflib
 import logging
 import random
-from telegram import Update, Bot
+import time
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
@@ -41,6 +50,36 @@ def _zu_aehnlich(frage: str, vorherige: list[str]) -> bool:
 
 
 _VERSUCHE = 3
+
+# Merkmarke statt Mode: bis wann eine getippte Nachricht als Stimmungs-Antwort
+# zählt (Dauer = STALE_STIMMUNG_SECONDS, wie früher der Mode).
+_OFFEN = "stimmung_offen_bis"
+_STUFEN = ("1", "2", "3", "4", "5")
+
+
+def _tasten() -> InlineKeyboardMarkup:
+    """Fünf Stimmungen, von unten nach oben. Gespeichert wird nicht das Knopf-
+    Etikett, sondern der ausführlichere STIMMUNG_WERT_<n> – der steht später in
+    den Prompts (Tiny-Task, Dossier) und soll für sich verständlich sein."""
+    knoepfe = [InlineKeyboardButton(t(f"BUTTON_STIMMUNG_{n}"), callback_data=f"stimmung:{n}") for n in _STUFEN]
+    return InlineKeyboardMarkup([knoepfe[:3], knoepfe[3:]])
+
+
+def _merke_offen(chat_id: str) -> None:
+    state.get(chat_id)[_OFFEN] = time.time() + state.STALE_STIMMUNG_SECONDS
+
+
+def wartet_auf_antwort(chat_id: str) -> bool:
+    """Steht eine Stimmungsfrage offen, deren Fenster noch läuft? Für die
+    Nachrichten-Weiche in main.py (nur im freien Chat, nach allen Modes)."""
+    s = state.get(chat_id)
+    bis = s.get(_OFFEN)
+    if not bis:
+        return False
+    if time.time() > bis:
+        s.pop(_OFFEN, None)
+        return False
+    return True
 
 
 def _richtungs_kandidaten(verbrauchte: set[str]) -> list[str]:
@@ -129,10 +168,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     async with telegram_helper.typing_action(context.bot, chat_id):
         frage, richtung = await _frage_text()
-    await update.message.reply_text(frage)
-    # Mode erst NACH erfolgreichem Senden – ein Sendefehler darf keinen
-    # Geister-Stimmungs-Modus hinterlassen (Trace 06.07., Lücke 6).
-    state.set_mode(chat_id, "stimmung")
+    await update.message.reply_text(frage, reply_markup=_tasten())
+    # Merkmarke erst NACH erfolgreichem Senden – ein Sendefehler darf keine
+    # offene Frage hinterlassen, die es nie gab (Trace 06.07., Lücke 6).
+    _merke_offen(chat_id)
     # In die Chat-History – sonst kennt die Herrin im nächsten freien Chat-Turn
     # ihre eigene Frage nicht und deutet seine Folge-Nachricht gegen den Kontext
     # des VORTAGES (Befund 02.07.).
@@ -159,22 +198,49 @@ async def frage_stellen(bot: Bot) -> None:
     if state.is_paused() or s.get("mode", "chat") != "chat":
         logger.info("Stimmungsfrage nach Generierung verworfen – Pause/Mode geändert.")
         return
-    await bot.send_message(chat_id=sklave_chat, text=frage)
-    # Mode/Sperr-Liste erst NACH erfolgreichem Senden – ein Sendefehler um 16:00
-    # hielte sonst den Stimmungs-Modus bis zu 2h für eine nie gestellte Frage
-    # und würde Followup+Serie des Tages blocken (Trace 06.07., Lücke 6).
-    state.set_mode(sklave_chat, "stimmung")
+    await bot.send_message(chat_id=sklave_chat, text=frage, reply_markup=_tasten())
+    # Merkmarke/Sperr-Liste erst NACH erfolgreichem Senden (Trace 06.07.,
+    # Lücke 6). BEWUSST kein set_mode: Der Chat bleibt frei, Spiel-Impuls und
+    # Follow-up laufen weiter (s. Modulkopf).
+    _merke_offen(sklave_chat)
     state.add_message(sklave_chat, "assistant", frage)  # s. Kommentar in start()
     await _merke_frage(frage, richtung)
     logger.info("Stimmungsfrage gesendet.")
 
 
-async def handle_antwort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Verarbeitet die Stimmungsantwort."""
+async def callback_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ein Tipp auf einen der fünf Stimmungs-Knöpfe."""
+    query = update.callback_query
+    await query.answer()
     chat_id = str(update.effective_chat.id)
-    antwort = update.message.text.strip()
+    if chat_id != paare.sub_chat_id():
+        return
+    stufe = query.data.split(":", 1)[1]
+    if stufe not in _STUFEN:
+        return
+    await query.edit_message_reply_markup(reply_markup=None)
+    # Doppel-Tipp: Telegram kann den zweiten Tap noch zustellen, bevor die
+    # Knöpfe weg sind – je Frage-Nachricht nur EINE Stimmung verbuchen.
+    s = state.get(chat_id)
+    if s.get("stimmung_knopf_mid") == query.message.message_id:
+        return
+    s["stimmung_knopf_mid"] = query.message.message_id
+    await _antwort_verarbeiten(context.bot, chat_id, t(f"STIMMUNG_WERT_{stufe}"), query.message.reply_text)
+    logger.info("Stimmung per Knopf erfasst (Stufe %s).", stufe)
 
-    state.set_mode(chat_id, "chat")
+
+async def handle_antwort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Verarbeitet eine getippte Stimmungsantwort (Merkmarke offen, s. main.py)."""
+    chat_id = str(update.effective_chat.id)
+    await _antwort_verarbeiten(context.bot, chat_id, update.message.text.strip(), update.message.reply_text)
+
+
+async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten) -> None:
+    """Gemeinsamer Weg für Knopf und Text: speichern, In-Persona-Reaktion,
+    Hinweis an die Dom-Seite. `antworten` ist reply_text der passenden Nachricht."""
+    state.get(chat_id).pop(_OFFEN, None)
+    if state.get_mode(chat_id) == "stimmung":      # Altbestand aus der Zeit mit Mode
+        state.set_mode(chat_id, "chat")
     state.add_message(chat_id, "user", antwort)
 
     # Stimmung dauerhaft speichern, damit sie in Prompts/Dossier einfließt
@@ -190,7 +256,7 @@ async def handle_antwort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception as e:
         logger.error("Fehler bei Stimmungs-Reaktion: %s", e)
         reaktion = t("FALLBACK_STIMMUNG_REAKTION")
-    await update.message.reply_text(reaktion)
+    await antworten(reaktion)
     state.add_message(chat_id, "assistant", reaktion)
 
     # Natürlicher Hinweis an die Domina (Coach-Stimme, kein Bericht-Format, kein Pathos)
@@ -205,7 +271,7 @@ async def handle_antwort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         hinweis = await grok.simple(fp.nutzer_text("Seine Stimmungs-Nachricht", antwort), system=system)
         await telegram_helper.send_domina(
-            context.bot,
+            bot,
             t("STIMMUNG_HINWEIS_AN_DOMINA", antwort=antwort, hinweis=hinweis),
             parse_mode="Markdown",
         )

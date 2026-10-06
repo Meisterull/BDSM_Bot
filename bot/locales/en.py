@@ -308,6 +308,17 @@ MESSAGES = {
     "RUECKBLICK_PREFIX": "📊 *Your review:*\n\n{analyse}",
     "TINYTASK_WARTE": "💡 One moment, I'm creating a suggestion...",
     "STIMMUNG_FRAGE": "How are you doing right now? What's your mood? 🖤",
+    # Five buttons below the question; the longer WERT text is what gets stored.
+    "BUTTON_STIMMUNG_1": "😞 rough",
+    "BUTTON_STIMMUNG_2": "😕 meh",
+    "BUTTON_STIMMUNG_3": "😐 okay",
+    "BUTTON_STIMMUNG_4": "🙂 good",
+    "BUTTON_STIMMUNG_5": "🔥 fired up",
+    "STIMMUNG_WERT_1": "rough – down, hardly any energy",
+    "STIMMUNG_WERT_2": "meh – rather subdued, not quite there",
+    "STIMMUNG_WERT_3": "okay – neutral, nothing special",
+    "STIMMUNG_WERT_4": "good – relaxed and content",
+    "STIMMUNG_WERT_5": "fired up – wide awake and full of energy",
     "STIMMUNG_HINWEIS_AN_DOMINA": "💭 Your slave's mood: _{antwort}_\n\n{hinweis}",
     # --- Button-Labels -----------------------------------------------------------
     "BUTTON_ANNEHMEN": "✅ Accept",
