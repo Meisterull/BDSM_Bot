@@ -1193,9 +1193,16 @@ MESSAGES = {
         "💬 *Kurze Rückfrage zum heutigen Vorschlag*\n\n"
         "Vorschlag (Kategorie: _{kategorien}_):\n"
         "_{inhalt}_\n\n"
-        "Du hast ihn (noch) nicht weitergeleitet. Wähle direkt oder schreibe eine Begründung "
-        "als Text (z.B. 'zu komplex', 'falsche Stimmung')."
+        "Du hast ihn (noch) nicht weitergeleitet. Ein Tipp genügt:"
     ),
+    "BUTTON_TINYFB_NEIN": "👎 Passte nicht",
+    "BUTTON_TINYFB_G_THEMA": "Thema reizt mich nicht",
+    "BUTTON_TINYFB_G_AUFWAND": "Zu aufwendig",
+    "BUTTON_TINYFB_G_LAHM": "Zu harmlos",
+    "BUTTON_TINYFB_TEXT": "✍️ Eigenen Grund schreiben",
+    "BUTTON_TINYFB_ZURUECK": "← Zurück",
+    "TINYFB_GRUND_SCHREIBEN": "Schreib mir den Grund in einem Satz. Doch nicht? Tipp einfach einen der Knöpfe oben oder schick /abbrechen.",
+    "TINYFB_GERADE_BELEGT": "Gerade läuft noch etwas anderes – schließ das erst ab oder nimm einen der Knöpfe.",
     "TINYFB_KEIN_OFFENER": "Kein offener Tiny-Task-Vorschlag der letzten 72h gefunden.",
     # --- Stille-Check-in 🔕 (handlers/stille_checkin) ------------------------
     # Fallback-Frage, wenn die Coach-Stimme (LLM) ausfällt oder unbrauchbar ist.

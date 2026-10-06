@@ -4,6 +4,15 @@ Tiny-Task Feedback Handler.
 Wenn die Domina einen Tiny-Task-Vorschlag nicht weitergeleitet hat, fragt der Bot
 abends nach dem Grund. Antwort wird in der knowledge_base am Vorschlag gespeichert
 und fließt in zukünftige Vorschläge als 'aus Fehlern lernen'-Kontext ein.
+
+EIN-TIPP-ABLAUF (06.10.2026): Die Frage belegt den Chat NICHT mehr. Vorher
+setzte sie den Mode 'tiny_task_feedback' und wartete stundenlang auf einen
+getippten Grund – blieb sie unbeantwortet, galt der Domina-Chat bis zum
+Stale-Reset als belegt (Coach-Impuls fiel jeden Abend aus), und jede andere
+Nachricht in der Zeit lief Gefahr, als Ablehnungsgrund verbucht zu werden.
+Jetzt: Knöpfe „Übernommen / Gut, nicht heute / Passte nicht"; „Passte nicht"
+klappt drei feste Gründe auf. Der Mode entsteht nur noch, wenn sie
+ausdrücklich „Eigenen Grund schreiben" antippt.
 """
 import logging
 
@@ -21,6 +30,44 @@ logger = logging.getLogger(__name__)
 _BG_TASKS: set = set()
 
 # Kein Modul-Level t() (Review D8/N8): t() ist bewusst per-Paar-dynamisch.
+
+# Feste Ablehnungsgründe: Aktion → (Text-Key, Kategorie-Signal verbuchen?).
+# Nur „Thema" spricht gegen die KATEGORIEN; Aufwand und Intensität sind Kritik
+# am konkreten Vorschlag und sollen die Kategorie-Gewichtung nicht verzerren.
+_GRUENDE = {
+    "g_thema":   ("BUTTON_TINYFB_G_THEMA", True),
+    "g_aufwand": ("BUTTON_TINYFB_G_AUFWAND", False),
+    "g_lahm":    ("BUTTON_TINYFB_G_LAHM", False),
+}
+
+
+def _tasten_frage(point_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("BUTTON_UEBERNOMMEN"), callback_data=f"tinyfb:uebernommen:{point_id}")],
+        [InlineKeyboardButton(t("BUTTON_GUT_NICHT_HEUTE"), callback_data=f"tinyfb:gut:{point_id}")],
+        [InlineKeyboardButton(t("BUTTON_TINYFB_NEIN"), callback_data=f"tinyfb:nein:{point_id}")],
+    ])
+
+
+def _tasten_gruende(point_id: str) -> InlineKeyboardMarkup:
+    zeilen = [[InlineKeyboardButton(t(key), callback_data=f"tinyfb:{aktion}:{point_id}")]
+              for aktion, (key, _) in _GRUENDE.items()]
+    zeilen.append([InlineKeyboardButton(t("BUTTON_TINYFB_TEXT"), callback_data=f"tinyfb:text:{point_id}")])
+    zeilen.append([InlineKeyboardButton(t("BUTTON_TINYFB_ZURUECK"), callback_data=f"tinyfb:zurueck:{point_id}")])
+    return InlineKeyboardMarkup(zeilen)
+
+
+def _flow_beenden(point_id: str) -> None:
+    """Freitext-Mode nur zurücksetzen, wenn er noch UNSERER ist (und zu DIESEM
+    Vorschlag gehört) – ein später Tap auf einen alten Knopf darf keinen gerade
+    aktiven anderen Flow killen."""
+    chat = paare.dom_chat_id()
+    s = state.get(chat)
+    if s.get("tiny_task_feedback_id") not in (None, point_id):
+        return
+    if state.get_mode(chat) == "tiny_task_feedback":
+        state.set_mode(chat, "chat")
+    s.pop("tiny_task_feedback_id", None)
 
 
 async def _positives_feedback(point_id: str, action: str) -> str:
@@ -130,28 +177,21 @@ async def frage_stellen(bot, tiny_task_payload: dict) -> None:
     # Template in _…_ – ohne Ersetzung kippt die Marker-Parität fast täglich.
     kategorien_anzeige = ", ".join(kategorien).replace("_", " ")
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t("BUTTON_UEBERNOMMEN"), callback_data=f"tinyfb:uebernommen:{point_id}")],
-        [InlineKeyboardButton(t("BUTTON_GUT_NICHT_HEUTE"), callback_data=f"tinyfb:gut:{point_id}")],
-    ])
     await telegram_helper.send_domina(
         bot,
         t("TINYFB_FRAGE", kategorien=kategorien_anzeige, inhalt=inhalt),
         parse_mode="Markdown",
-        reply_markup=keyboard,
+        reply_markup=_tasten_frage(point_id),
     )
-    # Mode/ID erst NACH erfolgreichem Senden – sonst hinterlässt ein Sendefehler
-    # einen Geister-Modus, der die nächste Domina-Nachricht als Feedback-Grund
-    # fehlroutet (Trace 06.07., gleiches Muster wie followup_job vermeidet).
-    domina_s = state.get(paare.dom_chat_id())
-    domina_s["tiny_task_feedback_id"] = point_id
-    state.set_mode(paare.dom_chat_id(), "tiny_task_feedback")
+    # BEWUSST kein set_mode: Die Frage wartet in ihren Knöpfen, der Chat bleibt
+    # frei (s. Modulkopf). Den Freitext-Mode setzt erst der Knopf „Eigenen Grund
+    # schreiben" in callback_button.
 
 
 async def manuelle_frage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/tinyfb – verschickt die Rückfrage zum neuesten offenen Tiny-Task-Vorschlag
-    SOFORT über den laufenden Bot (wird also korrekt geloggt, State wird gesetzt →
-    auch ein getippter Freitext-Grund wird danach erkannt). Nur Domina."""
+    SOFORT über den laufenden Bot (wird also korrekt geloggt). Wie die abendliche
+    Frage: nur Knöpfe, kein Mode. Nur Domina."""
     chat_id = str(update.effective_chat.id)
     if chat_id != paare.dom_chat_id():
         return
@@ -163,7 +203,8 @@ async def manuelle_frage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def callback_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Inline-Button für Übernommen / Gut."""
+    """Inline-Knöpfe der Rückfrage: Übernommen / Gut / Passte nicht → fester
+    Grund oder (nur auf Wunsch) Freitext."""
     query = update.callback_query
     await query.answer()
     _, action, point_id = query.data.split(":", 2)
@@ -176,24 +217,51 @@ async def callback_button(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not eintrag or eintrag.get("status", "vorgeschlagen") != "vorgeschlagen":
         await query.edit_message_reply_markup(reply_markup=None)
         return
-    await query.edit_message_reply_markup(reply_markup=None)
+
+    # Zwischenschritte: nur die Knopfreihe tauschen, nichts verbuchen.
+    if action == "nein":
+        await query.edit_message_reply_markup(reply_markup=_tasten_gruende(point_id))
+        return
+    if action == "zurueck":
+        _flow_beenden(point_id)
+        await query.edit_message_reply_markup(reply_markup=_tasten_frage(point_id))
+        return
+    if action == "text":
+        # Der EINZIGE Weg in den Freitext-Mode: sie will ausdrücklich schreiben.
+        # Die Knöpfe bleiben stehen – überlegt sie es sich anders, reicht ein Tipp.
+        chat = paare.dom_chat_id()
+        if state.get_mode(chat) not in ("chat", None, "tiny_task_feedback"):
+            await query.message.reply_text(t("TINYFB_GERADE_BELEGT"))
+            return
+        state.get(chat)["tiny_task_feedback_id"] = point_id
+        state.set_mode(chat, "tiny_task_feedback")
+        await query.message.reply_text(t("TINYFB_GRUND_SCHREIBEN"))
+        return
 
     if action in ("uebernommen", "gut"):
         antwort = await _positives_feedback(point_id, action)
+    elif action in _GRUENDE:
+        key, kategorie_signal = _GRUENDE[action]
+        grund = t(key)
+        await qdrant.mark_tiny_task_status(point_id, "abgelehnt", grund=grund)
+        if kategorie_signal:
+            await kategorie_logik.record_domina_praeferenz(eintrag.get("kategorien", []), "abgelehnt")
+        # Bewusst KEINE Regel-Ableitung (_vorschlag_aus_ablehnung) aus einem
+        # festen Grund: ein Standardsatz trägt keine verallgemeinerbare Regel,
+        # und jede Ableitung wäre eine weitere Nachricht mit Rückfrage.
+        antwort = t("TINYFB_NOTIERT", grund=telegram_helper.md_einbett_sicher(grund))
     else:
         return
 
-    # Mode nur zurücksetzen, wenn er noch UNSERER ist – ein später Tap auf einen
-    # alten Button darf keinen gerade aktiven anderen Flow killen.
-    if state.get_mode(paare.dom_chat_id()) == "tiny_task_feedback":
-        state.set_mode(paare.dom_chat_id(), "chat")
-    state.get(paare.dom_chat_id()).pop("tiny_task_feedback_id", None)
+    await query.edit_message_reply_markup(reply_markup=None)
+    _flow_beenden(point_id)
     await query.message.reply_text(antwort, parse_mode="Markdown")
     logger.info("Tiny-Task-Feedback (Button) gespeichert (point_id=%s, action=%s)", point_id, action)
 
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Verarbeitet die Antwort der Domina."""
+    """Verarbeitet einen getippten Grund – erreichbar nur noch nach dem Knopf
+    „Eigenen Grund schreiben" (der setzt den Mode)."""
     chat_id = str(update.effective_chat.id)
     text = update.message.text.strip()
     s = state.get(chat_id)

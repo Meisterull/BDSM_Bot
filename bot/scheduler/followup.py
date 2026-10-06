@@ -1227,11 +1227,11 @@ async def spiel_impuls_job(bot: Bot) -> None:
     global _impuls_claim
     if not config.SPIEL_IMPULS:
         return
-    if _flow_aktiv(paare.sub_chat_id(), "Spiel-Impuls"):
-        return
-
+    # Fenster VOR dem Belegt-Check (wie beim Coach-Impuls): kein Log-Rauschen nachts.
     jetzt_lokal = datetime.now(ZoneInfo(config.TIMEZONE))
     if not zeiten.ist_im_fenster(jetzt_lokal, [config.SPIEL_IMPULS_FENSTER]):
+        return
+    if _flow_aktiv(paare.sub_chat_id(), "Spiel-Impuls"):
         return
     domina_profile = await qdrant.get_user_profile("domina") or {}
     # kinderfreie_zeiten wie beim Blitz respektieren – auch ein Quiz oder eine
@@ -1362,11 +1362,12 @@ async def coach_impuls_job(bot: Bot) -> None:
 
     if not config.COACH_IMPULS:
         return
-    if _flow_aktiv(paare.dom_chat_id(), "Coach-Impuls"):
-        return
-
+    # Fenster VOR dem Belegt-Check: nachts ist ohnehin Ruhe – sonst füllt jeder
+    # Tick außerhalb des Fensters das Log mit „übersprungen – Chat in Mode …".
     jetzt_lokal = datetime.now(ZoneInfo(config.TIMEZONE))
     if not zeiten.ist_im_fenster(jetzt_lokal, [config.COACH_IMPULS_FENSTER]):
+        return
+    if _flow_aktiv(paare.dom_chat_id(), "Coach-Impuls"):
         return
     domina_profile = await qdrant.get_user_profile("domina") or {}
     if not zeiten.ist_im_fenster(jetzt_lokal, domina_profile.get("kinderfreie_zeiten", []) or []):

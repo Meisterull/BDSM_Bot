@@ -229,6 +229,9 @@ async def lauf(h: Harness, d: int) -> None:
                 await h.send("domina", "/abbrechen")
         else:
             from bot import state as st
+            # Freitext gibt es nur noch über „Passte nicht" → „Eigenen Grund schreiben"
+            await h.press("domina", "tinyfb:nein")
+            await h.press("domina", "tinyfb:text")
             if st.get_mode(config.DOMINA_CHAT_ID) == "tiny_task_feedback":
                 await h.send("domina", "Die Aufgabe war zu zeitaufwendig für einen Wochentag mit Kindern im Haus.")
                 # evtl. Coach-Regel-Vorschlag bestätigen

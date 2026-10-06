@@ -1432,6 +1432,122 @@ async def test_tinyfb_klassifikation():
          tfb._vorschlag_aus_ablehnung, _th.reply_markdown_safe) = orig
 
 
+async def test_tinyfb_ein_tipp_ohne_mode():
+    """Die Feedback-Frage belegt den Chat nicht mehr: nur Knöpfe. „Passte nicht"
+    klappt feste Gründe auf; ein fester Grund speichert die Ablehnung (Kategorie-
+    Signal nur beim Thema-Grund, keine Regel-Ableitung); den Freitext-Mode setzt
+    allein der Knopf „Eigenen Grund schreiben"."""
+    from bot.handlers import tiny_task_feedback as tfb
+    from bot.services import telegram_helper as _th
+    cid = _config.DOMINA_CHAT_ID
+    orig = (tfb.qdrant.get_tiny_task_by_id, tfb.qdrant.mark_tiny_task_status,
+            tfb.kategorie_logik.record_domina_praeferenz, tfb._vorschlag_aus_ablehnung,
+            _th.send_domina, tfb.InlineKeyboardButton, tfb.InlineKeyboardMarkup)
+
+    # Lokal ist telegram ein Stub (s. Kopf) – eigene Mini-Knöpfe, damit sich die
+    # callback_data wirklich prüfen lassen.
+    class _Knopf:
+        def __init__(self, text, callback_data=None):
+            self.text, self.callback_data = text, callback_data
+
+    class _Tasten:
+        def __init__(self, zeilen):
+            self.inline_keyboard = zeilen
+    tfb.InlineKeyboardButton, tfb.InlineKeyboardMarkup = _Knopf, _Tasten
+    eintraege = {"p1": {"inhalt": "Vorschlag X", "kategorien": ["Dienst"], "status": "vorgeschlagen"},
+                 "p2": {"inhalt": "Vorschlag Y", "kategorien": ["Dienst"], "status": "vorgeschlagen"},
+                 "p3": {"inhalt": "Vorschlag Z", "kategorien": ["Dienst"], "status": "vorgeschlagen"}}
+    markiert, praef, regel = {}, [], []
+
+    def _mark(pid, status, grund=""):
+        markiert[pid] = (status, grund)
+        eintraege[pid]["status"] = status
+    tfb.qdrant.get_tiny_task_by_id = _aw(lambda pid: eintraege.get(pid))
+    tfb.qdrant.mark_tiny_task_status = _aw(_mark)
+    tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig: praef.append((tuple(kats), sig)))
+    tfb._vorschlag_aus_ablehnung = _aw(lambda *a, **k: regel.append(a))
+    _th.send_domina = AsyncMock()
+
+    def _tap(daten):
+        upd = MagicMock()
+        upd.callback_query.data = daten
+        upd.callback_query.answer = AsyncMock()
+        upd.callback_query.edit_message_reply_markup = AsyncMock()
+        upd.callback_query.message.reply_text = AsyncMock()
+        return upd
+
+    def _knoepfe(markup):
+        return [k.callback_data for zeile in markup.inline_keyboard for k in zeile]
+
+    try:
+        _state_mod._state.clear()
+        # Die Frage selbst: drei Knöpfe, KEIN Mode, keine gemerkte ID
+        await tfb.frage_stellen(MagicMock(), {"qdrant_point_id": "p1", "inhalt": "Vorschlag X", "kategorien": ["Dienst"]})
+        assert _state_mod.get_mode(cid) in ("chat", None), _state_mod.get_mode(cid)
+        assert "tiny_task_feedback_id" not in _state_mod.get(cid)
+        assert _knoepfe(_th.send_domina.call_args.kwargs["reply_markup"]) == [
+            "tinyfb:uebernommen:p1", "tinyfb:gut:p1", "tinyfb:nein:p1"]
+        assert all(len(d.encode()) <= 64 for d in _knoepfe(tfb._tasten_gruende("0" * 36))), "callback_data-Grenze"
+
+        # „Passte nicht": Gründe aufklappen, nichts verbuchen
+        u = _tap("tinyfb:nein:p1")
+        await tfb.callback_button(u, MagicMock())
+        gruende = _knoepfe(u.callback_query.edit_message_reply_markup.call_args.kwargs["reply_markup"])
+        assert gruende == ["tinyfb:g_thema:p1", "tinyfb:g_aufwand:p1", "tinyfb:g_lahm:p1",
+                           "tinyfb:text:p1", "tinyfb:zurueck:p1"], gruende
+        assert not markiert and _state_mod.get_mode(cid) in ("chat", None)
+
+        # „Zurück": wieder die erste Reihe
+        u = _tap("tinyfb:zurueck:p1")
+        await tfb.callback_button(u, MagicMock())
+        assert _knoepfe(u.callback_query.edit_message_reply_markup.call_args.kwargs["reply_markup"])[0] == "tinyfb:uebernommen:p1"
+
+        # Fester Grund „Thema": Ablehnung + Kategorie-Signal, keine Regel-Ableitung, kein Mode
+        u = _tap("tinyfb:g_thema:p1")
+        await tfb.callback_button(u, MagicMock())
+        assert markiert["p1"][0] == "abgelehnt" and markiert["p1"][1], markiert
+        assert praef == [(("Dienst",), "abgelehnt")], praef
+        assert not regel and _state_mod.get_mode(cid) in ("chat", None)
+        assert u.callback_query.edit_message_reply_markup.call_args.kwargs["reply_markup"] is None
+        u.callback_query.message.reply_text.assert_awaited_once()
+
+        # Zweiter Tipp auf dieselbe Frage: nichts doppelt
+        u = _tap("tinyfb:g_lahm:p1")
+        await tfb.callback_button(u, MagicMock())
+        assert markiert["p1"][1] != "" and len(praef) == 1
+        u.callback_query.message.reply_text.assert_not_awaited()
+
+        # Fester Grund „Aufwand": Ablehnung OHNE Kategorie-Signal
+        praef.clear()
+        await tfb.callback_button(_tap("tinyfb:g_aufwand:p2"), MagicMock())
+        assert markiert["p2"][0] == "abgelehnt" and not praef, (markiert, praef)
+
+        # „Eigenen Grund schreiben": erst jetzt entsteht der Mode …
+        u = _tap("tinyfb:text:p3")
+        await tfb.callback_button(u, MagicMock())
+        assert _state_mod.get_mode(cid) == "tiny_task_feedback"
+        assert _state_mod.get(cid)["tiny_task_feedback_id"] == "p3"
+        assert "p3" not in markiert
+        # … und ein Knopf danach beendet ihn wieder
+        await tfb.callback_button(_tap("tinyfb:gut:p3"), MagicMock())
+        assert _state_mod.get_mode(cid) == "chat" and "tiny_task_feedback_id" not in _state_mod.get(cid)
+
+        # Läuft gerade ein ANDERER Flow, startet „schreiben" keinen Mode-Wechsel
+        eintraege["p3"]["status"] = "vorgeschlagen"
+        _state_mod.set_mode(cid, "wette")
+        u = _tap("tinyfb:text:p3")
+        await tfb.callback_button(u, MagicMock())
+        assert _state_mod.get_mode(cid) == "wette"
+        # … und ein Knopf-Grund lässt den fremden Flow ebenfalls in Ruhe
+        await tfb.callback_button(_tap("tinyfb:g_lahm:p3"), MagicMock())
+        assert _state_mod.get_mode(cid) == "wette" and markiert["p3"][0] == "abgelehnt"
+    finally:
+        _state_mod._state.clear()
+        (tfb.qdrant.get_tiny_task_by_id, tfb.qdrant.mark_tiny_task_status,
+         tfb.kategorie_logik.record_domina_praeferenz, tfb._vorschlag_aus_ablehnung,
+         _th.send_domina, tfb.InlineKeyboardButton, tfb.InlineKeyboardMarkup) = orig
+
+
 def _run():
     asyncio.run(test_lernkern_schreibt_profil())
     asyncio.run(test_tag_flip_bei_umkehr())
@@ -1489,6 +1605,7 @@ def _run():
     test_format_context_dedup()
     test_eintrag_alter_tage()
     asyncio.run(test_tinyfb_klassifikation())
+    asyncio.run(test_tinyfb_ein_tipp_ohne_mode())
     print("✅ Alle Lern-System-Tests bestanden")
 
 

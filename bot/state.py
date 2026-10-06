@@ -26,12 +26,12 @@ STALE_MODE_SECONDS = int(os.getenv("STALE_MODE_SECONDS", "1800"))  # 30 Min
 # 18:00 einfließen). Log-Befund 05.07.: Antwort nach 73 min wurde als normaler
 # Chat geroutet und ging als Stimmungs-Datum verloren.
 STALE_STIMMUNG_SECONDS = int(os.getenv("STALE_STIMMUNG_SECONDS", "7200"))  # 2 Std
-# Die 21:30-Feedback-Frage wird real oft erst am Folgemorgen beantwortet (Log
-# 06.07.: Button 06:56). Buttons überleben den Stale-Reset, getippter FREITEXT
-# ging nach 30 min als normaler Coach-Chat verloren. 12h decken die Nacht ab;
-# fremde Anliegen im Fenster fängt die Klassifikation in tiny_task_feedback
-# (_ist_ablehnungsgrund → ANDERES wird als normaler Chat geroutet).
-STALE_TINYFB_SECONDS = int(os.getenv("STALE_TINYFB_SECONDS", "43200"))  # 12 Std
+# Seit 06.10.2026 belegt die 21:30-Feedback-Frage den Chat nicht mehr (nur
+# Knöpfe, die jeden Stale-Reset überleben). Den Mode gibt es nur noch nach dem
+# ausdrücklichen Tipp auf „Eigenen Grund schreiben" – wer das antippt, schreibt
+# gleich. 30 min reichen; vorher (12h, dann 4h) blockierte die unbeantwortete
+# Frage jeden Abend die proaktiven Coach-Jobs.
+STALE_TINYFB_SECONDS = int(os.getenv("STALE_TINYFB_SECONDS", "1800"))  # 30 min
 # reaktion_pending sitzt auf dem DOMINA-Chat und wartet darauf, dass die Herrin
 # nach einem "nicht erledigt" eine Reaktion tippt (followup_response._handle_no).
 # Der zugehörige Task steht in Qdrant auf "nicht_erledigt", NICHT auf

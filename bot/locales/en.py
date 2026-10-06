@@ -1190,9 +1190,16 @@ MESSAGES = {
         "💬 *Quick question about today's suggestion*\n\n"
         "Suggestion (category: _{kategorien}_):\n"
         "_{inhalt}_\n\n"
-        "You haven't forwarded it (yet). Pick directly or write a reason "
-        "as text (e.g. 'too complex', 'wrong mood')."
+        "You haven't forwarded it (yet). One tap is enough:"
     ),
+    "BUTTON_TINYFB_NEIN": "👎 Didn't fit",
+    "BUTTON_TINYFB_G_THEMA": "Topic doesn't appeal to me",
+    "BUTTON_TINYFB_G_AUFWAND": "Too much effort",
+    "BUTTON_TINYFB_G_LAHM": "Too tame",
+    "BUTTON_TINYFB_TEXT": "✍️ Write my own reason",
+    "BUTTON_TINYFB_ZURUECK": "← Back",
+    "TINYFB_GRUND_SCHREIBEN": "Tell me the reason in one sentence. Changed your mind? Just tap one of the buttons above or send /abbrechen.",
+    "TINYFB_GERADE_BELEGT": "Something else is still in progress – finish that first or use one of the buttons.",
     "TINYFB_KEIN_OFFENER": "No open tiny-task suggestion found within the last 72h.",
     # --- Silence check-in 🔕 (handlers/stille_checkin) ------------------------
     "STILLE_FRAGE_FALLBACK": (
