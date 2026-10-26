@@ -323,14 +323,15 @@ async def callback_sn_aufgabe(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     kategorie = await kategorie_logik.klassifiziere(auftrag)
-    # Termin aus dem Original-Wortlaut („am Samstag") → Nachfrage an dem Tag;
+    # Termin aus dem Original-Wortlaut („am Samstag") → Nachfrage am Tag danach
+    # (bzw. am Termin-Tag, wenn eine frühe Uhrzeit genannt ist – nachfrage_tage);
     # sonst wie jede Sofort-Aufgabe morgen zur Followup-Zeit.
     termin = datum_erkennung.finde_termin(quelltext) or datum_erkennung.finde_termin(auftrag)
     tage = 1
     extra: dict = {}
     if termin:
         heute = datetime.now(ZoneInfo(config.TIMEZONE)).date()
-        tage = max((termin[0] - heute).days, 1)
+        tage = max(datum_erkennung.nachfrage_tage(termin[0], f"{quelltext} {auftrag}", heute), 1)
         extra["termin_datum"] = termin[0].isoformat()
     task_id = await qdrant.erstelle_task(
         auftrag, kategorie, level, status="offen", quelle="sprachnachricht",
@@ -545,8 +546,9 @@ def _weiter_zur_kette(s: dict, chat_id: str) -> None:
 async def _erteile_termin_aufgabe(update: Update, chat_id: str, s: dict, datum) -> None:
     """Speichert die bestätigte Aufgabe als geplanten Termin-Task. Zustellung
     übernimmt der (generische) Zustellungs-Job im Scheduler, sobald
-    `zustellung_ab` erreicht ist; das Followup fragt am Zieltag zur
-    Followup-Zeit nach (follow_up_datum landet via followup_in_tagen dort)."""
+    `zustellung_ab` erreicht ist; das Followup fragt am Tag NACH dem Zieltag
+    zur Followup-Zeit nach – bzw. am Zieltag selbst, wenn der Text eine frühe
+    Uhrzeit nennt (datum_erkennung.nachfrage_tage; Live-Befund 26.10.2026)."""
     from bot.services import datum_erkennung
     task_text = s.get("pending_task_text", "")
     level = s.get("pending_task_level", 1)
@@ -564,7 +566,7 @@ async def _erteile_termin_aufgabe(update: Update, chat_id: str, s: dict, datum) 
     await qdrant.erstelle_task(
         task_text, kategorie, level,
         status="geplant", quelle="termin",
-        followup_in_tagen=max((datum - jetzt.date()).days, 0),
+        followup_in_tagen=datum_erkennung.nachfrage_tage(datum, task_text, jetzt.date()),
         extra={"zustellung_ab": zustellung.astimezone(timezone.utc).isoformat(),
                "termin_datum": datum.isoformat()},
     )

@@ -361,7 +361,8 @@ def test_callback_nein_und_fremde_kennung():
 
 def test_callback_termin_und_limits():
     w = _Welt("").install()
-    # Termin im Original-Wortlaut → Nachfrage an dem Tag
+    # Termin im Original-Wortlaut → Nachfrage am Tag NACH dem Termin (ohne
+    # Uhrzeit; datum_erkennung.nachfrage_tage, Live-Befund 26.10.2026)
     morgen = date.today() + timedelta(days=1)
     from bot.services import datum_erkennung
     orig = datum_erkennung.finde_termin
@@ -371,7 +372,7 @@ def test_callback_termin_und_limits():
         q = _press(f"snaufgabe:ja:{kennung}")
     finally:
         datum_erkennung.finde_termin = orig
-    assert len(w.tasks) == 1 and w.tasks[0]["followup_in_tagen"] == 3
+    assert len(w.tasks) == 1 and w.tasks[0]["followup_in_tagen"] == 4
     assert w.tasks[0]["extra"]["termin_datum"] == (morgen + timedelta(days=2)).isoformat()
     # Limits-Treffer → kein Task, Grenzen-Meldung
     w.limits_treffer = [{"limit": "X", "quelle": "sklave", "matched_via": "X"}]

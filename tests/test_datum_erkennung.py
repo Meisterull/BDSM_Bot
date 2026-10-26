@@ -10,7 +10,7 @@ Läuft mit echten Deps (Docker) ODER lokal mit MagicMock-Stubs:
 """
 import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -96,6 +96,35 @@ def test_wann_antwort():
     assert de.parse_termin_antwort("am 26.07.") == date(2026, 7, 26)
     assert de.parse_termin_antwort("keine Ahnung") is None
     assert de.parse_termin_antwort("") is None
+
+
+def test_nachfrage_tage():
+    """Termin-Aufgaben: Nachfrage am Tag NACH dem Termin, außer eine frühe
+    Uhrzeit ist genannt (Live-Befund 26.10.2026: „morgen ab 20 Uhr" wurde
+    am Termin-Tag um 17:30 abgefragt – vor Beginn der Aufgabe)."""
+    from bot.services import persona_config
+    orig = persona_config.zeit
+    persona_config.zeit = lambda key: "17:30" if key == "followup_time" else orig(key)
+    try:
+        morgen = HEUTE + timedelta(days=1)
+        # Ohne Uhrzeit → Folgetag
+        assert de.nachfrage_tage(morgen, "Morgen Plug tragen", HEUTE) == 2
+        # Abend-Uhrzeit → Folgetag
+        assert de.nachfrage_tage(morgen, "Morgen ab 20 Uhr Plug tragen", HEUTE) == 2
+        # Grenzfall: 16 Uhr liegt < 2 h vor 17:30 → Folgetag
+        assert de.nachfrage_tage(morgen, "morgen um 16 Uhr", HEUTE) == 2
+        # Frühe Uhrzeit mit Puffer → Termin-Tag selbst
+        assert de.nachfrage_tage(morgen, "morgen um 9:30 Uhr", HEUTE) == 1
+        assert de.nachfrage_tage(morgen, "von 10 bis 15 Uhr", HEUTE) == 1
+        # Frühe Uhrzeit, aber Abend-Wort → Folgetag ("8 Uhr abends")
+        assert de.nachfrage_tage(morgen, "morgen um 8 Uhr abends", HEUTE) == 2
+        # Termin heute (Chat-Pfad, Termin-Antwort „heute") → mindestens morgen
+        assert de.nachfrage_tage(HEUTE, "heute Abend", HEUTE) == 1
+        assert de.nachfrage_tage(HEUTE, "um 9 Uhr", HEUTE) == 0
+        # Vergangenes Datum ergibt nie negativ
+        assert de.nachfrage_tage(HEUTE - timedelta(days=3), "", HEUTE) == 1
+    finally:
+        persona_config.zeit = orig
 
 
 def test_format_termin():

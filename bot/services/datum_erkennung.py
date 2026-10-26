@@ -120,6 +120,41 @@ def finde_termin(text: str, heute: date | None = None) -> tuple[date, str] | Non
     return _wochentag_treffer(text, heute)
 
 
+# Uhrzeit/Tageszeit in einer Termin-Aufgabe ("ab 20 Uhr", "um 9:30 Uhr", "abends")
+# – nur für die Frage, ob die Nachfrage noch am Termin-Tag Sinn hat.
+_UHRZEIT_RE = re.compile(r"\b(\d{1,2})(?:[:.](\d{2}))?\s*uhr\b", re.IGNORECASE)
+_ABEND_RE = re.compile(
+    r"\b(?:abend|abends|nacht|nachts|spät|spaet|evening|night|tonight|late)\b", re.IGNORECASE)
+# Mindestabstand (Stunden) zwischen genannter Uhrzeit und Followup-Zeit, damit
+# die Nachfrage noch am selben Tag kommt.
+_NACHFRAGE_PUFFER_H = 2
+
+
+def nachfrage_tage(termin: date, text: str, heute: date | None = None) -> int:
+    """Tage bis zur Nachfrage für eine Termin-Aufgabe (followup_in_tagen).
+
+    Regel: Nachfrage am Tag NACH dem Termin – wie bei Sofort-Aufgaben („morgen
+    zur Followup-Zeit"). Live 26.10.2026: „Morgen ab 20 Uhr Plug tragen" wurde
+    am Termin-Tag um 17:30 abgefragt, also bevor die Aufgabe überhaupt begann.
+    Nur wenn der Text eine Uhrzeit nennt, die klar vor der Followup-Zeit liegt
+    (≥ _NACHFRAGE_PUFFER_H Stunden) und kein Abend-/Nacht-Wort enthält, bleibt
+    die Nachfrage am Termin-Tag selbst (Ergebnis mindestens 0)."""
+    from bot.services import persona_config
+    heute = heute or _heute()
+    tage = max((termin - heute).days, 0)
+    if text and not _ABEND_RE.search(text):
+        stunden = []
+        for m in _UHRZEIT_RE.finditer(text):
+            h = int(m.group(1))
+            if 0 <= h <= 23:
+                stunden.append(h + int(m.group(2) or 0) / 60)
+        if stunden:
+            fu_h, fu_m = map(int, persona_config.zeit("followup_time").split(":"))
+            if max(stunden) + _NACHFRAGE_PUFFER_H <= fu_h + fu_m / 60:
+                return tage
+    return tage + 1
+
+
 # Dauer-Angaben für Abwesenheiten ("2 Wochen", "10 Tage") – bewusst nur Ziffern,
 # ausgeschriebene Zahlwörter wären ein Fass ohne Boden (Regex-Kontrakt wie oben).
 _DAUER_RE = re.compile(r"\b(\d{1,3})\s*(tage?n?|wochen?|days?|weeks?)\b", re.IGNORECASE)
