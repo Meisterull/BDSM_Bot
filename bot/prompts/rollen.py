@@ -12,6 +12,12 @@ läuft inkrementell (siehe TODO).
 
 Perspektive der Bausteine: "du" = die dominante Rolle (das LLM spielt sie),
 "er/sie" = die devote Rolle (der/die reale Nutzer:in des Sub-Chats).
+
+Paar-Modus (services/modi.py, 05.11.2026): im BDSM-Modus gelten die Tabellen
+_DOM_FORMEN/_SUB_FORMEN (Herrin/Herr, Sklave/Sklavin – Bestandsverhalten,
+byte-identisch). Kink und Vanilla nutzen die PARTNER-Tabellen (Partnerin/
+Partner); die Führungsrolle bleibt im Kink-Modus bestehen, nur das Wort dafür
+wird weicher. dom()/sub() lösen den Modus des Kontext-Paares auf.
 """
 
 # Deklinierte Formen je Geschlecht. Bewusst simple Lookup-Tabellen statt
@@ -40,6 +46,10 @@ _DOM_FORMEN = {
     },
 }
 
+# Genitiv-Nomen ohne Artikel für dom_poss_aus_sub_sicht ("seiner Herrin").
+_DOM_FORMEN["frau"]["gen_nomen"] = "Herrin"
+_DOM_FORMEN["mann"]["gen_nomen"] = "Herrn"
+
 _SUB_FORMEN = {
     "mann": {
         "label": "Sklave",
@@ -62,6 +72,47 @@ _SUB_FORMEN = {
 }
 
 
+# Kink/Vanilla: dieselben Schlüssel, weichere Wörter. "real" ist die reale
+# führende/andere Person hinter dem Bot (Coach-Texte).
+_DOM_FORMEN_PARTNER = {
+    "frau": {
+        "label": "Partnerin", "label_gen": "der Partnerin", "anrede": "deine Partnerin",
+        "nom": "sie", "dat": "ihr", "akk": "sie", "poss": "ihre",
+        "real": "Partnerin", "real_gen": "der Partnerin", "real_dat": "der Partnerin",
+        "real_akk": "die Partnerin", "gen_nomen": "Partnerin",
+    },
+    "mann": {
+        "label": "Partner", "label_gen": "des Partners", "anrede": "dein Partner",
+        "nom": "er", "dat": "ihm", "akk": "ihn", "poss": "seine",
+        "real": "Partner", "real_gen": "des Partners", "real_dat": "dem Partner",
+        "real_akk": "den Partner", "gen_nomen": "Partners",
+    },
+}
+
+_SUB_FORMEN_PARTNER = {
+    "mann": {
+        "label": "Partner", "label_nom": "der Partner", "label_gen": "des Partners",
+        "label_dat": "dem Partner", "label_akk": "den Partner", "unbest_akk": "einen Partner",
+        "nom": "er", "dat": "ihm", "akk": "ihn", "poss": "sein",
+    },
+    "frau": {
+        "label": "Partnerin", "label_nom": "die Partnerin", "label_gen": "der Partnerin",
+        "label_dat": "der Partnerin", "label_akk": "die Partnerin", "unbest_akk": "eine Partnerin",
+        "nom": "sie", "dat": "ihr", "akk": "sie", "poss": "ihr",
+    },
+}
+
+
+def _dom_tabelle() -> dict:
+    from bot.services import modi
+    return _DOM_FORMEN if modi.ist_bdsm() else _DOM_FORMEN_PARTNER
+
+
+def _sub_tabelle() -> dict:
+    from bot.services import modi
+    return _SUB_FORMEN if modi.ist_bdsm() else _SUB_FORMEN_PARTNER
+
+
 def dom_geschlecht() -> str:
     """'frau' oder 'mann'; unbekannte Werte fallen auf den Default 'frau' zurück."""
     from bot.services import persona_config
@@ -77,22 +128,21 @@ def sub_geschlecht() -> str:
 
 
 def dom() -> dict:
-    """Formen-Set der dominanten Rolle (label/anrede/Pronomen)."""
-    return _DOM_FORMEN[dom_geschlecht()]
+    """Formen-Set der dominanten Rolle (label/anrede/Pronomen) im Modus des Paares."""
+    return _dom_tabelle()[dom_geschlecht()]
 
 
 def sub() -> dict:
-    """Formen-Set der devoten Rolle (label/label_dat/label_akk/Pronomen)."""
-    return _SUB_FORMEN[sub_geschlecht()]
+    """Formen-Set der devoten Rolle (label/label_dat/label_akk/Pronomen) im Modus des Paares."""
+    return _sub_tabelle()[sub_geschlecht()]
 
 
 def dom_poss_aus_sub_sicht() -> str:
-    """Genitiv-Konstrukt aus Sub-Sicht: 'seiner Herrin' / 'ihrem Herrn' …
-    (für Kopfzeilen wie 'aus der Ich-Form seiner Herrin')."""
-    s, d = sub_geschlecht(), dom_geschlecht()
-    poss = {"mann": {"frau": "seiner Herrin", "mann": "seines Herrn"},
-            "frau": {"frau": "ihrer Herrin", "mann": "ihres Herrn"}}
-    return poss[s][d]
+    """Genitiv-Konstrukt aus Sub-Sicht: 'seiner Herrin' / 'ihres Herrn' /
+    'seiner Partnerin' … (für Kopfzeilen wie 'aus der Ich-Form seiner Herrin')."""
+    s, d = sub(), dom()
+    endung = "er" if dom_geschlecht() == "frau" else "es"
+    return f"{s['poss']}{endung} {d['gen_nomen']}"
 
 
 # ---------------------------------------------------------------------------
@@ -105,8 +155,13 @@ KOMBIS = (("frau", "mann"), ("mann", "frau"), ("frau", "frau"), ("mann", "mann")
 
 
 def kombi_label(dg: str, sg: str) -> str:
-    """Anzeigename einer Konstellation, z.B. 'Herrin & Sklave'."""
-    return f'{_DOM_FORMEN[dg]["label"]} & {_SUB_FORMEN[sg]["label"]}'
+    """Anzeigename einer Konstellation im Modus des Paares, z.B. 'Herrin & Sklave'
+    (BDSM) bzw. 'Partnerin (führt) & Partner' (Kink) / 'Partnerin & Partner' (Vanilla)."""
+    from bot.services import modi
+    d, s = _dom_tabelle()[dg]["label"], _sub_tabelle()[sg]["label"]
+    if modi.ist_kink():
+        return f"{d} (führt) & {s}"
+    return f"{d} & {s}"
 
 
 def aktuelle_kombi_label() -> str:
@@ -149,8 +204,8 @@ def platzhalter() -> dict[str, str]:
         "{dom_real_nom}": d["nom"],
         "{dom_real_dat}": d["dat"],
         "{dom_real_akk}": d["akk"],
-        "{dom_real_klammer}": (f'({s["poss"]}e echte Domina)' if dom_frau
-                               else f'({s["poss"]} echter Dom)'),
+        "{dom_real_klammer}": (f'({s["poss"]}e echte {d["real"]})' if dom_frau
+                               else f'({s["poss"]} echter {d["real"]})'),
     }
 
 
@@ -175,7 +230,7 @@ def ersetze_platzhalter(text: str, extra: dict[str, str] | None = None) -> str:
 
 _ANATOMIE = {
     ("frau", "mann"): (
-        "- Du bist eine FRAU – die Herrin. Bleib anatomisch und logisch konsistent: du hast selbst "
+        "- Du bist eine FRAU – {dom}. Bleib anatomisch und logisch konsistent: du hast selbst "
         "kein Sperma und keinen Penis; für Penetration nutzt du Strapon/Spielzeug.\n"
         "- Ein Strapon/Spielzeug EJAKULIERT NICHT. Es gibt also keinen 'Creampie' in IHM und nichts "
         "aus ihm zum Sauberlecken – dreh eine Cleanup-Szene NIEMALS so herum (du 'füllst' ihn nicht, "
@@ -187,7 +242,7 @@ _ANATOMIE = {
         "Creampie dazu, wo keiner gemeint war."
     ),
     ("mann", "frau"): (
-        "- Du bist ein MANN – der Herr. Bleib anatomisch und logisch konsistent: DU hast einen Penis "
+        "- Du bist ein MANN – {dom}. Bleib anatomisch und logisch konsistent: DU hast einen Penis "
         "und eigenes Sperma; sie hat beides nicht – wenn sie penetriert, dann mit Strapon/Spielzeug.\n"
         "- Ein Strapon/Spielzeug EJAKULIERT NICHT. Aus ihr kommt kein Sperma – es gibt nichts von ihr "
         "zum Sauberlecken; dreh eine Cleanup-Szene NIEMALS so herum.\n"
@@ -197,14 +252,14 @@ _ANATOMIE = {
         "einen Creampie dazu, wo keiner gemeint war."
     ),
     ("frau", "frau"): (
-        "- Ihr seid beide FRAUEN – du die Herrin, sie die Sklavin. Bleib anatomisch und logisch "
+        "- Ihr seid beide FRAUEN – du {dom}, sie {sub}. Bleib anatomisch und logisch "
         "konsistent: keine von euch hat einen Penis oder Sperma; Penetration läuft über "
         "Strapon/Spielzeug, Finger oder Zunge.\n"
         "- Ein Strapon/Spielzeug EJAKULIERT NICHT. Es gibt hier KEINE reale Sperma-Quelle – erfinde "
         "also NIEMALS einen 'Creampie' oder Sperma, wo körperlich keins existieren kann."
     ),
     ("mann", "mann"): (
-        "- Ihr seid beide MÄNNER – du der Herr, er der Sklave. Beide habt ihr einen Penis und "
+        "- Ihr seid beide MÄNNER – du {dom}, er {sub}. Beide habt ihr einen Penis und "
         "eigenes Sperma. Bleib strikt dabei, WESSEN Sperma gemeint ist und wer wen penetriert – "
         "verwechsle Richtung und Quelle nie.\n"
         "- Ein 'Creampie-Cleanup' ist körperlich in beide Richtungen möglich – aber NUR in der "
@@ -235,7 +290,11 @@ def grundierung() -> str:
         persona_presets.template("grundierung_zusatz"),
         {"{richtungs_beispiel}": _RICHTUNGS_BEISPIEL[kombi]},
     )
+    # Rollenwörter je Modus: "die Herrin"/"der Herr" bzw. "die Partnerin"/"der Partner".
+    anatomie = (_ANATOMIE[kombi]
+                .replace("{dom}", platzhalter()["{dom_rolle}"])
+                .replace("{sub}", sub()["label_nom"]))
     return (
         "\n\nGRUNDIERUNG (immer beachten, sonst wirkt es unecht):\n"
-        f"{_ANATOMIE[kombi]}\n{zusatz}"
+        f"{anatomie}\n{zusatz}"
     )

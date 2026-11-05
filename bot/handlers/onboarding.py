@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 
 from bot import config, state
 from bot.services import paare
-from bot.services import qdrant, telegram_helper, synonyme, zeiten, persona_config
+from bot.services import qdrant, telegram_helper, synonyme, zeiten, persona_config, modi
 from bot.prompts import persona_presets, rollen
 from bot.messages import t
 
@@ -25,7 +25,9 @@ async def _handle_cancel(update, chat_id: str, s: dict) -> bool:
     if text in _CANCEL_KEYWORDS:
         state.set_mode(chat_id, "chat")
         s.pop("onboarding_schritt", None)
-        s.pop("onboarding_daten", None)
+        daten = s.pop("onboarding_daten", None) or {}
+        if "_modus_vorher" in daten:  # Modus-Schritt hatte den Cache schon umgestellt
+            persona_config._aktueller_cache()["modus"] = daten["_modus_vorher"]
         # Fallback: auch Rolle zurücksetzen falls im Sklave-Onboarding
         s.pop("onboarding_rolle", None)
         await update.message.reply_text(t("ONBOARDING_ABGEBROCHEN"))
@@ -147,13 +149,34 @@ async def _handle_domina(
         s["onboarding_daten"]["sprache"] = sprache
         s["onboarding_schritt"] = 2
         await update.message.reply_text(
+            t("ONBOARDING_DOMINA_SCHRITT_MODUS", liste=modi.hinweis()),
+            parse_mode="Markdown",
+        )
+        return
+
+    # Schritt 2: Paar-Modus (BDSM / Kink …) – bestimmt Wortwahl, Katalog und
+    # Stil-Liste der folgenden Schritte, deshalb sofort in den Cache (persistiert
+    # wird im Abschluss; Abbruch stellt den alten Wert zurück).
+    if schritt == 2:
+        m = modi.fuer_eingabe(text)
+        if m is None:
+            await update.message.reply_text(
+                t("ONBOARDING_MODUS_WAHL", liste=modi.hinweis()), parse_mode="Markdown"
+            )
+            return
+        wert = "" if m == modi.BDSM else m
+        s["onboarding_daten"].setdefault("_modus_vorher", persona_config.modus())
+        s["onboarding_daten"]["modus"] = wert
+        persona_config._aktueller_cache()["modus"] = wert
+        s["onboarding_schritt"] = 3
+        await update.message.reply_text(
             t("ONBOARDING_DOMINA_SCHRITT_ROLLEN", liste=rollen.kombi_hinweis()),
             parse_mode="Markdown",
         )
         return
 
-    # Schritt 2: Rollen-Konstellation
-    if schritt == 2:
+    # Schritt 3: Rollen-Konstellation
+    if schritt == 3:
         kombi = rollen.kombi_fuer_eingabe(text)
         if kombi is None:
             await update.message.reply_text(
@@ -166,28 +189,28 @@ async def _handle_domina(
             dom = sub = ""
         s["onboarding_daten"]["dom_geschlecht"] = dom
         s["onboarding_daten"]["sub_geschlecht"] = sub
-        s["onboarding_schritt"] = 3
+        s["onboarding_schritt"] = 4
         await update.message.reply_text(
             t("ONBOARDING_DOMINA_SCHRITT_STIL", liste=persona_presets.stil_hinweis()),
             parse_mode="Markdown",
         )
         return
 
-    # Schritt 3: Persona-Stil
-    if schritt == 3:
+    # Schritt 4: Persona-Stil
+    if schritt == 4:
         key = persona_presets.stil_key_fuer_eingabe(text)
         if key is None:
             await update.message.reply_text(
                 t("ONBOARDING_STIL_WAHL", liste=persona_presets.stil_hinweis()), parse_mode="Markdown"
             )
             return
-        s["onboarding_daten"]["persona_stil"] = "" if key == persona_presets.DEFAULT else key
-        s["onboarding_schritt"] = 4
+        s["onboarding_daten"]["persona_stil"] = "" if key == persona_presets.default_key() else key
+        s["onboarding_schritt"] = 5
         await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_ERFAHRUNG"), parse_mode="Markdown")
         return
 
-    # Schritt 4: Erfahrungsstand
-    if schritt == 4:
+    # Schritt 5: Erfahrungsstand
+    if schritt == 5:
         mapped = _DOMINA_ERFAHRUNG_MAP.get(text)
         if not mapped:
             # Nur sinnvolle Freitext-Eingaben erlauben
@@ -201,48 +224,48 @@ async def _handle_domina(
                 return
             mapped = text.strip()
         s["onboarding_daten"]["erfahrungsstand"] = mapped
-        s["onboarding_schritt"] = 5
+        s["onboarding_schritt"] = 6
         await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_INTERESSEN"), parse_mode="Markdown")
         return
 
-    # Schritt 5: Interessen
-    if schritt == 5:
+    # Schritt 6: Interessen
+    if schritt == 6:
         interessen = [x.strip() for x in text.split(",") if x.strip()]
         s["onboarding_daten"]["interessen"] = interessen
-        s["onboarding_schritt"] = 6
+        s["onboarding_schritt"] = 7
         await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_GRENZEN"), parse_mode="Markdown")
         return
 
-    # Schritt 6: Grenzen
-    if schritt == 6:
+    # Schritt 7: Grenzen
+    if schritt == 7:
         if text.lower() == "keine":
             grenzen = []
         else:
             grenzen = [x.strip() for x in text.split(",") if x.strip()]
         s["onboarding_daten"]["grenzen"] = grenzen
-        s["onboarding_schritt"] = 7
+        s["onboarding_schritt"] = 8
         await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_ZIELE"), parse_mode="Markdown")
         return
 
-    # Schritt 7: Ziele
-    if schritt == 7:
+    # Schritt 8: Ziele
+    if schritt == 8:
         s["onboarding_daten"]["ziele"] = text
-        s["onboarding_schritt"] = 8
+        s["onboarding_schritt"] = 9
         await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_TEMPO"), parse_mode="Markdown")
         return
 
-    # Schritt 8: Tempo
-    if schritt == 8:
+    # Schritt 9: Tempo
+    if schritt == 9:
         mapped = _DOMINA_TEMPO_MAP.get(text)
         if not mapped:
             mapped = text.lower() if text.lower() in ("langsam", "normal", "schnell") else "normal"
         s["onboarding_daten"]["tempo"] = mapped
-        s["onboarding_schritt"] = 9
+        s["onboarding_schritt"] = 10
         await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_ZEITEN"), parse_mode="Markdown")
         return
 
-    # Schritt 9: Kinderfreie Zeiten → Abschluss
-    if schritt == 9:
+    # Schritt 10: Kinderfreie Zeiten → Abschluss
+    if schritt == 10:
         kinderfreie_zeiten = zeiten.parse_kinderfreie_zeiten(text)
         if kinderfreie_zeiten is None:
             await update.message.reply_text(
@@ -275,6 +298,7 @@ async def _abschluss_domina(update: Update, context, s: dict, chat_id: str) -> N
         # UI-Locale (Menüs/Festtexte) folgt der gewählten Sprache automatisch
         "bot_locale": persona_config.locale_fuer_sprache(d.get("sprache", "")),
         "persona_stil": d.get("persona_stil", ""),
+        "modus": d.get("modus", ""),
         "dom_geschlecht": d.get("dom_geschlecht", ""),
         "sub_geschlecht": d.get("sub_geschlecht", ""),
         "telegram_chat_id": paare.dom_chat_id(),
@@ -303,11 +327,11 @@ async def _abschluss_domina(update: Update, context, s: dict, chat_id: str) -> N
     s.pop("onboarding_rolle", None)
     s.pop("onboarding_daten", None)
 
-    stil_key = d.get("persona_stil") or persona_presets.DEFAULT
-    stil_label = persona_presets.PRESETS.get(stil_key, persona_presets.PRESETS[persona_presets.DEFAULT])["label"]
+    stil_label = persona_presets.aktuelles_label()
     zusammenfassung = t(
         "ONBOARDING_DOMINA_ZUSAMMENFASSUNG",
         sprache=d.get("sprache") or "Deutsch",
+        modus=modi.label(),
         rollen=rollen.aktuelle_kombi_label(),
         stil=stil_label,
         erfahrungsstand=d.get("erfahrungsstand", "–"),

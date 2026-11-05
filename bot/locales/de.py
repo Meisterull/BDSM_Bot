@@ -65,14 +65,20 @@ MESSAGES = {
         "Bereit? Schreib *ja*."
     ),
     "ONBOARDING_DOMINA_SCHRITT_SPRACHE": (
-        "🌍 *Schritt 1/9 – Sprache*\n\n"
+        "🌍 *Schritt 1/10 – Sprache*\n\n"
         "In welcher Sprache soll der Bot antworten?\n\n"
         "1️⃣ Deutsch (Standard)\n"
         "2️⃣ Englisch\n\n"
         "Schreibe 1, 2 – oder tippe eine andere Sprache ein"
     ),
+    "ONBOARDING_DOMINA_SCHRITT_MODUS": (
+        "🧭 *Schritt 2/10 – Paar-Modus*\n\n"
+        "Wofür wollt ihr den Bot nutzen?\n\n"
+        "{liste}\n\n"
+        "Schreibe die Nummer\n_(bestimmt Wortwahl, Aufgaben-Katalog und Stil-Auswahl – später änderbar in /einstellungen)_"
+    ),
     "ONBOARDING_DOMINA_SCHRITT_ROLLEN": (
-        "🎭 *Schritt 2/9 – Rollen-Konstellation*\n\n"
+        "🎭 *Schritt 3/10 – Rollen-Konstellation*\n\n"
         "Welche Konstellation spielt ihr?\n\n"
         "{liste}\n\n"
         "Schreibe die Nummer\n"
@@ -80,13 +86,13 @@ MESSAGES = {
         "später änderbar in /einstellungen)_"
     ),
     "ONBOARDING_DOMINA_SCHRITT_STIL": (
-        "🖤 *Schritt 3/9 – Stil*\n\n"
+        "🖤 *Schritt 4/10 – Stil*\n\n"
         "Welchen Stil soll die dominante Stimme des Bots haben?\n\n"
         "{liste}\n\n"
         "Schreibe die Nummer _(später änderbar in /einstellungen)_"
     ),
     "ONBOARDING_DOMINA_SCHRITT_ERFAHRUNG": (
-        "📊 *Schritt 4/9 – Erfahrungsstand*\n\n"
+        "📊 *Schritt 5/10 – Erfahrungsstand*\n\n"
         "Wie würdest du deinen Erfahrungsstand beschreiben?\n\n"
         "1️⃣ Anfänger – ich stehe am Anfang\n"
         "2️⃣ Etwas Erfahrung – ich habe erste Erfahrungen gemacht\n"
@@ -94,23 +100,23 @@ MESSAGES = {
         "Schreibe 1, 2 oder 3"
     ),
     "ONBOARDING_DOMINA_SCHRITT_INTERESSEN": (
-        "✨ *Schritt 5/9 – Interessen*\n\n"
+        "✨ *Schritt 6/10 – Interessen*\n\n"
         "Was interessiert dich am meisten? _(kommagetrennt)_\n\n"
         "Beispiele: Rituale, Service, Gehorsam, Psychospiele, Strafen, Körperkontrolle"
     ),
     "ONBOARDING_DOMINA_SCHRITT_GRENZEN": (
-        "🚫 *Schritt 6/9 – Grenzen*\n\n"
+        "🚫 *Schritt 7/10 – Grenzen*\n\n"
         "Gibt es absolute Grenzen die du setzen möchtest?\n"
         "_(kommagetrennt, z.B. Blut, Verletzungen)_\n\n"
         "Oder schreibe *keine*"
     ),
     "ONBOARDING_DOMINA_SCHRITT_ZIELE": (
-        "🎯 *Schritt 7/9 – Ziele*\n\n"
+        "🎯 *Schritt 8/10 – Ziele*\n\n"
         "Was möchtest du mit diesem Bot erreichen?\n"
         "Beschreibe kurz deine Ziele als Domina."
     ),
     "ONBOARDING_DOMINA_SCHRITT_TEMPO": (
-        "⏱ *Schritt 8/9 – Tempo*\n\n"
+        "⏱ *Schritt 9/10 – Tempo*\n\n"
         "In welchem Tempo möchtest du vorgehen?\n\n"
         "1️⃣ Langsam – lieber vorsichtig rantasten\n"
         "2️⃣ Normal – ausgewogenes Tempo\n"
@@ -118,13 +124,14 @@ MESSAGES = {
         "Schreibe 1, 2 oder 3"
     ),
     "ONBOARDING_DOMINA_SCHRITT_ZEITEN": (
-        "👨‍👩‍👧 *Schritt 9/9 – Kinderfreie Zeiten*\n\n"
+        "👨‍👩‍👧 *Schritt 10/10 – Kinderfreie Zeiten*\n\n"
         "Gibt es Zeiten wo Kinder im Haus sind?\n"
         "Falls ja: wann bist du ungestört?\n"
         "_(z.B. 20:00-23:00, oder mehrere kommagetrennt)_\n\n"
         "Oder schreibe *immer frei*"
     ),
     "ONBOARDING_SPRACHE_WAHL": "Bitte wähle 1️⃣ oder 2️⃣ – oder tippe deine Sprache ein (z.B. Französisch).",
+    "ONBOARDING_MODUS_WAHL": "Bitte wähle eine Nummer:\n\n{liste}",
     "ONBOARDING_ROLLEN_WAHL": "Bitte wähle eine Nummer:\n\n{liste}",
     "ONBOARDING_STIL_WAHL": "Das kenne ich nicht. Bitte wähle eine Nummer:\n\n{liste}",
     "ONBOARDING_ERFAHRUNG_WAHL": "Bitte wähle 1️⃣, 2️⃣ oder 3️⃣ – oder beschreibe deinen Erfahrungsstand kurz.",
@@ -132,6 +139,7 @@ MESSAGES = {
     "ONBOARDING_DOMINA_ZUSAMMENFASSUNG": (
         "✅ *Profil gespeichert! Hier deine Zusammenfassung:*\n\n"
         "🌍 Sprache: {sprache}\n"
+        "🧭 Modus: {modus}\n"
         "🎭 Rollen: {rollen}\n"
         "🖤 Stil: {stil}\n"
         "👤 Erfahrungsstand: {erfahrungsstand}\n"
@@ -1274,7 +1282,7 @@ MESSAGES = {
         "hinterlegten Limit-Begriffe erkannt – Umschreibungen nicht. "
         "Hinterlegt eure Hard Limits am besten zusätzlich auf {sprache} (/profil)."
     ),
-    "EINSTELLUNGEN_ZAHL_HINWEIS": "Bitte eine Zahl zwischen 1 und 8 eingeben oder /abbrechen",
+    "EINSTELLUNGEN_ZAHL_HINWEIS": "Bitte eine Zahl zwischen 1 und 10 eingeben oder /abbrechen",
     "EINSTELLUNGEN_FELD_PROMPT": "✏️ *{label}*\n\n{hinweis}",
     "EINSTELLUNGEN_STIL_UNBEKANNT": "Das kenne ich nicht. {hinweis}",
     # MarkdownV2 (wird mit dem MarkdownV2-Menü kombiniert) – "!" muss escaped sein

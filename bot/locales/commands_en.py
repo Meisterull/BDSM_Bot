@@ -120,7 +120,7 @@ BESCHREIBUNGEN = {
     "skill_bearbeiten": ("✏️ Overwrite a knowledge entry", None),
     # Domina – System (abbrechen/hilfe auch für Sklave)
     "einstellungen": ("⚙️ Set language & personality",
-                      "Set language, personality style, names and setup"),
+                      "Set language, personality style, names, setup and couple mode"),
     "inventar": ("🧰 Inventory: toys at home + wish list",
                  "Maintain the inventory: which toys/tools are really at home (feeds into tasks) + wish list"),
     "abwesend": ("📆 Record an absence (feeds into suggestions)",

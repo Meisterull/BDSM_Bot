@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from telegram import Bot
 from bot.services import paare
-from bot.services import qdrant, grok, limits_check
+from bot.services import qdrant, grok, limits_check, modi
 from bot.messages import t
 from bot.scheduler import basis
 
@@ -229,7 +229,8 @@ async def generiere_profil_vorschlaege(bot: Bot, days: int = 14) -> dict:
         hard_limits_text = ", ".join(hard_limits) or "(keine)"
         grenzen_text = ", ".join(grenzen) or "(keine)"
 
-        system = f"""Du bist ein BDSM Coach und pflegst die Profile von Domina und Sklave.
+        from bot.prompts import rollen
+        system = f"""Du bist ein {modi.thema()} Coach und pflegst die Profile von {rollen.dom()['real']} und {rollen.sub()['label']}.
 
 WICHTIG – TABU-FELDER (nie aendern, nicht vorschlagen):
 - hard_limits (sicherheitsrelevant)
@@ -433,8 +434,9 @@ async def coach_reflexion_job(bot: Bot) -> None:
         if len(rohtext) > 30000:
             rohtext = rohtext[:30000] + "\n\n[... weitere Gespraeche gekuerzt ...]"
 
-        system = f"""Du bist ein BDSM Coach und reflektierst ueber deinen eigenen Stil.
-Du hast in den letzten 14 Tagen ({zeitraum}) mit der Domina gesprochen.
+        from bot.prompts import rollen
+        system = f"""Du bist ein {modi.thema()} Coach und reflektierst ueber deinen eigenen Stil.
+Du hast in den letzten 14 Tagen ({zeitraum}) mit {rollen.dom()['real_dat']} gesprochen.
 
 Analysiere folgende Signale in den Gespraechen:
 - Kurze, abrupte Domina-Antworten nach laengeren Coach-Texten ("ok", "ja", "passt")

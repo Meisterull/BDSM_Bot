@@ -66,7 +66,7 @@ def _normalisiere_kategorie(entry: dict, pool: list[str] | None = None) -> str:
     erst dann "allgemein". So landen erfundene Labels (z. B. "Anal_Cleanup",
     "Impact_Spezial") auf der echten Pool-Kategorie statt im "allgemein"-Topf.
     """
-    pool = pool or config.AUFGABEN_KATEGORIEN
+    pool = pool or kategorie_logik.katalog_kategorien()
     kw = kategorie_logik.keyword_match(entry.get("aufgabe", ""))
     if kw != "allgemein":
         return kw
@@ -182,7 +182,7 @@ Kein [AUFGABE: ...] Tag – das sind Vorschläge, keine automatischen Aufgaben.
 Maximale Länge: {config.WOCHENPLAN_WORTLIMIT} Wörter.
 
 [Kategorie] AUSSCHLIESSLICH exakt aus dieser Liste wählen (genau so geschrieben, mit Unterstrich; nicht übersetzen, nicht erfinden):
-{', '.join(config.AUFGABEN_KATEGORIEN)}
+{', '.join(kategorie_logik.katalog_kategorien())}
 
 Logische Schlüssigkeit ist PFLICHT – jede Aufgabe muss in sich stimmig sein UND wirklich zur gewählten Kategorie passen:
 - Man kann nur reinigen/aufnehmen, was vorher real entstanden ist. "Creampie_Cleanup" verlangt eine ECHTE Ejakulation IN die zu reinigende Öffnung – ein Strapon/Dildo erzeugt KEINEN Creampie. Also niemals "Sperma aus dem Arsch lecken" nach Strapon-Pegging o. Ä.

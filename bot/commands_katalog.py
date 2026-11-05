@@ -105,7 +105,7 @@ DOMINA_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
     ]),
     ("⚙️ System", [
         Eintrag("einstellungen", "⚙️ Sprache & Persönlichkeit einstellen",
-                lang="Sprache, Persönlichkeits-Stil, Namen und Setup einstellen"),
+                lang="Sprache, Persönlichkeits-Stil, Namen, Setup und Paar-Modus einstellen"),
         Eintrag("inventar",      "🧰 Inventar: Spielsachen zu Hause + Wunschliste",
                 lang="Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Aufgaben ein) + Wunschliste"),
         Eintrag("abwesend",      "📆 Abwesenheit eintragen (fließt in Vorschläge ein)",

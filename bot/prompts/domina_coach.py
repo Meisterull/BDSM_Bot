@@ -140,8 +140,8 @@ def get(
         zaehler = Counter(letzte_kategorien)
         dominante = zaehler.most_common(1)[0]
         if dominante[1] > 3:
-            from bot import config
-            pool = kategorien_pool or config.AUFGABEN_KATEGORIEN
+            from bot.services import kategorie_logik
+            pool = kategorien_pool or kategorie_logik.katalog_kategorien()
             kategorien_kontext = (
                 f"\nLetzte Aufgaben waren hauptsächlich '{dominante[0]}'.\n"
                 f"→ Schlage zur Abwechslung mal etwas aus einer anderen Kategorie vor "

@@ -67,14 +67,20 @@ MESSAGES = {
         "Ready? Write *yes*."
     ),
     "ONBOARDING_DOMINA_SCHRITT_SPRACHE": (
-        "🌍 *Step 1/9 – Language*\n\n"
+        "🌍 *Step 1/10 – Language*\n\n"
         "In which language should the bot reply?\n\n"
         "1️⃣ German (default)\n"
         "2️⃣ English\n\n"
         "Write 1, 2 – or type another language"
     ),
+    "ONBOARDING_DOMINA_SCHRITT_MODUS": (
+        "🧭 *Step 2/10 – Couple mode*\n\n"
+        "What do you want to use the bot for?\n\n"
+        "{liste}\n\n"
+        "Write the number\n_(determines wording, task catalogue and style options – can be changed later in /einstellungen)_"
+    ),
     "ONBOARDING_DOMINA_SCHRITT_ROLLEN": (
-        "🎭 *Step 2/9 – Role constellation*\n\n"
+        "🎭 *Step 3/10 – Role constellation*\n\n"
         "Which constellation do you play?\n\n"
         "{liste}\n\n"
         "Write the number\n"
@@ -82,13 +88,13 @@ MESSAGES = {
         "generated texts – can be changed later in /einstellungen)_"
     ),
     "ONBOARDING_DOMINA_SCHRITT_STIL": (
-        "🖤 *Step 3/9 – Style*\n\n"
+        "🖤 *Step 4/10 – Style*\n\n"
         "What style should the bot's dominant voice have?\n\n"
         "{liste}\n\n"
         "Write the number _(can be changed later in /einstellungen)_"
     ),
     "ONBOARDING_DOMINA_SCHRITT_ERFAHRUNG": (
-        "📊 *Step 4/9 – Experience level*\n\n"
+        "📊 *Step 5/10 – Experience level*\n\n"
         "How would you describe your experience level?\n\n"
         "1️⃣ Beginner – I'm just getting started\n"
         "2️⃣ Some experience – I've had my first experiences\n"
@@ -96,23 +102,23 @@ MESSAGES = {
         "Write 1, 2 or 3"
     ),
     "ONBOARDING_DOMINA_SCHRITT_INTERESSEN": (
-        "✨ *Step 5/9 – Interests*\n\n"
+        "✨ *Step 6/10 – Interests*\n\n"
         "What interests you the most? _(comma-separated)_\n\n"
         "Examples: rituals, service, obedience, mind games, punishments, body control"
     ),
     "ONBOARDING_DOMINA_SCHRITT_GRENZEN": (
-        "🚫 *Step 6/9 – Limits*\n\n"
+        "🚫 *Step 7/10 – Limits*\n\n"
         "Are there absolute limits you want to set?\n"
         "_(comma-separated, e.g. blood, injuries)_\n\n"
         "Or write *none*"
     ),
     "ONBOARDING_DOMINA_SCHRITT_ZIELE": (
-        "🎯 *Step 7/9 – Goals*\n\n"
+        "🎯 *Step 8/10 – Goals*\n\n"
         "What do you want to achieve with this bot?\n"
         "Briefly describe your goals as a Domme."
     ),
     "ONBOARDING_DOMINA_SCHRITT_TEMPO": (
-        "⏱ *Step 8/9 – Pace*\n\n"
+        "⏱ *Step 9/10 – Pace*\n\n"
         "At what pace would you like to proceed?\n\n"
         "1️⃣ Slow – I'd rather ease into it carefully\n"
         "2️⃣ Normal – a balanced pace\n"
@@ -120,13 +126,14 @@ MESSAGES = {
         "Write 1, 2 or 3"
     ),
     "ONBOARDING_DOMINA_SCHRITT_ZEITEN": (
-        "👨‍👩‍👧 *Step 9/9 – Kid-free times*\n\n"
+        "👨‍👩‍👧 *Step 10/10 – Kid-free times*\n\n"
         "Are there times when kids are in the house?\n"
         "If so: when are you undisturbed?\n"
         "_(e.g. 20:00-23:00, or multiple comma-separated)_\n\n"
         "Or write *always free*"
     ),
     "ONBOARDING_SPRACHE_WAHL": "Please choose 1️⃣ or 2️⃣ – or type your language (e.g. French).",
+    "ONBOARDING_MODUS_WAHL": "Please choose a number:\n\n{liste}",
     "ONBOARDING_ROLLEN_WAHL": "Please choose a number:\n\n{liste}",
     "ONBOARDING_STIL_WAHL": "I don't know that one. Please choose a number:\n\n{liste}",
     "ONBOARDING_ERFAHRUNG_WAHL": "Please choose 1️⃣, 2️⃣ or 3️⃣ – or briefly describe your experience level.",
@@ -134,6 +141,7 @@ MESSAGES = {
     "ONBOARDING_DOMINA_ZUSAMMENFASSUNG": (
         "✅ *Profile saved! Here's your summary:*\n\n"
         "🌍 Language: {sprache}\n"
+        "🧭 Mode: {modus}\n"
         "🎭 Roles: {rollen}\n"
         "🖤 Style: {stil}\n"
         "👤 Experience level: {erfahrungsstand}\n"
@@ -1270,7 +1278,7 @@ MESSAGES = {
         "stored limit terms are recognized – paraphrases are not. "
         "It's best to also store your hard limits in {sprache} (/profil)."
     ),
-    "EINSTELLUNGEN_ZAHL_HINWEIS": "Please enter a number between 1 and 8 or /abbrechen",
+    "EINSTELLUNGEN_ZAHL_HINWEIS": "Please enter a number between 1 and 10 or /abbrechen",
     "EINSTELLUNGEN_FELD_PROMPT": "✏️ *{label}*\n\n{hinweis}",
     "EINSTELLUNGEN_STIL_UNBEKANNT": "I don't know that one. {hinweis}",
     # MarkdownV2 (wird mit dem MarkdownV2-Menü kombiniert) – "!" muss escaped sein

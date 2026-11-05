@@ -13,7 +13,7 @@ from telegram.ext import ContextTypes
 
 from bot import config, state
 from bot.services import paare
-from bot.services import persona_config, telegram_helper
+from bot.services import persona_config, telegram_helper, modi
 from bot.prompts import persona_presets, rollen
 from bot.handlers import stille_checkin
 from bot.messages import t
@@ -29,16 +29,15 @@ FELDER = {
           "Befehls-Beschreibungen bleiben vorerst deutsch._"),
     "2": ("persona_stil", "Persönlichkeits-Stil", ""),  # Hinweis wird dynamisch gebaut
     "3": ("rollen", "Rollen-Konstellation", ""),        # Hinweis wird dynamisch gebaut
-    "4": ("bot_name", "Bot-Name",
-          "Wie soll deine Bot-Herrin heißen?\nName eingeben – oder `-` für keinen Namen („deine Herrin“)."),
-    "5": ("sklave_anrede", "Sklaven-Anrede",
-          "Wie soll der Sklave angesprochen werden?\nAnrede eingeben – oder `-` für neutral."),
+    "4": ("bot_name", "Bot-Name", ""),                  # Hinweis wird dynamisch gebaut (Rollenwort je Modus)
+    "5": ("sklave_anrede", "Anrede", ""),               # Hinweis wird dynamisch gebaut
     "6": ("setup_kontext", "Setup-Kontext",
           "Beschreibe eure reale Konstellation (Anatomie/Rollen/Ausstattung), damit der Bot nicht rät.\n"
           "Text eingeben – oder `-` zum Entfernen."),
     "7": ("zeitplan", "Tages-Zeiten", ""),               # Hinweis wird dynamisch gebaut
     "8": ("safeword", "Safeword", ""),                   # Hinweis wird dynamisch gebaut
     "9": ("coach_ruhe", "Coach-Ruhe / Zuschauer-Modus", ""),  # Hinweis wird dynamisch gebaut
+    "10": ("modus", "Paar-Modus", ""),                   # Hinweis wird dynamisch gebaut
 }
 
 # Reihenfolge + Labels der pro Paar konfigurierbaren Zeiten (persona_config.ZEIT_FELDER)
@@ -61,7 +60,24 @@ _ZEIT_RE = re.compile(r"(?:[01]?\d|2[0-3]):[0-5]\d")
 
 
 def _stil_hinweis() -> str:
-    return "Welchen Stil soll die Herrin haben? Schreibe die Nummer:\n" + persona_presets.stil_hinweis()
+    return "Welchen Stil soll die Bot-Stimme haben? Schreibe die Nummer:\n" + persona_presets.stil_hinweis()
+
+
+def _bot_name_hinweis() -> str:
+    d = rollen.dom()
+    return (f"Wie soll die Bot-{d['label']} heißen?\nName eingeben – oder `-` für keinen Namen "
+            f"(„{d['anrede']}“).")
+
+
+def _anrede_hinweis() -> str:
+    s = rollen.sub()
+    return f"Wie soll {s['label_nom']} angesprochen werden?\nAnrede eingeben – oder `-` für neutral."
+
+
+def _modus_hinweis() -> str:
+    return ("Wofür nutzt ihr den Bot? Schreibe die Nummer:\n" + modi.hinweis()
+            + "\n\n_Bestimmt Wortwahl, Aufgaben-Katalog und Stil-Auswahl. Profil, Punkte und "
+            "Verlauf bleiben erhalten; der Stil springt auf den Standard des neuen Modus._")
 
 
 def _rollen_hinweis() -> str:
@@ -90,8 +106,7 @@ def _zeitplan_hinweis() -> str:
 
 def _menu_text() -> str:
     esc = telegram_helper.escape_md
-    stil_key = persona_config.persona_stil() or persona_presets.DEFAULT
-    stil_label = persona_presets.PRESETS.get(stil_key, persona_presets.PRESETS[persona_presets.DEFAULT])["label"]
+    stil_label = persona_presets.aktuelles_label()
     setup = persona_config.setup_kontext()
     setup_kurz = (setup[:60] + "…") if len(setup) > 60 else setup
     zeilen = [
@@ -100,15 +115,16 @@ def _menu_text() -> str:
         f"1️⃣ Sprache: {esc(persona_config.sprache() or 'Deutsch (Standard)')}",
         f"2️⃣ Persönlichkeits\\-Stil: {esc(stil_label)}",
         f"3️⃣ Rollen\\-Konstellation: {esc(rollen.aktuelle_kombi_label())}",
-        f"4️⃣ Bot\\-Name: {esc(persona_config.bot_name() or '— („deine Herrin“)')}",
-        f"5️⃣ Sklaven\\-Anrede: {esc(persona_config.sklave_anrede() or '— (neutral)')}",
+        f"4️⃣ Bot\\-Name: {esc(persona_config.bot_name() or '— („' + rollen.dom()['anrede'] + '“)')}",
+        f"5️⃣ Anrede \\({esc(rollen.sub()['label'])}\\): {esc(persona_config.sklave_anrede() or '— (neutral)')}",
         f"6️⃣ Setup\\-Kontext: {esc(setup_kurz or '—')}",
         f"7️⃣ Tages\\-Zeiten: Follow\\-up {esc(persona_config.zeit('followup_time'))} u\\.a\\.",
         f"8️⃣ Safeword: {esc(persona_config.safeword())} / {esc(persona_config.resume_wort())}",
         f"9️⃣ Coach\\-Ruhe: {esc(stille_checkin.ruhe_status_text() or 'aus')}",
+        f"🔟 Paar\\-Modus: {esc(modi.label().split(' – ')[0])}",
         "",
         "✏️ Was möchtest du ändern\\?",
-        "Schreibe die Nummer \\(1\\-9\\) oder /abbrechen",
+        "Schreibe die Nummer \\(1\\-10\\) oder /abbrechen",
     ]
     return "\n".join(zeilen)
 
@@ -149,6 +165,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             hinweis = _safeword_hinweis()
         elif feld_key == "coach_ruhe":
             hinweis = stille_checkin.einstellungs_hinweis()
+        elif feld_key == "modus":
+            hinweis = _modus_hinweis()
+        elif feld_key == "bot_name":
+            hinweis = _bot_name_hinweis()
+        elif feld_key == "sklave_anrede":
+            hinweis = _anrede_hinweis()
         await update.message.reply_text(
             t("EINSTELLUNGEN_FELD_PROMPT", label=label, hinweis=hinweis), parse_mode="Markdown"
         )
@@ -188,7 +210,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     t("EINSTELLUNGEN_STIL_UNBEKANNT", hinweis=_stil_hinweis())
                 )
                 return
-            await persona_config.set_persona_stil("" if key == persona_presets.DEFAULT else key)
+            await persona_config.set_persona_stil("" if key == persona_presets.default_key() else key)
         elif feld_key == "rollen":
             kombi = rollen.kombi_fuer_eingabe(text)
             if kombi is None:
@@ -221,6 +243,24 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     )
                     return
                 await persona_config.set_safeword(teile[0], teile[1])
+        elif feld_key == "modus":
+            m = modi.fuer_eingabe(text)
+            if m is None:
+                await update.message.reply_text(
+                    t("EINSTELLUNGEN_STIL_UNBEKANNT", hinweis=_modus_hinweis()),
+                    parse_mode="Markdown",
+                )
+                return
+            await persona_config.set_modus("" if m == modi.BDSM else m)
+            # Stil-Key eines anderen Modus wäre nur ein stiller Fallback – explizit
+            # auf den Modus-Standard zurücksetzen, damit das Menü die Wahrheit zeigt.
+            if persona_config.persona_stil() not in persona_presets.presets_fuer_modus():
+                await persona_config.set_persona_stil("")
+            try:
+                from bot.handlers import pairing
+                await pairing._setze_menues(context, paare.paar_im_kontext())
+            except Exception:
+                logger.exception("Menüs nach Moduswechsel nicht neu setzbar (greift beim Neustart)")
         elif feld_key == "coach_ruhe":
             if not stille_checkin.einstellung_anwenden(text):
                 await update.message.reply_text(

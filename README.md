@@ -84,6 +84,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 
 - **Personas** — the dominant voice and the coach voice are configurable style presets (Markdown files, bring your own), with optional bot name, form of address, and a real-world setup context so generated scenes stay anatomically and logistically consistent.
 - **Role constellations** — F/M, M/F, F/F, M/M. Labels, pronouns and the anatomy-consistency rules are generated from the configured constellation.
+- **Couple mode** — per couple: **BDSM** (mistress/master & slave, full catalogue) or **Kink** (one partner leads, partner wording, milder catalogue without hard BDSM themes, own style presets). An equal **Vanilla** mode is in the works. The mode drives wording, task catalogue and style options; profile, points and history survive a switch.
 - **Languages** — UI texts, menus and command aliases in German and English, and the LLM reply language free-form — all **per couple**, switchable at runtime.
 - **Voice** — optional voice messages: Piper TTS (fully local) or Grok TTS (cloud; expressive multilingual voices per role with speech tags like `[laugh]` and `<whisper>`), plus Whisper STT for voice input including the safeword check. Speaking to the bot gets you a spoken reply; the coach can relay a whispered voice message to the sub on request.
 - **Mini App** — optional in-chat web app (`/app`): a stats cockpit for both partners and a voice-message studio for the dominant (tag buttons, TTS preview, one-tap delivery). Runs LAN-only if you want; see [MINIAPP.md](MINIAPP.md).
@@ -169,7 +170,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 
 | Command | What it does |
 |---|---|
-| `/settings` | Set language, personality style, names and setup |
+| `/settings` | Set language, personality style, names, setup and couple mode |
 | `/inventory` | Maintain the inventory: which toys/tools are really at home (feeds into tasks) + wish list |
 | `/away` | Record an absence: /away 20.07.-02.08. reason – tasks & suggestions take the period into account; /away end clears it |
 | `/gap_filler` | Automatically get a task suggestion after a longer task lull (you approve it) |
@@ -266,7 +267,7 @@ docker compose up -d --build
 # and set TTS_WYOMING_URL/STT_WYOMING_URL in .env (see .env.example)
 ```
 
-Both partners then simply write to the bot — a guided setup wizard (language, role constellation, style preset, experience, limits, goals, child-free times) runs on first contact.
+Both partners then simply write to the bot — a guided setup wizard (language, couple mode, role constellation, style preset, experience, limits, goals, child-free times) runs on first contact.
 
 ### Tests
 
@@ -282,7 +283,7 @@ make deploy      # test → build → up (never deploys with red tests)
 All settings live in `.env` (see [`.env.example`](.env.example) for the full annotated list). The four required values are the bot token, both chat IDs and the LLM API key.
 
 At runtime the dominant configures the rest via `/einstellungen`:
-reply language, style preset, role constellation, bot name, form of address, the real-world setup context, the daily schedule, the safeword pair, and coach quiet / spectator mode.
+reply language, style preset, role constellation, bot name, form of address, the real-world setup context, the daily schedule, the safeword pair, coach quiet / spectator mode, and the couple mode (BDSM / Kink).
 
 ### Custom personas & rule templates
 

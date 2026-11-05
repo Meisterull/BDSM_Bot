@@ -14,7 +14,7 @@ import logging
 import random
 
 from bot import config
-from bot.services import grok
+from bot.services import grok, kataloge, modi
 
 logger = logging.getLogger(__name__)
 
@@ -154,16 +154,18 @@ for _i, _cluster in enumerate(_CLUSTER):
 
 def _nachbarn_von(kategorien) -> set[str]:
     out: set[str] = set()
+    nb = nachbarn()
     for kat in kategorien:
-        out.update(KATEGORIE_NACHBARN.get(kat, set()))
+        out.update(nb.get(kat, set()))
     return out - set(kategorien)
 
 
 def _cluster_von(kategorien) -> set[int]:
     """Cluster-Indizes, zu denen die gegebenen Kategorien thematisch gehören."""
     out: set[int] = set()
+    zc = zu_cluster()
     for kat in kategorien:
-        out |= KATEGORIE_ZU_CLUSTER.get(kat, set())
+        out |= zc.get(kat, set())
     return out
 
 
@@ -191,8 +193,76 @@ _KATEGORIE_VORAUSSETZUNG = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Modus-Map (Umbau "nicht nur BDSM", 05.11.2026): je Paar-Modus (modi.py) ein
+# Satz Katalog/Keywords/Cluster/Voraussetzungen. BDSM = die Tabellen oben
+# (Bestandsverhalten, auch weiterhin als Modul-Attribute erreichbar); Kink und
+# Vanilla kommen aus services/kataloge.py. Alle Leser gehen über die Accessor-
+# Funktionen, die den Modus des Kontext-Paares auflösen.
+# ---------------------------------------------------------------------------
+
+def _zu_cluster_aus(cluster: list[list[str]]) -> dict[str, set[int]]:
+    out: dict[str, set[int]] = {}
+    for i, c in enumerate(cluster):
+        for kat in c:
+            out.setdefault(kat, set()).add(i)
+    return out
+
+
+def _nachbarn_aus(cluster: list[list[str]]) -> dict[str, set[str]]:
+    nb: dict[str, set[str]] = {}
+    for c in cluster:
+        for kat in c:
+            nb.setdefault(kat, set()).update(x for x in c if x != kat)
+    return nb
+
+
+_MODUS_TABELLEN: dict[str, dict] = {
+    modi.BDSM: {
+        "katalog": lambda: config.AUFGABEN_KATEGORIEN,  # lazy: Tests patchen config
+        "keywords": _KEYWORDS,
+        "nachbarn": KATEGORIE_NACHBARN,
+        "zu_cluster": KATEGORIE_ZU_CLUSTER,
+        "voraussetzung": _KATEGORIE_VORAUSSETZUNG,
+    },
+    modi.KINK: {
+        "katalog": lambda: kataloge.KINK_KATEGORIEN,
+        "keywords": kataloge.KINK_KEYWORDS,
+        "nachbarn": _nachbarn_aus(kataloge.KINK_CLUSTER),
+        "zu_cluster": _zu_cluster_aus(kataloge.KINK_CLUSTER),
+        "voraussetzung": kataloge.KINK_VORAUSSETZUNG,
+    },
+    modi.VANILLA: {
+        "katalog": lambda: kataloge.VANILLA_KATEGORIEN,
+        "keywords": kataloge.VANILLA_KEYWORDS,
+        "nachbarn": _nachbarn_aus(kataloge.VANILLA_CLUSTER),
+        "zu_cluster": _zu_cluster_aus(kataloge.VANILLA_CLUSTER),
+        "voraussetzung": kataloge.VANILLA_VORAUSSETZUNG,
+    },
+}
+
+
+def _tabellen() -> dict:
+    return _MODUS_TABELLEN[modi.aktuell()]
+
+
+def keywords() -> dict[str, list[str]]:
+    """Keyword-Tabelle des aktuellen Modus (BDSM = _KEYWORDS)."""
+    return _tabellen()["keywords"]
+
+
+def nachbarn() -> dict[str, set[str]]:
+    """Nachbar-Map des aktuellen Modus (BDSM = KATEGORIE_NACHBARN)."""
+    return _tabellen()["nachbarn"]
+
+
+def zu_cluster() -> dict[str, set[int]]:
+    """Kategorie→Cluster-Map des aktuellen Modus (BDSM = KATEGORIE_ZU_CLUSTER)."""
+    return _tabellen()["zu_cluster"]
+
+
 def _konstellation_erlaubt(kategorie: str) -> bool:
-    check = _KATEGORIE_VORAUSSETZUNG.get(kategorie)
+    check = _tabellen()["voraussetzung"].get(kategorie)
     if check is None:
         return True
     from bot.prompts import rollen
@@ -200,10 +270,11 @@ def _konstellation_erlaubt(kategorie: str) -> bool:
 
 
 def katalog_kategorien() -> list[str]:
-    """Fester Katalog, gefiltert auf die konfigurierte Rollen-Konstellation
-    (F/M-Default = kompletter Katalog). Basis für alle_kategorien und das
-    vielfalt_alle-Abzeichen (unerreichbare Kategorien zählen nicht als Ziel)."""
-    return [k for k in config.AUFGABEN_KATEGORIEN if _konstellation_erlaubt(k)]
+    """Fester Katalog DES MODUS, gefiltert auf die konfigurierte Rollen-
+    Konstellation (BDSM-F/M-Default = kompletter config.AUFGABEN_KATEGORIEN).
+    Basis für alle_kategorien und das vielfalt_alle-Abzeichen (unerreichbare
+    Kategorien zählen nicht als Ziel)."""
+    return [k for k in _tabellen()["katalog"]() if _konstellation_erlaubt(k)]
 
 
 def alle_kategorien(sklave_profil: dict | None = None) -> list[str]:
@@ -261,8 +332,8 @@ async def alle_kategorien_async() -> list[str]:
 def keyword_match(text: str) -> str:
     """Reines Keyword-Matching. Gibt 'allgemein' zurück, wenn nichts passt."""
     text_lower = (text or "").lower()
-    for kat, keywords in _KEYWORDS.items():
-        if any(kw in text_lower for kw in keywords):
+    for kat, kws in keywords().items():
+        if any(kw in text_lower for kw in kws):
             return kat
     return "allgemein"
 
@@ -272,8 +343,8 @@ def kategorien_in_text(text: str) -> set[str]:
     nur den ersten Treffer – für Ausschluss-Logik braucht es alle, z.B. beim
     Mapping von Freitext-Vorlieben auf Kategorien)."""
     text_lower = (text or "").lower()
-    return {kat for kat, keywords in _KEYWORDS.items()
-            if any(kw in text_lower for kw in keywords)}
+    return {kat for kat, kws in keywords().items()
+            if any(kw in text_lower for kw in kws)}
 
 
 async def klassifiziere(text: str) -> str:
@@ -292,7 +363,7 @@ async def klassifiziere(text: str) -> str:
     pool = await alle_kategorien_async()
     kategorien_liste = "\n".join(f"- {k}" for k in pool)
     system = (
-        "Ordne die folgende BDSM-Aufgabe GENAU EINER Kategorie aus der Liste zu.\n"
+        f"Ordne die folgende {modi.thema()}-Aufgabe GENAU EINER Kategorie aus der Liste zu.\n"
         "Antworte NUR mit dem exakten Kategorie-Namen aus der Liste (inkl. Unterstriche), "
         "sonst mit dem Wort allgemein. Keine Erklärung, kein Markdown.\n"
         "Die Kategorie-Namen sind feste Daten-IDs – exakt so zurückgeben, auch wenn "
@@ -568,6 +639,7 @@ def gewichtete_auswahl(
     basis = (wunsch | tops | vorlieben_kats) & set(pool) - dislikes
     exploration = (_nachbarn_von(basis) & set(pool)) - basis - dislikes
     wildcard = {k for k in pool if k not in basis and k not in exploration and k not in dislikes}
+    zc = zu_cluster()
 
     def _gewicht(kat: str, mit_recency: bool = True) -> float:
         w = _W_BASIS
@@ -581,7 +653,7 @@ def gewichtete_auswahl(
             w += _W_NEU
         if mit_recency and kat in recent:
             w = max(1.0, w - _W_RECENT_MALUS)
-        elif mit_recency and KATEGORIE_ZU_CLUSTER.get(kat, set()) & recent_cluster:
+        elif mit_recency and zc.get(kat, set()) & recent_cluster:
             # Thema kam zuletzt dran (aber andere Kategorie) → milder dämpfen
             w = max(1.0, w - _W_CLUSTER_MALUS)
         # Domina-Signal (getrennt vom Sklaven-Erleben): netto positiv → Bonus,
@@ -620,15 +692,15 @@ def gewichtete_auswahl(
         tabu_cluster = basis_cluster | _cluster_von(vertraut)
         fremd = {
             k for k in (exploration | wildcard)
-            if not (KATEGORIE_ZU_CLUSTER.get(k, set()) & tabu_cluster) and k not in vertraut
+            if not (zc.get(k, set()) & tabu_cluster) and k not in vertraut
         }
         if not fremd:  # Vorlieben decken fast alle Themen ab → mildere Definition
             fremd = {
                 k for k in (exploration | wildcard)
-                if not (KATEGORIE_ZU_CLUSTER.get(k, set()) & basis_cluster)
+                if not (zc.get(k, set()) & basis_cluster)
             }
         # bevorzugt ein fremdes Thema, das auch nicht zuletzt schon dran war
-        fremd_frisch = {k for k in fremd if not (KATEGORIE_ZU_CLUSTER.get(k, set()) & recent_cluster)}
+        fremd_frisch = {k for k in fremd if not (zc.get(k, set()) & recent_cluster)}
         kandidaten = fremd_frisch or fremd
         if kandidaten:
             gew = {k: _gewicht(k) for k in kandidaten}

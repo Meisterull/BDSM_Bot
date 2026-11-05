@@ -31,3 +31,9 @@ ssl-miniapp/
 bot/webapp/telegram-web-app.js
 .env.bak*
 .env.*.bak
+
+# Zweitbot-Instanz (docker-compose.zweitbot.yml) – Token/IDs/Daten nie ins Repo
+.env.zweitbot
+data-zweit/
+backups-zweit/
+qdrant_data_zweit/

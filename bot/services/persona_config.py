@@ -39,6 +39,7 @@ ZEIT_FELDER = {
 }
 
 _DEFAULTS = {"bot_name": "", "sklave_anrede": "", "setup_kontext": "", "persona_stil": "", "sprache": "",
+             "modus": "",
              "bot_locale": "", "safeword": "", "resume_wort": "",
              "dom_geschlecht": "", "sub_geschlecht": "",
              "abwesend_von": "", "abwesend_bis": "", "abwesend_grund": "",
@@ -75,10 +76,11 @@ async def load() -> None:
             cache = _cache_fuer(paar.paar_id)
             for feld in _DEFAULTS:
                 cache[feld] = (p.get(feld) or "").strip()
-            logger.info("persona_config[%s] geladen: bot_name=%r, sklave_anrede=%r, setup=%s, stil=%r, sprache=%r, rollen=%r/%r",
+            logger.info("persona_config[%s] geladen: bot_name=%r, sklave_anrede=%r, setup=%s, stil=%r, sprache=%r, rollen=%r/%r, modus=%r",
                         paar.paar_id, cache["bot_name"], cache["sklave_anrede"], bool(cache["setup_kontext"]),
                         cache["persona_stil"], cache["sprache"],
-                        cache["dom_geschlecht"] or "frau", cache["sub_geschlecht"] or "mann")
+                        cache["dom_geschlecht"] or "frau", cache["sub_geschlecht"] or "mann",
+                        cache["modus"] or "bdsm")
         except Exception:
             logger.exception("persona_config.load fehlgeschlagen (Paar %s)", paar.paar_id)
 
@@ -351,6 +353,21 @@ async def set_zeit(feld: str, wert: str) -> str:
     wert = (wert or "").strip()
     await qdrant.patch_profile_fields(_profil_user_id(), {feld: wert})  # erst persistieren (D9/N18)
     _aktueller_cache()[feld] = wert
+    return wert
+
+
+def modus() -> str:
+    """Paar-Modus ("bdsm"/"kink"/"vanilla"; leer = BDSM = Bestandsverhalten).
+    Auflösung/Validierung: bot/services/modi.py (modi.aktuell())."""
+    return _aktueller_cache().get("modus", "")
+
+
+async def set_modus(wert: str) -> str:
+    """Setzt den Paar-Modus; "" = BDSM-Default. Validierung macht modi.py beim
+    Lesen (unbekannt → BDSM), hier wird nur persistiert."""
+    wert = (wert or "").strip().lower()
+    await qdrant.patch_profile_fields(_profil_user_id(), {"modus": wert})  # erst persistieren (D9/N18)
+    _aktueller_cache()["modus"] = wert
     return wert
 
 

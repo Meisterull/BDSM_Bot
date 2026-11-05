@@ -1,0 +1,65 @@
+# Zweitbot-Instanz für Fremdpaar-/Modus-Tests (Umbau "nicht nur BDSM", 05.11.2026).
+#
+# Ein ECHTER zweiter Bot (eigener BotFather-Token, Polling + Scheduler), eigenes
+# Qdrant, eigene Daten – der Live-Bot (docker-compose.yml) bleibt unberührt.
+# Nicht zu verwechseln mit docker-compose.test.yml (Idle-Container für den
+# Test-Harness, kein Telegram). Start/Stopp IMMER mit explizitem -f:
+#
+#   docker compose -f docker-compose.zweitbot.yml up -d --build
+#   docker compose -f docker-compose.zweitbot.yml logs -f bdsm-bot-zweit
+#   docker compose -f docker-compose.zweitbot.yml down
+#
+# Voraussetzung: .env.zweitbot (git-ignoriert) nach .env.zweitbot.example – mit dem
+# Token eines ZWEITEN BotFather-Bots und den Chat-IDs zweier Test-Telegram-Konten.
+# Embeddings: OLLAMA_URL in .env.zweitbot auf das bestehende Ollama zeigen lassen.
+
+name: bdsm-bot-zweit
+
+services:
+  qdrant-zweit:
+    image: qdrant/qdrant:v1.18.2
+    container_name: qdrant-zweit
+    restart: unless-stopped
+    volumes:
+      - ./qdrant_data_zweit:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+    networks:
+      - zweit-network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  bdsm-bot-zweit:
+    build: .
+    container_name: bdsm-bot-zweit
+    restart: unless-stopped
+    env_file:
+      - .env.zweitbot
+    environment:
+      - QDRANT_URL=http://qdrant-zweit:6333
+      - LOG_PORT=0
+      - MINIAPP_PORT=0
+    volumes:
+      - ./backups-zweit:/app/backups
+      - ./data-zweit:/app/data
+      - ./bot:/app/bot   # Dev-Mount: Live-Edits ohne Rebuild (Testinstanz)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Ollama auf dem Host erreichbar
+    networks:
+      - zweit-network
+    depends_on:
+      qdrant-zweit:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  zweit-network:
+    driver: bridge
