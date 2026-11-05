@@ -88,7 +88,8 @@ def _zweiwochen_takt() -> bool:
 # Paar – alles andere (Follow-up, Tiny-Task-Freigabe, Training, Wochenplan,
 # Coach-/Spiel-Impuls, Blitz, Lücken, Reflexionen …) setzt eine führende Seite
 # voraus und wird zentral im _job_guard übersprungen. Etappe 3 erweitert die Liste.
-VANILLA_JOBS = frozenset({"stimmung_job", "vanilla_impuls_job", "nachhol_tick_job"})
+VANILLA_JOBS = frozenset({"stimmung_job", "vanilla_impuls_job", "vanilla_followup_job",
+                          "vanilla_termin_job", "vanilla_wochenplan_job", "nachhol_tick_job"})
 
 
 def _job_guard(fn):

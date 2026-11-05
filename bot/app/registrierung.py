@@ -64,10 +64,25 @@ from bot.handlers import (
     inventar,
     herrin_versaeumnis,
     waehrung as waehrung_h,
+    vanilla_spiele,
 )
 from bot.handlers.profil import abbrechen_command
 from bot.app import gates, routing
 
+
+
+def _je_modus(bdsm_fn, vanilla_fn):
+    """Command-Router nach Paar-Modus (Etappe 3): dieselben Befehle, im
+    Vanilla-Modus die gleichberechtigte Fassung aus handlers/vanilla_spiele."""
+    import functools
+    from bot.services import modi
+
+    @functools.wraps(bdsm_fn)
+    async def wrapper(update, context):
+        if modi.ist_vanilla():
+            return await vanilla_fn(update, context)
+        return await bdsm_fn(update, context)
+    return wrapper
 
 
 def register_handlers(app: Application) -> None:
@@ -85,7 +100,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(TypeHandler(Update, gates.pause_guard), group=-1)
 
     app.add_handler(CommandHandler(ck.aliases("profil"),      profil.show))
-    app.add_handler(CommandHandler(ck.aliases("stats"),       stats.show))  # neu
+    app.add_handler(CommandHandler(ck.aliases("stats"),       _je_modus(stats.show, vanilla_spiele.stats)))
     app.add_handler(CommandHandler(ck.aliases("app"),         routing.app_cmd))
     app.add_handler(CommandHandler(ck.aliases("aufgaben"),    aufgaben.show))
     app.add_handler(CommandHandler(ck.aliases("vorlagen"),    vorlagen.show))
@@ -112,16 +127,17 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler(ck.aliases("stimmung"),    stimmung.start))
     app.add_handler(CommandHandler(ck.aliases("rollenspiel"),         rollenspiel.show))
     app.add_handler(CommandHandler(ck.aliases("rollenspiel_beenden"), rollenspiel.beenden))
-    app.add_handler(CommandHandler(ck.aliases("wochenplanung"),       wochenplanung.show))
-    app.add_handler(CommandHandler(ck.aliases("wunsch"),              wunsch.show))
+    app.add_handler(CommandHandler(ck.aliases("wochenplanung"),       _je_modus(wochenplanung.show, vanilla_spiele.wochenplanung)))
+    app.add_handler(CommandHandler(ck.aliases("wunsch"),              _je_modus(wunsch.show, vanilla_spiele.wunsch)))
     app.add_handler(CommandHandler(ck.aliases("meinewuensche"),       wunsch.meine_wuensche))
-    app.add_handler(CommandHandler(ck.aliases("meineaufgaben"),       meine_aufgaben.show))
+    app.add_handler(CommandHandler(ck.aliases("meineaufgaben"),       _je_modus(meine_aufgaben.show, vanilla_spiele.meineaufgaben)))
+    app.add_handler(CommandHandler(ck.aliases("termin"),              vanilla_spiele.termin))
     app.add_handler(CommandHandler(ck.aliases("geheimnis"),           geheimnis.show))
     app.add_handler(CommandHandler(ck.aliases("strafen"),             strafen_protokoll.show))
     app.add_handler(CommandHandler(ck.aliases("ueberspringen"),        kommentar.ueberspringen))
     app.add_handler(CommandHandler(ck.aliases("tinytask"),            tinytask.show))
     app.add_handler(CommandHandler(ck.aliases("tinyfb"),              tiny_task_feedback.manuelle_frage))
-    app.add_handler(CommandHandler(ck.aliases("wuerfel"),             wuerfel.show))
+    app.add_handler(CommandHandler(ck.aliases("wuerfel"),             _je_modus(wuerfel.show, vanilla_spiele.wuerfel)))
     app.add_handler(CommandHandler(ck.aliases("roulette"),            roulette.show))
     app.add_handler(CommandHandler(ck.aliases("dauer"),               dauer.starten))
     app.add_handler(CommandHandler(ck.aliases("luecken"),             luecke.toggle))
@@ -135,12 +151,12 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler(ck.aliases("event_loeschen"),      event_arc.loeschen))
     app.add_handler(CommandHandler(ck.aliases("adventskalender"),     advent.command))
     app.add_handler(CommandHandler(ck.aliases("wunschkategorien"),    wunschkategorien.show))
-    app.add_handler(CommandHandler(ck.aliases("privileg"),            privileg.show))
+    app.add_handler(CommandHandler(ck.aliases("privileg"),            _je_modus(privileg.show, vanilla_spiele.gutscheine)))
     # /wette gibt es auf beiden Seiten: Dom → Wettvorschlag auf Abruf, Sub → Punkte-Wette
-    app.add_handler(CommandHandler(ck.aliases("wette"),               coach_quiz.wette_router))
+    app.add_handler(CommandHandler(ck.aliases("wette"),               _je_modus(coach_quiz.wette_router, vanilla_spiele.wette)))
     # /quiz gibt es auf beiden Seiten: der Router verzweigt nach Rolle
     # (Sub → Sklave-Quiz, Domina → Coach-Quiz).
-    app.add_handler(CommandHandler(ck.aliases("quiz"),                coach_quiz.quiz_router))
+    app.add_handler(CommandHandler(ck.aliases("quiz"),                _je_modus(coach_quiz.quiz_router, vanilla_spiele.quiz)))
     app.add_handler(CommandHandler(ck.aliases("hilfe"),               hilfe.show))
     app.add_handler(CommandHandler(ck.aliases("help"),                hilfe.show))
     app.add_handler(CommandHandler(ck.aliases("abbrechen"),           abbrechen_command))
@@ -189,6 +205,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(waehrung_h.callback_wetteantwort,    pattern=r"^wetteantwort:"))
     app.add_handler(CallbackQueryHandler(waehrung_h.callback_wetteablehnung,  pattern=r"^wetteablehnung:"))
     app.add_handler(CallbackQueryHandler(wunsch.callback_loeschen,          pattern=r"^wunschdel:"))
+    # Vanilla (Etappe 3): ein Dispatcher für alle v*-Knöpfe beider Seiten
+    app.add_handler(CallbackQueryHandler(vanilla_spiele.callback,            pattern=r"^v(task|follow|wette|wunsch|gut):"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, routing.handle_message))
     # Nicht-Text (Foto/Video/Voice/Dokument/…) direkt an den anderen Chat durchreichen

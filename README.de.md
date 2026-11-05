@@ -84,7 +84,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 
 - **Personas** – die dominante Stimme und die Coach-Stimme sind konfigurierbare Stil-Presets (Markdown-Dateien, eigene möglich), mit optionalem Bot-Namen, Anrede und einem realen Setup-Kontext, damit generierte Szenen anatomisch und logistisch konsistent bleiben.
 - **Rollen-Konstellationen** – F/M, M/F, F/F, M/M. Bezeichnungen, Pronomen und die Anatomie-Regeln werden aus der eingestellten Konstellation erzeugt.
-- **Paar-Modus** – pro Paar wählbar: **BDSM** (Herrin/Herr & Sklave/Sklavin, voller Katalog), **Kink** (eine Person führt, Partnerin/Partner-Wortwahl, milder Katalog ohne harte BDSM-Themen, eigene Stil-Presets) oder **Vanilla** (gleichberechtigt: keine Herrin, kein Coach – eine neutrale dritte Stimme spricht mit beiden Partnern in getrennten Chats, Persona wählbar als Freundin / Freund / neutral; tägliche Stimmungsfrage an beide mit kurzem Hinweis an die andere Seite, täglicher Impuls an beide, keine Strafen; Spiele, Planung und Mini-App folgen). Der Modus steuert Wortwahl, Aufgaben-Katalog und Stil-Auswahl; Profil, Punkte und Verlauf bleiben beim Wechsel erhalten.
+- **Paar-Modus** – pro Paar wählbar: **BDSM** (Herrin/Herr & Sklave/Sklavin, voller Katalog), **Kink** (eine Person führt, Partnerin/Partner-Wortwahl, milder Katalog ohne harte BDSM-Themen, eigene Stil-Presets) oder **Vanilla** (gleichberechtigt: keine Herrin, kein Coach – eine neutrale dritte Stimme spricht mit beiden Partnern in getrennten Chats, Persona wählbar als Freundin / Freund / neutral; tägliche Stimmungsfrage an beide mit kurzem Hinweis an die andere Seite, täglicher Impuls an beide als Idee mit ✅/❌-Nachfrage am Folgetag, Punkte/Rang/Streak je Person, Würfel, Quiz über die andere Seite, Punkte-Wette, Wünsche mit „Gern/Später“, Gutscheine statt Privilegien, Termine mit Erinnerung an beide, sonntags ein gemeinsamer Ideen-Plan; keine Strafen; Mini-App folgt). Der Modus steuert Wortwahl, Aufgaben-Katalog und Stil-Auswahl; Profil, Punkte und Verlauf bleiben beim Wechsel erhalten.
 - **Sprachen** – UI-Texte, Menüs und Befehls-Aliase auf Deutsch und Englisch, die Antwortsprache des LLM frei wählbar – alles **pro Paar**, zur Laufzeit umschaltbar.
 - **Stimme** – optionale Sprachnachrichten: Piper-TTS (komplett lokal) oder Grok-TTS (Cloud; ausdrucksstarke mehrsprachige Stimmen pro Rolle mit Sprech-Tags wie `[laugh]` und `<whisper>`), dazu Whisper-STT für Spracheingabe inklusive Safeword-Prüfung. Wer dem Bot spricht, bekommt eine gesprochene Antwort; der Coach kann auf Wunsch eine geflüsterte Sprachnachricht an den Sub weiterreichen.
 - **Mini-App** – optionale Web-App im Chat (`/app`): ein Statistik-Cockpit für beide Partner und ein Sprachnachrichten-Studio für die dominante Seite (Tag-Buttons, TTS-Vorschau, Zustellung mit einem Tipp). Läuft auf Wunsch nur im LAN; siehe [MINIAPP.md](MINIAPP.md) (englisch).
@@ -228,7 +228,17 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 </details>
 
 <details>
-<summary><b>Vanilla-Modus (beide Seiten, gleicher Satz)</b> – 8 Befehle</summary>
+<summary><b>Vanilla-Modus (beide Seiten, gleicher Satz)</b> – 17 Befehle</summary>
+
+**💡 Ideen & Aufgaben**
+
+| Befehl | Was er tut |
+|---|---|
+| `/meineaufgaben` | Offene Ideen (Impulse, Würfel) ansehen und mit ✅/❌ abhaken |
+| `/wuerfel` | Würfelt eine Kategorie und schickt dir sofort eine Überraschungs-Idee (wird Aufgabe) |
+| `/wunsch` | Wunsch an die andere Seite – sie antwortet mit „Gern“ oder „Später“ |
+| `/termin` | Termin oder Date eintragen – am Tag erinnert der Bot euch beide |
+| `/wochenplanung` | Gemeinsamer Ideen-Plan für die Woche, optional mit Schwerpunkt – geht an beide |
 
 **💬 Mitteilen**
 
@@ -236,6 +246,15 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 |---|---|
 | `/stimmung` | Stimmung mitteilen – die andere Seite bekommt einen kurzen Hinweis |
 | `/inventar` | Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Impulse ein) + Wunschliste |
+
+**🎁 Punkte & Spiele**
+
+| Befehl | Was er tut |
+|---|---|
+| `/stats` | ⭐ Punkte, Rang und Streak |
+| `/privileg` | Gutscheine (Massage, Date-Abend, Frühstück im Bett …) mit Punkten einlösen – die andere Seite wird informiert |
+| `/quiz` | Quizfrage über die andere Seite – richtige Antwort gibt Punkte |
+| `/wette` | Punkte darauf wetten, dass du deine nächste Idee umsetzt (doppelt oder nichts) |
 
 **📊 Profil**
 

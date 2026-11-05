@@ -168,11 +168,32 @@ SKLAVE_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
 # hier nicht steht, fängt gates.pause_guard im Vanilla-Modus zentral ab.
 # Etappe 3 (Spaß + Planung) erweitert die Liste.
 VANILLA_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
+    ("💡 Ideen & Aufgaben", [
+        Eintrag("meineaufgaben", "📋 Offene Ideen ansehen & abhaken", en_key="meineaufgaben@vanilla",
+                lang="Offene Ideen (Impulse, Würfel) ansehen und mit ✅/❌ abhaken"),
+        Eintrag("wuerfel",       "🎲 Überraschungs-Idee für dich würfeln", en_key="wuerfel@vanilla",
+                lang="Würfelt eine Kategorie und schickt dir sofort eine Überraschungs-Idee (wird Aufgabe)"),
+        Eintrag("wunsch",        "💌 Wunsch an die andere Seite schicken", en_key="wunsch@vanilla",
+                lang="Wunsch an die andere Seite – sie antwortet mit „Gern“ oder „Später“"),
+        Eintrag("termin",        "📅 Termin/Date eintragen: /termin 12.11. Text",
+                lang="Termin oder Date eintragen – am Tag erinnert der Bot euch beide"),
+        Eintrag("wochenplanung", "🗓 Ideen-Plan für die Woche (an beide)", en_key="wochenplanung@vanilla",
+                lang="Gemeinsamer Ideen-Plan für die Woche, optional mit Schwerpunkt – geht an beide"),
+    ]),
     ("💬 Mitteilen", [
         Eintrag("stimmung",  "Stimmung mitteilen",
                 lang="Stimmung mitteilen – die andere Seite bekommt einen kurzen Hinweis"),
         Eintrag("inventar",  "🧰 Inventar: Spielsachen zu Hause + Wunschliste",
                 lang="Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Impulse ein) + Wunschliste"),
+    ]),
+    ("🎁 Punkte & Spiele", [
+        Eintrag("stats",    "⭐ Punkte, Rang und Streak", en_key="stats@vanilla"),
+        Eintrag("privileg", "🎟 Gutscheine mit Punkten einlösen", en_key="privileg@vanilla",
+                lang="Gutscheine (Massage, Date-Abend, Frühstück im Bett …) mit Punkten einlösen – die andere Seite wird informiert"),
+        Eintrag("quiz",     "🧠 Quiz: Wie gut kennst du die andere Seite?", en_key="quiz@vanilla",
+                lang="Quizfrage über die andere Seite – richtige Antwort gibt Punkte"),
+        Eintrag("wette",    "🎰 Punkte-Wette auf deine nächste Idee", en_key="wette@vanilla",
+                lang="Punkte darauf wetten, dass du deine nächste Idee umsetzt (doppelt oder nichts)"),
     ]),
     ("📊 Profil", [
         Eintrag("profil",    "Profil anzeigen und bearbeiten"),
@@ -212,7 +233,9 @@ _SKLAVE_MENUE_REIHENFOLGE = [
 ]
 
 _VANILLA_MENUE_REIHENFOLGE = [
-    "stimmung", "inventar", "profil", "einstellungen", "abwesend", "app", "hilfe", "abbrechen",
+    "meineaufgaben", "wuerfel", "wunsch", "termin", "wochenplanung",
+    "stimmung", "inventar", "stats", "privileg", "quiz", "wette",
+    "profil", "einstellungen", "abwesend", "app", "hilfe", "abbrechen",
 ]
 
 # Fallback-Menü für unbekannte Chats: nur /hilfe.

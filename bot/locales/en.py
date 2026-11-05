@@ -307,6 +307,53 @@ MESSAGES = {
     "MEDIEN_VON_PARTNER": "📎 From the other side:",
     "MEDIEN_AN_PARTNER_WEITERGELEITET": "📎 Forwarded.",
 
+    # --- Vanilla stage 3 (fun + planning, 05.11.2026) ---------------------------
+    "VANILLA_AUFGABEN_KEINE": "No open idea right now. The next impulse comes in the evening – or roll one with /dice. 💞",
+    "VANILLA_AUFGABEN_TITEL": "📋 *Your open ideas:*\n",
+    "VANILLA_FOLLOWUP_FALLBACK": "So – did you carry out the idea? “{aufgabe}”",
+    "VANILLA_ERLEDIGT_FALLBACK": "Nice! Tell me how it was.",
+    "VANILLA_ERLEDIGT_PUNKTE": "⭐ +{plus} points ({boni}) · total {stand} · streak {streak} 🔥",
+    "VANILLA_NICHT_ERLEDIGT_FALLBACK": "No worries. Maybe it fits better another time.",
+    "VANILLA_WETTE_VERLOREN": "🎰 That loses the bet – the {einsatz} points stake is gone.",
+    "VANILLA_RANG_AUF": "🏅 New rank: *{rang}*",
+    "VANILLA_WUERFEL_GEFALLEN": "🎲 *A {wert}!* Category: *{kategorie}* – let me think of something …",
+    "VANILLA_WUERFEL_PREFIX": "🎲 ",
+    "VANILLA_QUIZ_FRAGE": "🧠 *Quiz – how well do you know the other side?*\n\n{frage}\n\n_Answer freely – or /cancel._",
+    "VANILLA_QUIZ_ZU_WENIG": "🧠 I don't know enough about the other side yet – once their profile is set up, this becomes a quiz.",
+    "VANILLA_WETTE_ANGEBOT": "🎰 *Double or nothing?*\n\nYou have *{punkte} points*. Bet some that you will carry out your next idea – if you do, you get double back.",
+    "VANILLA_WETTE_KEINE_AUFGABE": "🎰 No open idea right now – no idea, no bet. /dice helps.",
+    "VANILLA_WUNSCH_FRAGE": "💌 What do you wish from {partner}? Write it in one sentence – I will pass it on.\n\n_/cancel to abort_",
+    "VANILLA_WUNSCH_ZU_KURZ": "That was too short – try again with /wish.",
+    "VANILLA_WUNSCH_GESENDET": "💌 Passed on. You will hear what the other side says.",
+    "VANILLA_WUNSCH_AN_PARTNER": "💌 *Wish from {von}:*\n\n_{text}_",
+    "BUTTON_WUNSCH_GERN": "💚 Gladly",
+    "BUTTON_WUNSCH_SPAETER": "⏳ Later",
+    "VANILLA_WUNSCH_ENTSCHIEDEN_GERN": "💚 I'll let them know you're in.",
+    "VANILLA_WUNSCH_ENTSCHIEDEN_SPAETER": "⏳ I'll let them know – no pressure.",
+    "VANILLA_WUNSCH_ANTWORT_GERN": "💚 {von} says *gladly* to your wish: _{text}_",
+    "VANILLA_WUNSCH_ANTWORT_SPAETER": "⏳ {von} says *later* to your wish: _{text}_",
+    "VANILLA_GUTSCHEINE_TITEL": "🎟 *Vouchers* – you have *{punkte} points*. Redeeming means: the other side is up.",
+    "VANILLA_GUTSCHEIN_ZU_WENIG": "Not enough points for that right now.",
+    "VANILLA_GUTSCHEIN_EINGELOEST": "🎟 *{name}* redeemed – {stand} points left. The other side knows.",
+    "VANILLA_GUTSCHEIN_AN_PARTNER": "🎟 *{von} redeemed a voucher: {name}*\n_{beschreibung}_\n\n{hinweis}",
+    "VANILLA_STATS": (
+        "📊 *Your status*\n\n"
+        "⭐ Points: *{punkte}*\n"
+        "🏅 Rank: *{rang}* (next: {naechster})\n"
+        "🔥 Streak: *{streak}* (best: {streak_max})\n"
+        "✅ Ideas carried out: *{erledigt}*\n"
+        "🎟 Vouchers redeemed: *{gutscheine}*"
+    ),
+    "VANILLA_STATS_WETTE": "🎰 Running bet: *{einsatz} points* – double or nothing",
+    "VANILLA_TERMIN_FRAGE": "📅 When and what? Write e.g. *Saturday date night* or *12.11. cinema for two*.\n\n_/cancel to abort_",
+    "VANILLA_TERMIN_UNKLAR": "I didn't recognise a date. Write e.g. *tomorrow dinner* or *24.12. Christmas breakfast*.",
+    "VANILLA_TERMIN_GESPEICHERT": "📅 Saved for *{termin}*. On the day I remind both of you.",
+    "VANILLA_TERMIN_AN_PARTNER": "📅 *{von} added an appointment:* {termin}\n_{text}_",
+    "VANILLA_TERMIN_HEUTE": "📅 *Today:* _{text}_",
+    "VANILLA_WOCHENPLAN_THEMA_FRAGE": "🗓 Should the week have a focus? Write it – or *-* for free.\n\n_/cancel to abort_",
+    "VANILLA_WOCHENPLAN_TITEL": "🗓 Ideas for your week",
+    "COMMON_NUR_VANILLA": "This command only exists in vanilla mode.",
+
     # --- Vorlagen (Markdown) --------------------------------------------------
     "VORLAGEN_TITEL": "📁 *Task templates*\n",
     "VORLAGEN_KEINE": "_No templates saved yet._\n",

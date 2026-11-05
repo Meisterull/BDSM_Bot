@@ -14,6 +14,7 @@ from bot.handlers import (
     domina,
     sklave,
     vanilla,
+    vanilla_spiele,
     followup_response,
     reaktion,
     gefuehl,
@@ -211,6 +212,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Vanilla (Etappe 2): beide Seiten sprechen mit der neutralen Stimme; eine
     # offene Stimmungsfrage (Merkmarke) gilt für beide Chats.
     if modi.ist_vanilla():
+        if mode == vanilla_spiele.MODE_QUIZ:
+            await vanilla_spiele.quiz_antwort(update, context)
+            return
+        if mode == vanilla_spiele.MODE_WUNSCH:
+            await vanilla_spiele.wunsch_text(update, context)
+            return
+        if mode == vanilla_spiele.MODE_TERMIN:
+            await vanilla_spiele.termin_text(update, context)
+            return
+        if mode == vanilla_spiele.MODE_WOCHENPLAN:
+            await vanilla_spiele.wochenplan_thema(update, context)
+            return
         if mode == "chat" and stimmung.wartet_auf_antwort(chat_id):
             await stimmung.handle_antwort(update, context)
             return

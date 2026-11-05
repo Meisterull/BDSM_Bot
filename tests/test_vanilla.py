@@ -172,9 +172,10 @@ def test_menues_und_commands():
         assert m == ck.menue_fuer(paare.ROLLE_SUB) == ck.vanilla_menue()
         namen = [c for c, _ in m]
         assert "stimmung" in namen and "einstellungen" in namen and "aufgaben" not in namen
+        assert {"meineaufgaben", "wuerfel", "wunsch", "termin", "wochenplanung", "stats", "privileg", "quiz", "wette"} <= set(namen)
     cmds = ck.alle_vanilla_commands()
-    assert {"stimmung", "mood", "einstellungen", "hilfe", "abbrechen"} <= cmds
-    assert "wuerfel" not in cmds and "roulette" not in cmds and "strafen" not in cmds
+    assert {"stimmung", "mood", "einstellungen", "hilfe", "abbrechen", "wuerfel", "dice", "termin", "appointment"} <= cmds
+    assert "roulette" not in cmds and "strafen" not in cmds and "training" not in cmds and "aufgaben" not in cmds
 
 
 async def test_command_gate_vanilla():
@@ -194,7 +195,7 @@ async def test_command_gate_vanilla():
         return u, msg
     try:
         with _modus("vanilla"):
-            u, msg = _upd("/wuerfel", "111")
+            u, msg = _upd("/roulette", "111")
             try:
                 await gates.pause_guard(u, MagicMock())
                 raise AssertionError("Dom-Command hätte im Vanilla-Modus stoppen müssen")
@@ -205,11 +206,11 @@ async def test_command_gate_vanilla():
                 u, msg = _upd(erlaubt, "222")
                 await gates.pause_guard(u, MagicMock())
                 assert msg.reply_text.await_count == 0
-            u, msg = _upd("/wuerfel", "999")        # fremder Chat: kein Hinweis (kein Leak)
+            u, msg = _upd("/roulette", "999")       # fremder Chat: kein Hinweis (kein Leak)
             await gates.pause_guard(u, MagicMock())
             assert msg.reply_text.await_count == 0
         with _modus(""):
-            u, msg = _upd("/wuerfel", "111")        # BDSM: unverändert durch
+            u, msg = _upd("/roulette", "111")       # BDSM: unverändert durch
             await gates.pause_guard(u, MagicMock())
             assert msg.reply_text.await_count == 0
     finally:
@@ -242,7 +243,8 @@ async def test_job_guard_vanilla():
         await followup_job(None)
         await stimmung_job(None)
     assert laeufe == ["followup", "stimmung"]
-    assert "vanilla_impuls_job" in basis.VANILLA_JOBS and "stimmung_job" in basis.VANILLA_JOBS
+    assert {"vanilla_impuls_job", "stimmung_job", "vanilla_followup_job", "vanilla_termin_job",
+            "vanilla_wochenplan_job"} <= basis.VANILLA_JOBS
 
 
 # ---------------------------------------------------------------- Routing / Stimmung

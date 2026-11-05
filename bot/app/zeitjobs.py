@@ -19,7 +19,7 @@ from bot.scheduler.tagesjobs import (
     wochenplanung_job,
 )
 from bot.scheduler.tiny_task import tiny_task_feedback_job, tiny_task_vorschlag_job
-from bot.scheduler.vanilla import vanilla_impuls_job
+from bot.scheduler.vanilla import vanilla_impuls_job, vanilla_followup_job, vanilla_wochenplan_job
 from bot.scheduler.wartung import training_erinnerung_job
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,8 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
     # der _job_guard überspringt sie im Vanilla-Modus. Der Impuls-Job ist für
     # alle Paare registriert und prüft selbst den Modus.
     _job("vanilla_impuls", vanilla_impuls_job, "tiny_task_time")
+    _job("vanilla_followup", vanilla_followup_job, "followup_time")
+    _job("vanilla_wochenplan", vanilla_wochenplan_job, "wochenplanung_time", day_of_week="sun")
     scheduler.add_job(_fuer_paar(followup_job, pid), "cron", hour=hour, minute=minute,
                       args=[bot], id=f"daily_followup_p{pid}", replace_existing=True)
     if config.TRAINING_ENABLED:

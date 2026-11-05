@@ -308,6 +308,53 @@ MESSAGES = {
     "MEDIEN_VON_PARTNER": "📎 Von der anderen Seite:",
     "MEDIEN_AN_PARTNER_WEITERGELEITET": "📎 Weitergeleitet.",
 
+    # --- Vanilla Etappe 3 (Spaß + Planung, 05.11.2026) --------------------------
+    "VANILLA_AUFGABEN_KEINE": "Gerade keine offene Idee. Der nächste Impuls kommt am Abend – oder würfle dir eine mit /wuerfel. 💞",
+    "VANILLA_AUFGABEN_TITEL": "📋 *Deine offenen Ideen:*\n",
+    "VANILLA_FOLLOWUP_FALLBACK": "Und – hast du die Idee umgesetzt? „{aufgabe}“",
+    "VANILLA_ERLEDIGT_FALLBACK": "Schön! Erzähl mir gern, wie es war.",
+    "VANILLA_ERLEDIGT_PUNKTE": "⭐ +{plus} Punkte ({boni}) · Stand {stand} · Streak {streak} 🔥",
+    "VANILLA_NICHT_ERLEDIGT_FALLBACK": "Kein Ding. Vielleicht passt es ein andermal besser.",
+    "VANILLA_WETTE_VERLOREN": "🎰 Die Wette ist damit verloren – {einsatz} Punkte Einsatz sind weg.",
+    "VANILLA_RANG_AUF": "🏅 Neuer Rang: *{rang}*",
+    "VANILLA_WUERFEL_GEFALLEN": "🎲 *Eine {wert}!* Kategorie: *{kategorie}* – ich denk mir was aus …",
+    "VANILLA_WUERFEL_PREFIX": "🎲 ",
+    "VANILLA_QUIZ_FRAGE": "🧠 *Quiz – wie gut kennst du die andere Seite?*\n\n{frage}\n\n_Antworte frei – oder /abbrechen._",
+    "VANILLA_QUIZ_ZU_WENIG": "🧠 Dazu weiß ich noch zu wenig über die andere Seite – sobald ihr Profil steht, wird das ein Quiz.",
+    "VANILLA_WETTE_ANGEBOT": "🎰 *Doppelt oder nichts?*\n\nDu hast *{punkte} Punkte*. Setz etwas darauf, dass du deine nächste Idee umsetzt – klappt es, gibt es das Doppelte zurück.",
+    "VANILLA_WETTE_KEINE_AUFGABE": "🎰 Gerade keine offene Idee – ohne Idee keine Wette. /wuerfel hilft.",
+    "VANILLA_WUNSCH_FRAGE": "💌 Was wünschst du dir von {partner}? Schreib es in einem Satz – ich leite es weiter.\n\n_/abbrechen zum Abbrechen_",
+    "VANILLA_WUNSCH_ZU_KURZ": "Das war zu kurz – versuch es nochmal mit /wunsch.",
+    "VANILLA_WUNSCH_GESENDET": "💌 Weitergeleitet. Du hörst, was die andere Seite dazu sagt.",
+    "VANILLA_WUNSCH_AN_PARTNER": "💌 *Wunsch von {von}:*\n\n_{text}_",
+    "BUTTON_WUNSCH_GERN": "💚 Gern",
+    "BUTTON_WUNSCH_SPAETER": "⏳ Später",
+    "VANILLA_WUNSCH_ENTSCHIEDEN_GERN": "💚 Ich sag Bescheid, dass du dabei bist.",
+    "VANILLA_WUNSCH_ENTSCHIEDEN_SPAETER": "⏳ Ich sag Bescheid – ohne Druck.",
+    "VANILLA_WUNSCH_ANTWORT_GERN": "💚 {von} sagt *gern* zu deinem Wunsch: _{text}_",
+    "VANILLA_WUNSCH_ANTWORT_SPAETER": "⏳ {von} sagt *später* zu deinem Wunsch: _{text}_",
+    "VANILLA_GUTSCHEINE_TITEL": "🎟 *Gutscheine* – du hast *{punkte} Punkte*. Einlösen heißt: die andere Seite ist dran.",
+    "VANILLA_GUTSCHEIN_ZU_WENIG": "Dafür reichen die Punkte gerade nicht.",
+    "VANILLA_GUTSCHEIN_EINGELOEST": "🎟 *{name}* eingelöst – Stand {stand} Punkte. Die andere Seite weiß Bescheid.",
+    "VANILLA_GUTSCHEIN_AN_PARTNER": "🎟 *{von} hat einen Gutschein eingelöst: {name}*\n_{beschreibung}_\n\n{hinweis}",
+    "VANILLA_STATS": (
+        "📊 *Dein Stand*\n\n"
+        "⭐ Punkte: *{punkte}*\n"
+        "🏅 Rang: *{rang}* (nächster: {naechster})\n"
+        "🔥 Streak: *{streak}* (bester: {streak_max})\n"
+        "✅ Umgesetzte Ideen: *{erledigt}*\n"
+        "🎟 Eingelöste Gutscheine: *{gutscheine}*"
+    ),
+    "VANILLA_STATS_WETTE": "🎰 Laufende Wette: *{einsatz} Punkte* – doppelt oder nichts",
+    "VANILLA_TERMIN_FRAGE": "📅 Wann und was? Schreib z.B. *Samstag Date-Abend* oder *12.11. Kino zu zweit*.\n\n_/abbrechen zum Abbrechen_",
+    "VANILLA_TERMIN_UNKLAR": "Ich habe kein Datum erkannt. Schreib z.B. *morgen Abendessen* oder *24.12. Weihnachtsfrühstück*.",
+    "VANILLA_TERMIN_GESPEICHERT": "📅 Eingetragen für *{termin}*. Am Tag erinnere ich euch beide.",
+    "VANILLA_TERMIN_AN_PARTNER": "📅 *{von} hat einen Termin eingetragen:* {termin}\n_{text}_",
+    "VANILLA_TERMIN_HEUTE": "📅 *Heute steht an:* _{text}_",
+    "VANILLA_WOCHENPLAN_THEMA_FRAGE": "🗓 Soll die Woche einen Schwerpunkt haben? Schreib ihn – oder *-* für frei.\n\n_/abbrechen zum Abbrechen_",
+    "VANILLA_WOCHENPLAN_TITEL": "🗓 Ideen für eure Woche",
+    "COMMON_NUR_VANILLA": "Diesen Befehl gibt es nur im Vanilla-Modus.",
+
     # --- Vorlagen (Markdown) --------------------------------------------------
     "VORLAGEN_TITEL": "📁 *Aufgaben-Vorlagen*\n",
     "VORLAGEN_KEINE": "_Noch keine Vorlagen gespeichert._\n",

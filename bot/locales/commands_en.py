@@ -67,6 +67,7 @@ ALIASES = {
     "quiz": "quiz",
     "blitz": "flash",
     "meineaufgaben": "mytasks",
+    "termin": "appointment",
 }
 
 # command -> (kurz_en, lang_en_or_None)  — Übersetzungen der Beschreibungen.
@@ -143,6 +144,23 @@ BESCHREIBUNGEN = {
     "wette": ("🎰 Points bet: double or nothing",
               "Bet points on your next task (double or nothing)"),
     # Dom-Seite (Eintrag.en_key): gleicher Command, andere Funktion
+    "meineaufgaben@vanilla": ("📋 View & tick off open ideas",
+                              "View open ideas (impulses, dice) and tick them off with ✅/❌"),
+    "wuerfel@vanilla": ("🎲 Roll a surprise idea for yourself",
+                        "Rolls a category and sends you a surprise idea right away (becomes a task)"),
+    "wunsch@vanilla": ("💌 Send a wish to the other side",
+                       "Wish for the other side – they answer with “Gladly” or “Later”"),
+    "termin": ("📅 Add an appointment/date: /appointment 12.11. text",
+               "Add an appointment or date – on the day the bot reminds both of you"),
+    "wochenplanung@vanilla": ("🗓 Idea plan for the week (to both)",
+                              "Shared idea plan for the week, optional focus – goes to both"),
+    "stats@vanilla": ("⭐ Points, rank and streak", None),
+    "privileg@vanilla": ("🎟 Redeem vouchers with points",
+                         "Redeem vouchers (massage, date night, breakfast in bed …) with points – the other side is informed"),
+    "quiz@vanilla": ("🧠 Quiz: how well do you know the other side?",
+                     "Quiz question about the other side – a correct answer earns points"),
+    "wette@vanilla": ("🎰 Points bet on your next idea",
+                      "Bet points that you will carry out your next idea (double or nothing)"),
     "quiz@dom": ("🧠 Coach quiz: learn expert knowledge or test what you know about the slave", None),
     "wette@dom": ("🎲 Get a bet suggestion (optional: /bet topic)",
                   "Get a bet suggestion from the coach – /bet or /bet topic; if you like it, send it to him with one tap, and he has to accept or decline"),
@@ -167,4 +185,6 @@ GRUPPEN = {
     "🎁 Belohnungen": "🎁 Rewards",
     "📋 Aufgaben": "📋 Tasks",
     "📊 Profil": "📊 Profile",
+    "💡 Ideen & Aufgaben": "💡 Ideas & Tasks",
+    "🎁 Punkte & Spiele": "🎁 Points & Games",
 }

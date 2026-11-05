@@ -341,3 +341,146 @@ def impuls(rolle: str, kategorien: list[str], eigenes_profil: dict, partner_prof
         zeilen.append("Deine letzten Impulse an " + ich["name_akk"] + " – NICHT wiederholen, auch nicht in Variation:\n"
                       + "\n".join(f"- {i[:120]}" for i in letzte_impulse[:6]))
     return system, "\n".join(zeilen)
+
+
+# ---------------------------------------------------------------------------
+# Etappe 3: Nachfrage, Reaktionen, Quiz, Würfel, Wochenplan, Wette, Gutschein
+# ---------------------------------------------------------------------------
+
+def followup_frage(rolle: str, aufgabe: str, tage_her: int = 1, streak: int = 0) -> tuple[str, str]:
+    """Nachfrage, ob die Person ihren Impuls umgesetzt hat – offen, ohne Druck."""
+    ich = person(rolle)
+    wann = {0: "heute", 1: "gestern", 2: "vorgestern"}.get(tage_her, f"vor {tage_her} Tagen")
+    system = (
+        f"{stimme_block(rolle)}\n\n"
+        f"Du hast {ich['name_dat']} {wann} eine kleine Idee geschickt. Frag jetzt kurz nach, ob {ich['nom']} "
+        "sie umgesetzt hat – ein bis zwei Sätze, Ich-Form, neugierig und leicht, ohne Vorwurf und ohne "
+        "Kontrolle. Keine Ja/Nein-Floskel wie 'Hast du?', lieber ein Bild oder ein Detail aus der Idee. "
+        f"{'Erwähne beiläufig, dass gerade ' + str(streak) + ' Tage in Folge laufen. ' if streak >= 3 else ''}"
+        "Keine Anführungszeichen, kein Markdown.\n\n"
+        f"{stil_fuss()}"
+    )
+    return system, f"Die Idee war: {aufgabe}"
+
+
+def reaktion_erledigt(rolle: str, aufgabe: str) -> tuple[str, str]:
+    ich = person(rolle)
+    system = (
+        f"{stimme_block(rolle)}\n\n"
+        f"{_gross(ich['name'])} hat die Idee umgesetzt. Freu dich kurz und echt mit – ein bis zwei Sätze, "
+        "Ich-Form, kein Lob-Schaum, keine Punkte erwähnen (das macht der Bot), gern eine kleine Neugier-Frage, "
+        "wie es war. Kein Markdown.\n\n"
+        f"{stil_fuss()}"
+    )
+    return system, f"Die Idee war: {aufgabe}"
+
+
+def reaktion_nicht_erledigt(rolle: str, aufgabe: str) -> tuple[str, str]:
+    ich = person(rolle)
+    system = (
+        f"{stimme_block(rolle)}\n\n"
+        f"{_gross(ich['name'])} hat die Idee nicht umgesetzt. Nimm das leicht – ein bis zwei Sätze, Ich-Form, "
+        "kein Vorwurf, keine Strafe, kein Trost-Kitsch. Vielleicht ein Augenzwinkern oder eine kleinere "
+        "Variante für ein andermal. Kein Markdown.\n\n"
+        f"{stil_fuss()}"
+    )
+    return system, f"Die Idee war: {aufgabe}"
+
+
+def quiz_kontext(partner: dict, partner_rolle: str) -> str:
+    """Belegbare Fakten über die ANDERE Person als Prompt-Block."""
+    teile = []
+    v = vorlieben(partner, partner_rolle)
+    if v:
+        teile.append("- Mag: " + ", ".join(v))
+    n = no_gos(partner, partner_rolle)
+    if n:
+        teile.append("- No-Gos: " + ", ".join(n))
+    for feld, label in (("erfahrungsstand", "So beschreibt die Person das Liebesleben"),
+                        ("ziele", "Wunsch an den Bot"), ("tempo", "Tempo")):
+        wert = partner.get(feld)
+        if wert and isinstance(wert, str):
+            teile.append(f"- {label}: {wert}")
+    return "\n".join(teile)
+
+
+def quiz_frage(rolle: str, kontext: str, letzte_fragen: list[str] | None = None) -> tuple[str, str]:
+    ich, partner = person(rolle), person(andere_rolle(rolle))
+    pn = partner_aus_sicht(ich, partner, "nom")
+    system = (
+        f"{stimme_block(rolle)}\n\n"
+        f"Stell {ich['name_dat']} EINE Quizfrage: wie gut kennt {ich['nom']} {partner_aus_sicht(ich, partner, 'akk')}? STRIKT:\n"
+        "- Die Frage MUSS aus den Daten unten eindeutig beantwortbar sein – erfinde NICHTS.\n"
+        "- Keine Ja/Nein-Frage, GENAU EINE Frage zu EINEM Punkt, keine Doppelfrage.\n"
+        "- Die Frage darf die Antwort nicht vorwegnehmen.\n"
+        + ("- NICHT diese kürzlich gestellten Fragen wiederholen: " + " | ".join(letzte_fragen) + "\n"
+           if letzte_fragen else "")
+        + 'Antworte NUR als JSON: {"frage": "...", "antwort": "knappe Musterantwort"}\nKein Text außerhalb des JSON.'
+    )
+    return system, f"Belegbare Daten über {pn}:\n{kontext}"
+
+
+def quiz_reaktion(rolle: str, urteil: str, frage: str, muster: str, antwort: str) -> tuple[str, str]:
+    ich = person(rolle)
+    stimmungen = {
+        "RICHTIG": f"{_gross(ich['name'])} lag richtig – freu dich kurz, dass die beiden sich kennen.",
+        "TEILWEISE": f"{_gross(ich['name'])} lag halb richtig – schmunzel über die Lücke und stell die Musterantwort klar.",
+        "FALSCH": f"{_gross(ich['name'])} lag daneben – nimm es mit Humor, nenne die richtige Antwort und mach neugierig, mal nachzufragen.",
+    }
+    system = (f"{stimme_block(rolle)}\n\nQuiz über {partner_aus_sicht(ich, person(andere_rolle(rolle)), 'akk')}: "
+              f"{stimmungen[urteil]} Ein bis zwei Sätze, kein Markdown.\n\n{stil_fuss()}")
+    return system, f'Frage: "{frage}"\nRichtige Antwort: "{muster}"\nAntwort: """{antwort}"""'
+
+
+def wette_reaktion(rolle: str, einsatz: int) -> tuple[str, str]:
+    ich = person(rolle)
+    system = (f"{stimme_block(rolle)}\n\n{_gross(ich['name'])} hat gerade Punkte darauf gewettet, die nächste "
+              "Idee umzusetzen – Einsatz weg, wenn nicht, das Doppelte zurück, wenn ja. Reagiere in ein bis "
+              f"zwei Sätzen: amüsiert, anfeuernd, ohne Druck. Kein Markdown.\n\n{stil_fuss()}")
+    return system, f"Einsatz: {einsatz} Punkte."
+
+
+def gutschein_hinweis(rolle_einloeser: str, gutschein: dict) -> tuple[str, str]:
+    """Kurzer Hinweis an die ANDERE Person: ein Gutschein wurde eingelöst."""
+    ich, partner = person(rolle_einloeser), person(andere_rolle(rolle_einloeser))
+    von = ich["anrede"] or ("deine Partnerin" if ich["fem"] else "dein Partner")
+    system = (f"{stimme_block(andere_rolle(rolle_einloeser))}\n\n"
+              f"{_gross(von)} hat gerade mit gesammelten Punkten einen Gutschein eingelöst – jetzt ist "
+              f"{partner['name']} dran, ihn einzulösen. Sag das locker in ein bis zwei Sätzen, Du-Form, mit "
+              f"einer kleinen Idee, wie es besonders werden könnte. Kein Markdown.\n\n{kurz_stil()}")
+    return system, f"Gutschein: {gutschein['name']} – {gutschein['beschreibung']}"
+
+
+def wochenplan(dom_profil: dict, sub_profil: dict, thema: str = "",
+               letzte_plaene: list[str] | None = None) -> tuple[str, str]:
+    """Gemeinsamer Ideen-Plan für die Woche – EIN Text an beide (ihr-Form)."""
+    from bot.services import persona_config
+    from bot.prompts import coach_persona
+    d, s = person(paare.ROLLE_DOM), person(paare.ROLLE_SUB)
+    namen = f"{d['name']} und {s['name']}"
+    p = _preset()
+    setup = persona_config.setup_kontext()
+    inventar = coach_persona.inventar_block(perspektive="coach", kompakt=True)
+    sprache = persona_config.sprache()
+    system = (
+        f"{p['stimme_ich']}\n\nDu schreibst diesmal an BEIDE zugleich ({namen}, ein Paar) – ihr-Form. "
+        "Mach einen kleinen Ideen-Plan für die kommende Woche: drei bis vier konkrete, kleine Ideen "
+        "für Nähe und Lust, locker über die Woche verteilt (z.B. 'Dienstagabend: …'), jede in ein bis "
+        "zwei Sätzen. Keine Pflicht, keine Aufgaben-Nummern, kein Bericht-Format, keine Überschrift. "
+        "Beide sollen sich angesprochen fühlen, mal die eine, mal die andere Seite in der Initiative. "
+        "Kein Markdown.\n"
+        + (f"\nSETUP/KONTEXT: {setup}\n" if setup else "")
+        + (f"\n{inventar}\n" if inventar else "")
+        + (f"\nSPRACHE: Antworte ausschließlich auf {sprache}.\n" if sprache else "")
+        + f"\n{p['stil_fuss']}"
+    )
+    zeilen = [
+        f"Was {d['name']} mag: " + (", ".join(vorlieben(dom_profil, paare.ROLLE_DOM)) or "nicht angegeben"),
+        f"Was {s['name']} mag: " + (", ".join(vorlieben(sub_profil, paare.ROLLE_SUB)) or "nicht angegeben"),
+        f"No-Gos (NIEMALS): " + (", ".join(no_gos(dom_profil, paare.ROLLE_DOM) + no_gos(sub_profil, paare.ROLLE_SUB)) or "keine"),
+    ]
+    if thema:
+        zeilen.append(f"Gewünschter Schwerpunkt diese Woche: {thema}")
+    if letzte_plaene:
+        zeilen.append("Letzte Pläne (nicht wiederholen):\n" + "\n".join(f"- {x[:200]}" for x in letzte_plaene[:2]))
+    return system, "\n".join(zeilen)

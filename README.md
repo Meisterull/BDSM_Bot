@@ -84,7 +84,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 
 - **Personas** — the dominant voice and the coach voice are configurable style presets (Markdown files, bring your own), with optional bot name, form of address, and a real-world setup context so generated scenes stay anatomically and logistically consistent.
 - **Role constellations** — F/M, M/F, F/F, M/M. Labels, pronouns and the anatomy-consistency rules are generated from the configured constellation.
-- **Couple mode** — per couple: **BDSM** (mistress/master & slave, full catalogue), **Kink** (one partner leads, partner wording, milder catalogue without hard BDSM themes, own style presets) or **Vanilla** (equal partners: no mistress, no coach — one neutral third voice talks to both partners in separate chats, persona selectable as female friend / male friend / neutral; daily mood question to both with a short hint to the other side, daily impulse to both, no punishments; games, planning and the mini app follow). The mode drives wording, task catalogue and style options; profile, points and history survive a switch.
+- **Couple mode** — per couple: **BDSM** (mistress/master & slave, full catalogue), **Kink** (one partner leads, partner wording, milder catalogue without hard BDSM themes, own style presets) or **Vanilla** (equal partners: no mistress, no coach — one neutral third voice talks to both partners in separate chats, persona selectable as female friend / male friend / neutral; daily mood question to both with a short hint to the other side, daily impulse to both as an idea with a ✅/❌ check-in the next day, points/rank/streak per person, dice, quiz about the other side, points bet, wishes with “gladly/later”, vouchers instead of privileges, appointments with a reminder to both, a shared idea plan on Sundays; no punishments; the mini app follows). The mode drives wording, task catalogue and style options; profile, points and history survive a switch.
 - **Languages** — UI texts, menus and command aliases in German and English, and the LLM reply language free-form — all **per couple**, switchable at runtime.
 - **Voice** — optional voice messages: Piper TTS (fully local) or Grok TTS (cloud; expressive multilingual voices per role with speech tags like `[laugh]` and `<whisper>`), plus Whisper STT for voice input including the safeword check. Speaking to the bot gets you a spoken reply; the coach can relay a whispered voice message to the sub on request.
 - **Mini App** — optional in-chat web app (`/app`): a stats cockpit for both partners and a voice-message studio for the dominant (tag buttons, TTS preview, one-tap delivery). Runs LAN-only if you want; see [MINIAPP.md](MINIAPP.md).
@@ -228,7 +228,17 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 </details>
 
 <details>
-<summary><b>Vanilla mode (both partners, same set)</b> – 8 commands</summary>
+<summary><b>Vanilla mode (both partners, same set)</b> – 17 commands</summary>
+
+**💡 Ideas & Tasks**
+
+| Command | What it does |
+|---|---|
+| `/mytasks` | View open ideas (impulses, dice) and tick them off with ✅/❌ |
+| `/dice` | Rolls a category and sends you a surprise idea right away (becomes a task) |
+| `/wish` | Wish for the other side – they answer with “Gladly” or “Later” |
+| `/appointment` | Add an appointment or date – on the day the bot reminds both of you |
+| `/weekplan` | Shared idea plan for the week, optional focus – goes to both |
 
 **💬 Share**
 
@@ -236,6 +246,15 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 |---|---|
 | `/mood` | Share your mood |
 | `/inventory` | Maintain the inventory: which toys/tools are really at home (feeds into tasks) + wish list |
+
+**🎁 Points & Games**
+
+| Command | What it does |
+|---|---|
+| `/stats` | ⭐ Points, rank and streak |
+| `/privilege` | Redeem vouchers (massage, date night, breakfast in bed …) with points – the other side is informed |
+| `/quiz` | Quiz question about the other side – a correct answer earns points |
+| `/bet` | Bet points that you will carry out your next idea (double or nothing) |
 
 **📊 Profile**
 

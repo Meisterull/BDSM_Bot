@@ -31,6 +31,7 @@ from bot.scheduler.impulse import (
     coach_impuls_job,
 )
 from bot.scheduler.luecken import luecken_zustellung_job, stille_checkin_job
+from bot.scheduler.vanilla import vanilla_termin_job
 from bot.scheduler.reflexion import lerntagebuch_job, coach_reflexion_job, profil_pflege_job
 from bot.scheduler.tagesjobs import (
     lernkurve_job,
@@ -170,6 +171,9 @@ async def post_init(application: Application) -> None:
                       args=[application.bot], id="wette_urteil", replace_existing=True)
     zeitjobs.scheduler.add_job(gates._pro_paar(luecken_zustellung_job), "interval", minutes=15,
                       args=[application.bot], id="luecken_zustellung", replace_existing=True)
+    # Vanilla (Etappe 3): Termin-Erinnerung an beide (Job prüft den Modus selbst)
+    zeitjobs.scheduler.add_job(gates._pro_paar(vanilla_termin_job), "interval", minutes=15,
+                      args=[application.bot], id="vanilla_termin", replace_existing=True)
     # Stille-Check-in 🔕: täglich – fragt die Domina nach STILLE_CHECKIN_TAGE
     # Tagen ohne jede Eingabe selbst nach dem Grund (Env-Zeit, nicht pro Paar).
     _sc_h, _sc_m = config.hm(config.STILLE_CHECKIN_TIME)
