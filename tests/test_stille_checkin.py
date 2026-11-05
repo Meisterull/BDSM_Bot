@@ -50,6 +50,7 @@ except ImportError:
 from unittest.mock import AsyncMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.services.db import coach_regeln as db_coach_regeln, profile as db_profile  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -61,6 +62,7 @@ _config.STILLE_RUHE_TAGE = 14
 from bot import state  # noqa: E402
 from bot.handlers import stille_checkin as sc  # noqa: E402
 from bot.scheduler import followup as fu  # noqa: E402
+from bot.scheduler import basis, luecken  # noqa: E402
 from bot.services import persona_config  # noqa: E402
 
 DOM = "111"
@@ -113,10 +115,10 @@ def test_state_persistenz_und_ablauf():
 def test_flow_aktiv_gate_nur_dom_chat():
     _reset()
     state.set_mode("222", "chat")
-    assert fu._flow_aktiv(DOM, "T") is False
+    assert basis._flow_aktiv(DOM, "T") is False
     state.set_coach_ruhe("zuschauer")
-    assert fu._flow_aktiv(DOM, "T") is True, "Dom-Jobs müssen im Zuschauer-Modus pausieren"
-    assert fu._flow_aktiv("222", "T") is False, "Sub-Jobs sind nicht betroffen"
+    assert basis._flow_aktiv(DOM, "T") is True, "Dom-Jobs müssen im Zuschauer-Modus pausieren"
+    assert basis._flow_aktiv("222", "T") is False, "Sub-Jobs sind nicht betroffen"
     _reset()
 
 
@@ -158,17 +160,17 @@ def _job_lauf(letzte_tage, ci, ruhe=None, abwesend=False, tage_cfg=7):
         fragen.append((tage, zweite, tage_seit_frage))
         return True
 
-    orig = (sc.letzte_domina_eingabe, fu.qdrant.get_user_profile, fu.qdrant.patch_profile_fields,
+    orig = (sc.letzte_domina_eingabe, db_profile.get_user_profile, db_profile.patch_profile_fields,
             sc.frage_stellen, persona_config.abwesenheit)
     sc.letzte_domina_eingabe = fake_letzte
-    fu.qdrant.get_user_profile = fake_profile
-    fu.qdrant.patch_profile_fields = fake_patch
+    db_profile.get_user_profile = fake_profile
+    db_profile.patch_profile_fields = fake_patch
     sc.frage_stellen = fake_frage
     persona_config.abwesenheit = (lambda: ("a", "b", "")) if abwesend else (lambda: None)
     try:
-        asyncio.run(fu.stille_checkin_job.__wrapped__(None))
+        asyncio.run(luecken.stille_checkin_job.__wrapped__(None))
     finally:
-        (sc.letzte_domina_eingabe, fu.qdrant.get_user_profile, fu.qdrant.patch_profile_fields,
+        (sc.letzte_domina_eingabe, db_profile.get_user_profile, db_profile.patch_profile_fields,
          sc.frage_stellen, persona_config.abwesenheit) = orig
         _config.STILLE_CHECKIN_TAGE = 7
         _reset()
@@ -300,14 +302,14 @@ class _Profil:
 
 def _mit_profil(ci):
     p = _Profil(ci)
-    sc.qdrant.get_user_profile = p.get
-    sc.qdrant.patch_profile_fields = p.patch
+    db_profile.get_user_profile = p.get
+    db_profile.patch_profile_fields = p.patch
     return p
 
 
 def test_buttons_reaktionen_und_doppeltap():
     _reset()
-    orig = (sc.qdrant.get_user_profile, sc.qdrant.patch_profile_fields)
+    orig = (db_profile.get_user_profile, db_profile.patch_profile_fields)
     try:
         # keine Zeit → Ruhe 14 Tage, Antwort verbucht, Mode zu
         p = _mit_profil({"gefragt_am": _iso(1), "anzahl": 1})
@@ -351,7 +353,7 @@ def test_buttons_reaktionen_und_doppeltap():
         asyncio.run(sc.callback(u, None))
         assert u.callback_query.message.reply_text.await_count == 0
     finally:
-        sc.qdrant.get_user_profile, sc.qdrant.patch_profile_fields = orig
+        db_profile.get_user_profile, db_profile.patch_profile_fields = orig
         _reset()
 
 
@@ -375,12 +377,12 @@ def test_freitext_rueckfrage_wird_regel():
         regeln.append((text, kw))
         return "pid"
 
-    orig = (sc.qdrant.get_user_profile, sc.qdrant.patch_profile_fields,
-            sc.qdrant.save_coach_regel, sc.grok.simple)
+    orig = (db_profile.get_user_profile, db_profile.patch_profile_fields,
+            db_coach_regeln.save_coach_regel, sc.grok.simple)
     try:
         p = _mit_profil({"gefragt_am": _iso(1), "anzahl": 1, "antwort_typ": "aufgaben",
                          "antwort_am": _iso(0.9)})
-        sc.qdrant.save_coach_regel = fake_save
+        db_coach_regeln.save_coach_regel = fake_save
         sc.grok.simple = _grok_router(regel="Schlag ihr kürzere Aufgaben unter 10 Minuten vor.")
         state.set_mode(DOM, sc.MODE)
         state.get(DOM)["stille_rueckfrage"] = "aufgaben"
@@ -399,16 +401,16 @@ def test_freitext_rueckfrage_wird_regel():
         asyncio.run(sc.handle(_msg_update("die quizfragen abends"), None))
         assert regeln and regeln[0][1]["typ"] == "notiz"
     finally:
-        (sc.qdrant.get_user_profile, sc.qdrant.patch_profile_fields,
-         sc.qdrant.save_coach_regel, sc.grok.simple) = orig
+        (db_profile.get_user_profile, db_profile.patch_profile_fields,
+         db_coach_regeln.save_coach_regel, sc.grok.simple) = orig
         _reset()
 
 
 def test_freitext_klassen():
     _reset()
     from bot.handlers import domina as _dom
-    orig = (sc.qdrant.get_user_profile, sc.qdrant.patch_profile_fields,
-            sc.qdrant.save_coach_regel, sc.grok.simple, _dom.handle)
+    orig = (db_profile.get_user_profile, db_profile.patch_profile_fields,
+            db_coach_regeln.save_coach_regel, sc.grok.simple, _dom.handle)
     weitergeleitet = []
 
     async def fake_domina_handle(update, context):
@@ -418,7 +420,7 @@ def test_freitext_klassen():
         return "pid"
 
     try:
-        sc.qdrant.save_coach_regel = fake_save
+        db_coach_regeln.save_coach_regel = fake_save
         _dom.handle = fake_domina_handle
         # ANDERES → Coach-Chat, Frage bleibt offen (Mode unverändert)
         p = _mit_profil({"gefragt_am": _iso(1), "anzahl": 1})
@@ -455,8 +457,8 @@ def test_freitext_klassen():
         asyncio.run(sc.handle(_msg_update("abbrechen"), None))
         assert state.get_mode(DOM) == "chat"
     finally:
-        (sc.qdrant.get_user_profile, sc.qdrant.patch_profile_fields,
-         sc.qdrant.save_coach_regel, sc.grok.simple, _dom.handle) = orig
+        (db_profile.get_user_profile, db_profile.patch_profile_fields,
+         db_coach_regeln.save_coach_regel, sc.grok.simple, _dom.handle) = orig
         _reset()
 
 
@@ -527,20 +529,20 @@ def test_einstellung_datum_als_ruhe_ende():
 
 def test_status_zeilen_ohne_inhalt():
     _reset()
-    orig = sc.qdrant.get_user_profile
+    orig = db_profile.get_user_profile
 
     async def fake_profile(user_id):
         return {"stille_checkin": {"gefragt_am": _iso(3), "antwort_am": _iso(2),
                                    "antwort_typ": "aufgaben",
                                    "antwort_kurz": "GEHEIMER INHALT"}}
     try:
-        sc.qdrant.get_user_profile = fake_profile
+        db_profile.get_user_profile = fake_profile
         state.set_coach_ruhe("zuschauer")
         zeilen = asyncio.run(sc.status_zeilen())
         assert len(zeilen) == 2 and "beantwortet" in zeilen[1]
         assert "GEHEIMER" not in " ".join(zeilen) and "aufgaben" not in " ".join(zeilen)
     finally:
-        sc.qdrant.get_user_profile = orig
+        db_profile.get_user_profile = orig
         _reset()
 
 

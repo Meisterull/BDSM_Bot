@@ -1,5 +1,5 @@
 """
-Regressions-Tests Nachholen blockierter Einmal-Jobs (scheduler/followup):
+Regressions-Tests Nachholen blockierter Einmal-Jobs (scheduler/basis + aufgaben):
 
 Live 01.10.2026: Die unbeantwortete Stimmungsfrage hält den Sub-Mode zwei
 Stunden, der Follow-up-Job fällt mitten hinein und lief nur einmal am Tag –
@@ -21,6 +21,7 @@ Läuft mit echten Deps (Docker) ODER lokal mit MagicMock-Stubs:
 import asyncio
 import os
 import sys
+from zoneinfo import ZoneInfo
 import tempfile
 from datetime import datetime, timedelta, timezone
 
@@ -47,6 +48,7 @@ except ImportError:
 from unittest.mock import AsyncMock, MagicMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.services.db import profile as db_profile, tasks as db_tasks, vorschlaege as db_vorschlaege  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -54,6 +56,7 @@ _config.STATE_FILE = os.path.join(tempfile.mkdtemp(), "state.json")
 
 from bot import state  # noqa: E402
 from bot.scheduler import followup as jobs  # noqa: E402
+from bot.scheduler import aufgaben, basis  # noqa: E402
 
 DOM, SUB = "111", "222"
 IMMER = "00:00-23:59"
@@ -65,12 +68,12 @@ def _run(coro):
 
 def _fenster_ohne_jetzt() -> str:
     """Ein Fenster, das die aktuelle Uhrzeit sicher ausschließt."""
-    jetzt = datetime.now(jobs.ZoneInfo(_config.TIMEZONE))
+    jetzt = datetime.now(ZoneInfo(_config.TIMEZONE))
     return f"{(jetzt + timedelta(hours=2)):%H:%M}-{(jetzt + timedelta(hours=3)):%H:%M}"
 
 
 def _vorgemerkt(name: str) -> bool:
-    return any(k[1] == name for k in jobs._nachhol)
+    return any(k[1] == name for k in basis._nachhol)
 
 
 class _Welt:
@@ -81,7 +84,7 @@ class _Welt:
         self.bot = MagicMock()
         self.bot.send_message = AsyncMock()
         state._state.clear()
-        jobs._nachhol.clear()
+        basis._nachhol.clear()
         _config.NACHHOL_FENSTER = IMMER
 
         async def _open():
@@ -91,15 +94,15 @@ class _Welt:
             if felder.get("status") == "gefragt":
                 self.offen = [t for t in self.offen if t["qdrant_point_id"] != point_id]
 
-        jobs.qdrant.get_open_followup_tasks = AsyncMock(side_effect=_open)
-        jobs.qdrant.update_task = AsyncMock(side_effect=_update)
-        jobs.qdrant.get_user_profile = AsyncMock(return_value={})
-        jobs.qdrant.get_tasks_by_status = AsyncMock(return_value=[])
-        jobs.qdrant.get_latest_stimmung = AsyncMock(return_value=None)
+        db_tasks.get_open_followup_tasks = AsyncMock(side_effect=_open)
+        db_tasks.update_task = AsyncMock(side_effect=_update)
+        db_profile.get_user_profile = AsyncMock(return_value={})
+        db_tasks.get_tasks_by_status = AsyncMock(return_value=[])
+        db_vorschlaege.get_latest_stimmung = AsyncMock(return_value=None)
         jobs.grok.simple = AsyncMock(return_value="Und, erledigt?")
         jobs.sticker_reaktionen.sende_sklave = AsyncMock()
-        jobs._process_serie_tasks = AsyncMock(return_value=False)
-        jobs._process_kette_tasks = AsyncMock()
+        aufgaben._process_serie_tasks = AsyncMock(return_value=False)
+        aufgaben._process_kette_tasks = AsyncMock()
 
     @property
     def fragen(self) -> int:
@@ -117,47 +120,47 @@ def _task(pid):
 def test_nachfrage_blockiert_dann_nachgeholt():
     w = _Welt([_task("t1")])
     state.set_mode(SUB, "stimmung")
-    _run(jobs.followup_job(w.bot))
+    _run(aufgaben.followup_job(w.bot))
     assert w.fragen == 0 and _vorgemerkt("followup_job")
 
     # Mode noch frisch → Tick läuft leer, Vormerkung bleibt
-    _run(jobs.nachhol_tick_job(w.bot))
+    _run(basis.nachhol_tick_job(w.bot))
     assert w.fragen == 0 and _vorgemerkt("followup_job")
 
     # Außerhalb des Abendfensters wird nichts nachgereicht
     state.set_mode(SUB, "chat")
     _config.NACHHOL_FENSTER = _fenster_ohne_jetzt()
-    _run(jobs.nachhol_tick_job(w.bot))
+    _run(basis.nachhol_tick_job(w.bot))
     assert w.fragen == 0 and _vorgemerkt("followup_job")
 
     # Im Fenster und Chat frei → Frage geht raus, Vormerkung weg
     _config.NACHHOL_FENSTER = IMMER
-    _run(jobs.nachhol_tick_job(w.bot))
+    _run(basis.nachhol_tick_job(w.bot))
     assert w.fragen == 1 and not _vorgemerkt("followup_job")
     assert state.get_mode(SUB) == "followup"
 
     # Weitere Ticks am selben Abend tun nichts
-    _run(jobs.nachhol_tick_job(w.bot))
+    _run(basis.nachhol_tick_job(w.bot))
     assert w.fragen == 1
 
 
 def test_abgelaufener_mode_wird_im_tick_geraeumt():
     w = _Welt([_task("t1")])
     state.set_mode(SUB, "stimmung")
-    _run(jobs.followup_job(w.bot))
+    _run(aufgaben.followup_job(w.bot))
     assert w.fragen == 0
     state.get(SUB)["mode_since"] -= state.STALE_STIMMUNG_SECONDS + 60
-    _run(jobs.nachhol_tick_job(w.bot))
+    _run(basis.nachhol_tick_job(w.bot))
     assert w.fragen == 1 and not _vorgemerkt("followup_job")
 
 
 def test_gefragt_merkt_nichts_vor():
     w = _Welt([_task("t1"), _task("t2")])
-    _run(jobs.followup_job(w.bot))
+    _run(aufgaben.followup_job(w.bot))
     # Nach der ersten Frage steht der Mode auf 'followup' – kein blockierter
     # Lauf, die zweite Aufgabe wartet bis morgen (eine Frage pro Tag).
-    assert w.fragen == 1 and not jobs._nachhol
-    _run(jobs.nachhol_tick_job(w.bot))
+    assert w.fragen == 1 and not basis._nachhol
+    _run(basis.nachhol_tick_job(w.bot))
     assert w.fragen == 1
 
 
@@ -167,21 +170,21 @@ def test_serie_zugestellt_ist_nicht_blockiert():
     async def _serie(bot):
         state.set_mode(SUB, "followup")   # Serien-Aufgabe ging raus
         return True
-    jobs._process_serie_tasks = _serie
-    _run(jobs.followup_job(w.bot))
-    assert w.fragen == 0 and not jobs._nachhol
+    aufgaben._process_serie_tasks = _serie
+    _run(aufgaben.followup_job(w.bot))
+    assert w.fragen == 0 and not basis._nachhol
 
 
 def test_frist_laeuft_ab():
     w = _Welt([_task("t1")])
     state.set_mode(SUB, "stimmung")
-    _run(jobs.followup_job(w.bot))
-    eintrag = next(iter(jobs._nachhol.values()))
+    _run(aufgaben.followup_job(w.bot))
+    eintrag = next(iter(basis._nachhol.values()))
     assert eintrag["max_stunden"] == 5
     eintrag["seit"] = datetime.now(timezone.utc) - timedelta(hours=6)
     state.set_mode(SUB, "chat")
-    _run(jobs.nachhol_tick_job(w.bot))
-    assert w.fragen == 0 and not jobs._nachhol
+    _run(basis.nachhol_tick_job(w.bot))
+    assert w.fragen == 0 and not basis._nachhol
 
 
 def test_pause_merkt_nichts_vor():
@@ -189,8 +192,8 @@ def test_pause_merkt_nichts_vor():
     state.set_mode(SUB, "stimmung")
     state.set_paused(True)
     try:
-        _run(jobs.followup_job(w.bot))
-        assert not jobs._nachhol
+        _run(aufgaben.followup_job(w.bot))
+        assert not basis._nachhol
     finally:
         state.set_paused(False)
 
@@ -201,11 +204,11 @@ def test_pause_merkt_nichts_vor():
 
 def _dummy_job(name: str, max_stunden: int, laeufe: list):
     async def job(bot):
-        if jobs._flow_aktiv(DOM, name):
+        if basis._flow_aktiv(DOM, name):
             return
         laeufe.append(name)
     job.__name__ = name
-    return jobs._nachholbar(max_stunden=max_stunden)(job)
+    return basis._nachholbar(max_stunden=max_stunden)(job)
 
 
 def test_dom_job_wird_nachgeholt_und_nur_einer_pro_tick():
@@ -218,13 +221,13 @@ def test_dom_job_wird_nachgeholt_und_nur_einer_pro_tick():
     _run(b(w.bot))
     assert laeufe == [] and _vorgemerkt("job_a") and _vorgemerkt("job_b")
     # Reihenfolge = Reihenfolge der regulären Läufe
-    jobs._nachhol[next(k for k in jobs._nachhol if k[1] == "job_a")]["seit"] -= timedelta(minutes=30)
+    basis._nachhol[next(k for k in basis._nachhol if k[1] == "job_a")]["seit"] -= timedelta(minutes=30)
 
     state.set_mode(DOM, "chat")
-    _run(jobs.nachhol_tick_job(w.bot))
+    _run(basis.nachhol_tick_job(w.bot))
     assert laeufe == ["job_a"], laeufe          # keine Nachrichten-Salve
-    _run(jobs.nachhol_tick_job(w.bot))
-    assert laeufe == ["job_a", "job_b"] and not jobs._nachhol
+    _run(basis.nachhol_tick_job(w.bot))
+    assert laeufe == ["job_a", "job_b"] and not basis._nachhol
 
 
 def test_regulaerer_lauf_ohne_block_raeumt_vormerkung():
@@ -236,31 +239,31 @@ def test_regulaerer_lauf_ohne_block_raeumt_vormerkung():
     assert _vorgemerkt("job_a")
     state.set_mode(DOM, "chat")
     _run(a(w.bot))                              # nächster regulärer Lauf
-    assert laeufe == ["job_a"] and not jobs._nachhol
+    assert laeufe == ["job_a"] and not basis._nachhol
 
 
 def test_fehler_im_nachhol_lauf_raeumt_vormerkung():
     w = _Welt()
 
     async def kaputt(bot):
-        if jobs._flow_aktiv(DOM, "kaputt"):
+        if basis._flow_aktiv(DOM, "kaputt"):
             return
         raise RuntimeError("x")
     kaputt.__name__ = "kaputt"
-    job = jobs._nachholbar(max_stunden=26)(kaputt)
+    job = basis._nachholbar(max_stunden=26)(kaputt)
     state.set_mode(DOM, "reaktion_pending")
     _run(job(w.bot))
     state.set_mode(DOM, "chat")
-    _run(jobs.nachhol_tick_job(w.bot))          # _job_guard fängt den Fehler
-    assert not jobs._nachhol
+    _run(basis.nachhol_tick_job(w.bot))          # _job_guard fängt den Fehler
+    assert not basis._nachhol
 
 
 def test_zweiwochen_takt_gilt_im_nachhol_lauf():
-    token = jobs._nachhol_lauf.set(True)
+    token = basis._nachhol_lauf.set(True)
     try:
-        assert jobs._zweiwochen_takt() is True
+        assert basis._zweiwochen_takt() is True
     finally:
-        jobs._nachhol_lauf.reset(token)
+        basis._nachhol_lauf.reset(token)
 
 
 def test_einmal_jobs_sind_markiert():

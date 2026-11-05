@@ -47,6 +47,8 @@ except ImportError:
 from unittest.mock import AsyncMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.handlers.waehrung import abzuege as wh_abzuege, kern as wh_kern, session as wh_session, sparziel as wh_sparziel, wette_annahme as wh_wette_annahme, wette_urteil as wh_wette_urteil  # noqa: E402
+from bot.services.db import profile as db_profile, tasks as db_tasks  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -131,14 +133,14 @@ class _Welt:
         return "task-1"
 
     def install(self):
-        qdrant.get_user_profile = self.get_profile
-        qdrant.patch_profile_fields = self.patch
-        qdrant.erstelle_task = self.erstelle_task
+        db_profile.get_user_profile = self.get_profile
+        db_profile.patch_profile_fields = self.patch
+        db_tasks.erstelle_task = self.erstelle_task
         wh.telegram_helper.send_domina = self.send_domina
         wh.telegram_helper.send_sklave = self.send_sklave
         wh.sticker_reaktionen.sende_sklave = AsyncMock(return_value=True)
         ws.frist_iso = lambda tage: (datetime.now(timezone.utc) + timedelta(days=tage)).isoformat()
-        wh._BOT = object()
+        wh_kern._BOT = object()
         # Wett-Ergebnis an die Dom-Seite läuft über Grok (17.09.2026)
         self.grok_prompts: list = []
         self.grok_fehler = False
@@ -260,41 +262,41 @@ def test_inventar_preise_sparziel_gewaehren():
 
 def test_rang_und_schwellen_push():
     w = _Welt(punkte=510, wuensche=["Käfig"], preise={"Käfig": 500}).install()
-    w.profile["domina"][wh.FELD_FRAGE_AM] = datetime.now(timezone.utc).isoformat()  # Sparziel-Frage gerade gestellt
-    _run(wh.nach_punkteaenderung(None, 490, 510))
+    w.profile["domina"][wh_kern.FELD_FRAGE_AM] = datetime.now(timezone.utc).isoformat()  # Sparziel-Frage gerade gestellt
+    _run(wh_kern.nach_punkteaenderung(None, 490, 510))
     texte = [s for s, _ in w.sub_sends]
     assert any("Diener" in x and "steigst" in x for x in texte), texte
     push = [(s, m) for s, m in w.sub_sends if s.startswith("⭐")]
     assert len(push) == 1 and "500" in push[0][0] and "Käfig" in push[0][0] and push[0][1] is not None
-    assert w.profile["sklave"][wh.FELD_SCHWELLE] == 500
+    assert w.profile["sklave"][wh_kern.FELD_SCHWELLE] == 500
     assert w.dom_sends == [], "24-h-Gate: keine Sparziel-Frage"
     # dieselbe Schwelle nie zweimal, Abwärts nur Rang-Meldung, kein Push
     w.sub_sends.clear()
-    _run(wh.nach_punkteaenderung(None, 505, 520))
+    _run(wh_kern.nach_punkteaenderung(None, 505, 520))
     assert not any(s.startswith("⭐") for s, _ in w.sub_sends)
-    _run(wh.nach_punkteaenderung(None, 520, 480, push=False))
+    _run(wh_kern.nach_punkteaenderung(None, 520, 480, push=False))
     assert any("fällst" in s and "Laufbursche" in s for s, _ in w.sub_sends)
     assert not any(s.startswith("⭐") for s, _ in w.sub_sends)
 
 
 def test_abzug_buttons_einmalig():
     w = _Welt(punkte=100).install()
-    wh.abzug_anbieten("strafe-1")
+    wh_abzuege.abzug_anbieten("strafe-1")
     assert "strafe-1" in state.get(DOM)["abzug_offen"]
-    q = _press(wh.callback_punkteabzug, "punkteabzug:50:strafe-1", DOM)
+    q = _press(wh_abzuege.callback_punkteabzug, "punkteabzug:50:strafe-1", DOM)
     assert q.markup_entfernt and w.punkte == 50
     assert any("50" in r[0] and "abgezogen" in r[0] for r in q.message.replies)
     assert w.sub_sends and "50" in w.sub_sends[0][0]
     assert any("fällst" in s for s, _ in w.sub_sends), "100 → 50 = Rang ab"
-    q = _press(wh.callback_punkteabzug, "punkteabzug:25:strafe-1", DOM)
+    q = _press(wh_abzuege.callback_punkteabzug, "punkteabzug:25:strafe-1", DOM)
     assert w.punkte == 50 and any("nicht mehr möglich" in r[0] for r in q.message.replies)
-    _press(wh.callback_punkteabzug, "punkteabzug:99:strafe-2", DOM)
+    _press(wh_abzuege.callback_punkteabzug, "punkteabzug:99:strafe-2", DOM)
     assert w.punkte == 50
     # fester Abzug nicht-erledigt, nie unter 0
-    b = _run(wh.abzug_nicht_erledigt())
+    b = _run(wh_abzuege.abzug_nicht_erledigt())
     assert b["delta"] == -ws.ABZUG_NICHT_ERLEDIGT and w.punkte == 50 - ws.ABZUG_NICHT_ERLEDIGT
     w.profile["sklave"]["punkte"] = 5
-    assert _run(wh.abzug_nicht_erledigt())["neu"] == 0
+    assert _run(wh_abzuege.abzug_nicht_erledigt())["neu"] == 0
 
 
 # --------------------------------------------------------------------------
@@ -303,11 +305,11 @@ def test_abzug_buttons_einmalig():
 
 def test_wunschpreis_und_sparziel_flow():
     w = _Welt(punkte=490, wuensche=["Käfig"]).install()
-    _run(wh.frage_wunschpreis("Käfig"))
+    _run(wh_sparziel.frage_wunschpreis("Käfig"))
     assert len(w.dom_sends) == 1 and "Käfig" in w.dom_sends[0][0] and w.dom_sends[0][1] is not None
     kennung = next(iter(state.get(DOM)["wunschpreis_offen"]))
     # 300 → Preis gesetzt, Sub erfährt Sparziel, Stand 490 ≥ 300 → Frage an die Dom-Seite
-    q = _press(wh.callback_wunschpreis, f"wunschpreis:300:{kennung}", DOM)
+    q = _press(wh_sparziel.callback_wunschpreis, f"wunschpreis:300:{kennung}", DOM)
     assert q.markup_entfernt and inv.preis("Käfig") == 300
     assert any("300" in r[0] for r in q.message.replies)
     assert any("Sparziel" in s and "300" in s for s, _ in w.sub_sends)
@@ -315,39 +317,39 @@ def test_wunschpreis_und_sparziel_flow():
     assert len(frage) == 1 and frage[0][1] is not None
     assert state.get(DOM)["sparziel_frage"]["wunsch"] == "Käfig"
     # zweite Prüfung: offene Frage → keine zweite
-    assert _run(wh.sparziel_pruefen(None, 490)) is False
+    assert _run(wh_sparziel.sparziel_pruefen(None, 490)) is False
     fk = state.get(DOM)["sparziel_frage"]["kennung"]
     # später → Ruhe, keine neue Frage
-    q = _press(wh.callback_wunschziel, f"wunschziel:spaeter:{fk}", DOM)
+    q = _press(wh_sparziel.callback_wunschziel, f"wunschziel:spaeter:{fk}", DOM)
     assert any("frühestens" in r[0] for r in q.message.replies)
-    assert "käfig" in w.profile["domina"][wh.FELD_RUHE]
-    w.profile["domina"].pop(wh.FELD_FRAGE_AM, None)
-    assert _run(wh.sparziel_pruefen(None, 490)) is False, "14 Tage Ruhe"
+    assert "käfig" in w.profile["domina"][wh_kern.FELD_RUHE]
+    w.profile["domina"].pop(wh_kern.FELD_FRAGE_AM, None)
+    assert _run(wh_sparziel.sparziel_pruefen(None, 490)) is False, "14 Tage Ruhe"
     # Ruhe abgelaufen → Frage erneut, gewähren bucht ab
-    w.profile["domina"][wh.FELD_RUHE] = {"käfig": (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()}
-    assert _run(wh.sparziel_pruefen(None, 490)) is True
+    w.profile["domina"][wh_kern.FELD_RUHE] = {"käfig": (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()}
+    assert _run(wh_sparziel.sparziel_pruefen(None, 490)) is True
     fk = state.get(DOM)["sparziel_frage"]["kennung"]
-    q = _press(wh.callback_wunschziel, f"wunschziel:gewaehren:{fk}", DOM)
+    q = _press(wh_sparziel.callback_wunschziel, f"wunschziel:gewaehren:{fk}", DOM)
     assert w.punkte == 190 and inv.wuensche() == [] and inv.gewaehrte() == ["Käfig"]
     assert any("Gewährt" in r[0] and "190" in r[0] for r in q.message.replies)
     assert any("erspart" in s for s, _ in w.sub_sends)
     assert any("fällst" in s for s, _ in w.sub_sends), "490 → 190 = Rang ab"
     # veraltete Kennung
-    q = _press(wh.callback_wunschziel, f"wunschziel:gewaehren:{fk}", DOM)
+    q = _press(wh_sparziel.callback_wunschziel, f"wunschziel:gewaehren:{fk}", DOM)
     assert any("nicht mehr aktuell" in r[0] for r in q.message.replies) and w.punkte == 190
     # Preis-Antwort mit fremder Kennung / ungültigem Preis
-    q = _press(wh.callback_wunschpreis, "wunschpreis:300:deadbeef", DOM)
+    q = _press(wh_sparziel.callback_wunschpreis, "wunschpreis:300:deadbeef", DOM)
     assert any("nicht mehr aktuell" in r[0] for r in q.message.replies)
 
 
 def test_sparziel_zu_wenig_und_zeilen():
     w = _Welt(punkte=100, wuensche=["Käfig"], preise={"Käfig": 300}).install()
     state.get(DOM)["sparziel_frage"] = {"kennung": "k1", "wunsch": "Käfig"}
-    q = _press(wh.callback_wunschziel, "wunschziel:gewaehren:k1", DOM)
+    q = _press(wh_sparziel.callback_wunschziel, "wunschziel:gewaehren:k1", DOM)
     assert w.punkte == 100 and any("nicht mehr genug" in r[0] for r in q.message.replies)
-    assert wh.sparziel_zeile(100) == "Käfig · 100/300 P" and wh.sparziel_zeile(900) == "Käfig · 300/300 P"
-    assert "Laufbursche" in wh.rang_zeile(490) and "Diener" in wh.rang_zeile(490)
-    assert "höchster" in wh.rang_zeile(2500)
+    assert wh_kern.sparziel_zeile(100) == "Käfig · 100/300 P" and wh_kern.sparziel_zeile(900) == "Käfig · 300/300 P"
+    assert "Laufbursche" in wh_kern.rang_zeile(490) and "Diener" in wh_kern.rang_zeile(490)
+    assert "höchster" in wh_kern.rang_zeile(2500)
 
 
 # --------------------------------------------------------------------------
@@ -356,27 +358,27 @@ def test_sparziel_zu_wenig_und_zeilen():
 
 def test_herrin_wette_kompletter_lauf():
     w = _Welt(punkte=200).install()
-    assert not wh.wette_laeuft(w.profile["sklave"]) and not wh.wette_offen(w.profile["sklave"])
+    assert not wh_wette_annahme.wette_laeuft(w.profile["sklave"]) and not wh_wette_annahme.wette_offen(w.profile["sklave"])
     # Angebot → erst nach der Annahme läuft sie (Frist aus der Idee: zwei Tage)
-    _run(wh.wette_anbieten(None, "Wer in den nächsten zwei Tagen …", "Ansage", "abc12345"))
-    assert wh.wette_offen(w.profile["sklave"]) and not wh.wette_laeuft(w.profile["sklave"])
-    _press(wh.callback_wetteantwort, "wetteantwort:annehmen:abc12345", SUB)
-    assert wh.wette_laeuft(w.profile["sklave"])
-    hw = w.profile["sklave"][wh.FELD_WETTE]
+    _run(wh_wette_annahme.wette_anbieten(None, "Wer in den nächsten zwei Tagen …", "Ansage", "abc12345"))
+    assert wh_wette_annahme.wette_offen(w.profile["sklave"]) and not wh_wette_annahme.wette_laeuft(w.profile["sklave"])
+    _press(wh_wette_annahme.callback_wetteantwort, "wetteantwort:annehmen:abc12345", SUB)
+    assert wh_wette_annahme.wette_laeuft(w.profile["sklave"])
+    hw = w.profile["sklave"][wh_kern.FELD_WETTE]
     assert hw["einsatz"] == 50 and hw["status"] == "laeuft" and hw["angenommen"] == "tipp"
     w.sub_sends.clear()
     # Job vor der Frist: nichts
-    _run(wh.wette_urteil_job(None))
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert w.sub_sends == []
     # Frist um → Urteils-Frage mit Buttons
     hw["frist"] = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
-    _run(wh.wette_urteil_job(None))
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert len(w.sub_sends) == 1 and w.sub_sends[0][1] is not None and "Frist" in w.sub_sends[0][0]
-    assert w.profile["sklave"][wh.FELD_WETTE]["status"] == "gefragt"
-    _run(wh.wette_urteil_job(None))
+    assert w.profile["sklave"][wh_kern.FELD_WETTE]["status"] == "gefragt"
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert len(w.sub_sends) == 1, "Frage nicht doppelt"
     # Sub meldet gewonnen → +50, Dom bekommt Ergebnis mit Einspruch-Button
-    q = _press(wh.callback_wetteurteil, "wetteurteil:gewonnen:abc12345", SUB)
+    q = _press(wh_wette_urteil.callback_wetteurteil, "wetteurteil:gewonnen:abc12345", SUB)
     assert q.markup_entfernt and w.punkte == 250
     assert any("Gewonnen" in s for s, _ in w.sub_sends)
     assert w.dom_sends and "gewonnen" in w.dom_sends[-1][0] and w.dom_sends[-1][1] is not None
@@ -384,48 +386,48 @@ def test_herrin_wette_kompletter_lauf():
     system, user = w.grok_prompts[-1]
     assert "GEWONNEN" in system and "schuldet" in system and "Wer in den nächsten zwei Tagen" in user
     assert "erfinde keinen Verlauf" in system and "höchstens drei Sätzen" in system
-    assert w.profile["sklave"][wh.FELD_WETTE]["status"] == "entschieden"
+    assert w.profile["sklave"][wh_kern.FELD_WETTE]["status"] == "entschieden"
     # Doppel-Tap → veraltet
-    q = _press(wh.callback_wetteurteil, "wetteurteil:verloren:abc12345", SUB)
+    q = _press(wh_wette_urteil.callback_wetteurteil, "wetteurteil:verloren:abc12345", SUB)
     assert w.punkte == 250 and any("schon entschieden" in r[0] for r in q.message.replies)
     # Einspruch kippt: +50 → −50 (Umbuchung 100)
-    q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:abc12345", DOM)
-    assert w.punkte == 150 and w.profile["sklave"][wh.FELD_WETTE]["status"] == "gekippt"
+    q = _press(wh_wette_urteil.callback_wetteeinspruch, "wetteeinspruch:abc12345", DOM)
+    assert w.punkte == 150 and w.profile["sklave"][wh_kern.FELD_WETTE]["status"] == "gekippt"
     assert any("verloren" in r[0] and "keine Gnade" in r[0] for r in q.message.replies)
     assert "VERLOREN" in w.grok_prompts[-1][0] and "gnadenlos" in w.grok_prompts[-1][0]
     assert any("Einspruch" in s and "verloren" in s for s, _ in w.sub_sends)
-    q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:abc12345", DOM)
+    q = _press(wh_wette_urteil.callback_wetteeinspruch, "wetteeinspruch:abc12345", DOM)
     assert w.punkte == 150 and any("nicht mehr möglich" in r[0] for r in q.message.replies)
-    assert not wh.wette_laeuft(w.profile["sklave"]), "entschiedene Wette blockiert die nächste nicht"
+    assert not wh_wette_annahme.wette_laeuft(w.profile["sklave"]), "entschiedene Wette blockiert die nächste nicht"
 
 
 def test_herrin_wette_verfaellt_und_einspruch_frist():
     w = _Welt(punkte=200).install()
-    w.profile["sklave"][wh.FELD_WETTE] = {
+    w.profile["sklave"][wh_kern.FELD_WETTE] = {
         "kennung": "k2", "idee": "egal", "einsatz": 50, "status": "gefragt",
         "gefragt_am": (datetime.now(timezone.utc) - timedelta(days=4)).isoformat()}
-    _run(wh.wette_urteil_job(None))
-    assert w.punkte == 150 and w.profile["sklave"][wh.FELD_WETTE]["ergebnis"] == "verloren"
+    _run(wh_wette_urteil.wette_urteil_job(None))
+    assert w.punkte == 150 and w.profile["sklave"][wh_kern.FELD_WETTE]["ergebnis"] == "verloren"
     assert any("Keine Meldung" in s for s, _ in w.sub_sends)
     assert "automatisch" in w.dom_sends[-1][0]
     # alte Idee mit angehängter Rückfrage: die Rückfrage fällt in der Meldung weg
     assert "nicht gemeldet" in w.grok_prompts[-1][0]
-    assert wh._abmachung({"idee": "Verliert er, kocht er. Willst du die Bedingung noch fieser machen?"}) \
+    assert wh_wette_annahme._abmachung({"idee": "Verliert er, kocht er. Willst du die Bedingung noch fieser machen?"}) \
         == "\n\nAusgemacht war: Verliert er, kocht er."
-    assert wh._abmachung({}) == ""
+    assert wh_wette_annahme._abmachung({}) == ""
     # Fallbacks: Grok-Fehler oder Limits-Treffer → Abmachung wörtlich; ohne Idee nichts
     alt_idee = {"idee": "Verliert er, kocht er zwei Abende."}
     w.grok_fehler = True
-    assert _run(wh._einsatz_text(alt_idee, "verloren")) == "\n\nAusgemacht war: Verliert er, kocht er zwei Abende."
+    assert _run(wh_wette_annahme._einsatz_text(alt_idee, "verloren")) == "\n\nAusgemacht war: Verliert er, kocht er zwei Abende."
     w.grok_fehler = False
     w.limits_treffer = [{"limit": "X"}]
-    assert _run(wh._einsatz_text(alt_idee, "verloren")).startswith("\n\nAusgemacht war:")
+    assert _run(wh_wette_annahme._einsatz_text(alt_idee, "verloren")).startswith("\n\nAusgemacht war:")
     w.limits_treffer = []
-    assert _run(wh._einsatz_text(alt_idee, "verloren")) == "\n\nHab Spaß und zeig keine Gnade."
-    assert _run(wh._einsatz_text({}, "verloren")) == ""
+    assert _run(wh_wette_annahme._einsatz_text(alt_idee, "verloren")) == "\n\nHab Spaß und zeig keine Gnade."
+    assert _run(wh_wette_annahme._einsatz_text({}, "verloren")) == ""
     # Einspruch nach 24 h nicht mehr
-    w.profile["sklave"][wh.FELD_WETTE]["einspruch_bis"] = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    q = _press(wh.callback_wetteeinspruch, "wetteeinspruch:k2", DOM)
+    w.profile["sklave"][wh_kern.FELD_WETTE]["einspruch_bis"] = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    q = _press(wh_wette_urteil.callback_wetteeinspruch, "wetteeinspruch:k2", DOM)
     assert w.punkte == 150 and any("nicht mehr möglich" in r[0] for r in q.message.replies)
 
 
@@ -440,7 +442,7 @@ def test_shop_katalog_und_session():
     assert privileg._privileg_by_id("session_wunsch")["kosten"] == 150
     assert "session_wunsch" in privileg._SOFORT_ANWEISUNG
     w = _Welt(punkte=0).install()
-    assert _run(wh.session_wunsch_task()) == "task-1"
+    assert _run(wh_session.session_wunsch_task()) == "task-1"
     tk = w.tasks[0]
     assert tk["quelle"] == "privileg" and tk["followup_in_tagen"] == 7 and tk["status"] == "offen"
     assert tk["kategorie"] == "Pegging" and "Pegging" in tk["aufgabe"] and tk["level"] == 2

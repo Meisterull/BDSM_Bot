@@ -19,6 +19,7 @@ Läuft mit echten Deps (Docker) ODER lokal mit MagicMock-Stubs:
 """
 import asyncio
 import json
+import glob
 import os
 import sys
 import tempfile
@@ -48,6 +49,8 @@ except ImportError:
 from unittest.mock import AsyncMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.handlers.waehrung import kern as wh_kern, wette_ablehnung as wh_wette_ablehnung, wette_annahme as wh_wette_annahme, wette_urteil as wh_wette_urteil  # noqa: E402
+from bot.services.db import profile as db_profile  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -169,9 +172,9 @@ class _Welt:
         wh.limits_check.generate_mit_limit_retry = self.generate
         wh.grok.simple = self.simple
         wh.grok.clean_text = lambda x: (x or "").strip()
-        wh.nach_punkteaenderung = AsyncMock(return_value=None)
-        wh._tagsueber = lambda: True
-        wh.im_hintergrund = self.hintergrund.append
+        wh_kern.nach_punkteaenderung = AsyncMock(return_value=None)
+        wh_wette_annahme._tagsueber = lambda: True
+        wh_wette_annahme.im_hintergrund = self.hintergrund.append
         # Machbarkeits-Prüfung je Strafe: Texte in self.unmachbar gelten als nicht stimmig
         from bot.services import machbarkeit
         self.unmachbar: set = set()
@@ -188,7 +191,7 @@ class _Welt:
 
     @property
     def hw(self) -> dict:
-        return self.profile["sklave"].get(wh.FELD_WETTE) or {}
+        return self.profile["sklave"].get(wh_kern.FELD_WETTE) or {}
 
     @property
     def punkte(self) -> int:
@@ -207,14 +210,14 @@ def _press(fn, data, chat):
 
 
 def _angeboten(w, vor_stunden=0.0, kennung="k1"):
-    w.profile["sklave"][wh.FELD_WETTE] = {
+    w.profile["sklave"][wh_kern.FELD_WETTE] = {
         "kennung": kennung, "idee": IDEE, "ansage": "Ansage", "einsatz": 50, "status": "angeboten",
         "angeboten_am": (datetime.now(timezone.utc) - timedelta(hours=vor_stunden)).isoformat()}
 
 
 def _abgelehnt(w, kennung="k1"):
     _angeboten(w, kennung=kennung)
-    _press(wh.callback_wetteantwort, f"wetteantwort:ablehnen:{kennung}", SUB)
+    _press(wh_wette_annahme.callback_wetteantwort, f"wetteantwort:ablehnen:{kennung}", SUB)
 
 
 # --------------------------------------------------------------------------
@@ -224,17 +227,17 @@ def _abgelehnt(w, kennung="k1"):
 def test_anbieten_und_rollback():
     w = _Welt().install()
     alt = {"kennung": "alt", "status": "entschieden"}
-    w.profile["sklave"][wh.FELD_WETTE] = dict(alt)
-    _run(wh.wette_anbieten(None, IDEE, "<soft>Wir wetten.</soft> Nimmst du an?", "k1"))
+    w.profile["sklave"][wh_kern.FELD_WETTE] = dict(alt)
+    _run(wh_wette_annahme.wette_anbieten(None, IDEE, "<soft>Wir wetten.</soft> Nimmst du an?", "k1"))
     assert w.hw["status"] == "angeboten" and w.hw["idee"] == IDEE and "frist" not in w.hw
     text, markup, voice = w.sub_sends[0]
     assert text == "Wir wetten. Nimmst du an?" and voice.startswith("<soft>") and markup is not None
-    assert wh.wette_offen(w.profile["sklave"]) and not wh.wette_laeuft(w.profile["sklave"])
+    assert wh_wette_annahme.wette_offen(w.profile["sklave"]) and not wh_wette_annahme.wette_laeuft(w.profile["sklave"])
     # Sendefehler → vorheriger Eintrag zurück, Fehler an den Aufrufer
-    w.profile["sklave"][wh.FELD_WETTE] = dict(alt)
+    w.profile["sklave"][wh_kern.FELD_WETTE] = dict(alt)
     w.sub_fehler = True
     try:
-        _run(wh.wette_anbieten(None, IDEE, "Ansage", "k2"))
+        _run(wh_wette_annahme.wette_anbieten(None, IDEE, "Ansage", "k2"))
         raise AssertionError("Sendefehler muss durchschlagen")
     except RuntimeError:
         pass
@@ -244,38 +247,38 @@ def test_anbieten_und_rollback():
 def test_annehmen_per_tipp():
     w = _Welt().install()
     _angeboten(w)
-    q = _press(wh.callback_wetteantwort, "wetteantwort:annehmen:k1", SUB)
+    q = _press(wh_wette_annahme.callback_wetteantwort, "wetteantwort:annehmen:k1", SUB)
     assert q.markup_entfernt and w.hw["status"] == "laeuft" and w.hw["angenommen"] == "tipp"
-    assert w.hw["frist"] and wh.wette_laeuft(w.profile["sklave"])
+    assert w.hw["frist"] and wh_wette_annahme.wette_laeuft(w.profile["sklave"])
     assert any("Angenommen" in s[0] for s in w.sub_sends)
     assert w.dom_sends and "angenommen" in w.dom_sends[-1][0] and "Urteil am" in w.dom_sends[-1][0]
     assert "automatisch" not in w.dom_sends[-1][0]
     # Doppel-Tap → still; fremde Kennung → veraltet
     n = len(w.sub_sends) + len(w.dom_sends)
-    q = _press(wh.callback_wetteantwort, "wetteantwort:ablehnen:k1", SUB)
+    q = _press(wh_wette_annahme.callback_wetteantwort, "wetteantwort:ablehnen:k1", SUB)
     assert q.message.replies == [] and len(w.sub_sends) + len(w.dom_sends) == n and w.hw["status"] == "laeuft"
-    q = _press(wh.callback_wetteantwort, "wetteantwort:annehmen:zzz", SUB)
+    q = _press(wh_wette_annahme.callback_wetteantwort, "wetteantwort:annehmen:zzz", SUB)
     assert any("nicht mehr offen" in r for r in q.message.replies)
 
 
 def test_job_erinnerung_und_auto_annahme():
     w = _Welt().install()
     _angeboten(w, vor_stunden=1)
-    _run(wh.wette_urteil_job(None))
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert w.sub_sends == [] and w.hw["status"] == "angeboten"
     _angeboten(w, vor_stunden=5)
-    _run(wh.wette_urteil_job(None))
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert len(w.sub_sends) == 1 and "wartet" in w.sub_sends[0][0] and w.sub_sends[0][1] is not None
     assert w.hw["erinnert"] is True
-    _run(wh.wette_urteil_job(None))
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert len(w.sub_sends) == 1, "Erinnerung nur einmal"
     # nachts nichts
     w.hw["angeboten_am"] = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-    wh._tagsueber = lambda: False
-    _run(wh.wette_urteil_job(None))
+    wh_wette_annahme._tagsueber = lambda: False
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert w.hw["status"] == "angeboten"
-    wh._tagsueber = lambda: True
-    _run(wh.wette_urteil_job(None))
+    wh_wette_annahme._tagsueber = lambda: True
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert w.hw["status"] == "laeuft" and w.hw["angenommen"] == "automatisch"
     assert any("gilt sie als angenommen" in s[0] for s in w.sub_sends)
     assert "automatisch" in w.dom_sends[-1][0]
@@ -292,19 +295,19 @@ def test_ablehnen_und_abzug():
     assert any("Abgelehnt" in s[0] for s in w.sub_sends)
     text, markup = w.dom_sends[-1]
     assert "abgelehnt" in text and markup is not None
-    assert wh.wette_offen(w.profile["sklave"]), "offene Ablehnung blockiert neue Wetten"
+    assert wh_wette_annahme.wette_offen(w.profile["sklave"]), "offene Ablehnung blockiert neue Wetten"
     # Strafwahl vor dem Abzug geht nicht
-    _press(wh.callback_wetteablehnung, "wetteablehnung:keine:k1", DOM)
+    _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:keine:k1", DOM)
     assert w.hw["status"] == "abgelehnt"
     # Abzug −100 (nicht erlaubter Betrag wird ignoriert)
-    _press(wh.callback_wetteablehnung, "wetteablehnung:punkte:70:k1", DOM)
+    _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:punkte:70:k1", DOM)
     assert w.punkte == 200 and w.hw["abzug"] is None
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:punkte:100:k1", DOM)
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:punkte:100:k1", DOM)
     assert w.punkte == 100 and w.hw["abzug"] == 100
     assert q.toast == t("WETTE_STRAFE_SUCHT_TOAST") and "Moment" in q.edits[-1][0] and q.edits[-1][1] is None
     assert any("100 Punkte fürs Ablehnen" in s[0] for s in w.sub_sends)
     # Doppel-Tap bucht nicht nochmal
-    _press(wh.callback_wetteablehnung, "wetteablehnung:punkte:50:k1", DOM)
+    _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:punkte:50:k1", DOM)
     assert w.punkte == 100
     # Hintergrund: drei Vorschläge, Nachricht umgebaut
     assert len(w.hintergrund) == 1
@@ -319,10 +322,10 @@ def test_ablehnen_und_abzug():
 def test_strafe_waehlen_wird_aufgabe():
     w = _Welt().install()
     _abgelehnt(w)
-    _press(wh.callback_wetteablehnung, "wetteablehnung:punkte:50:k1", DOM)
+    _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:punkte:50:k1", DOM)
     w.hintergrund_laufen()
     n_sub = len(w.sub_sends)
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:strafe:1:k1", DOM)
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:strafe:1:k1", DOM)
     assert w.hw["status"] == "abgelehnt_erledigt" and w.hw["strafe"] == STRAFEN[1]
     assert w.tasks and w.tasks[0]["aufgabe"] == STRAFEN[1] and w.tasks[0]["quelle"] == "wette_ablehnung"
     assert w.tasks[0]["level"] == 2 and w.hw["strafe_task_id"] == "task-1"
@@ -330,24 +333,24 @@ def test_strafe_waehlen_wird_aufgabe():
     assert "<soft>" not in text and voice.startswith("<soft>") and STRAFEN[1] in text
     assert w.strafen_protokoll and w.strafen_protokoll[0]["grund"] == "wette_abgelehnt"
     assert "Angeordnet" in q.edits[-1][0] and q.edits[-1][1] is None
-    assert not wh.wette_offen(w.profile["sklave"])
+    assert not wh_wette_annahme.wette_offen(w.profile["sklave"])
     # Doppel-Tap nach Abschluss → still, keine zweite Aufgabe
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:strafe:0:k1", DOM)
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:strafe:0:k1", DOM)
     assert len(w.tasks) == 1 and q.message.replies == []
 
 
 def test_strafe_limit_und_zustellfehler():
     w = _Welt().install()
     _abgelehnt(w)
-    _press(wh.callback_wetteablehnung, "wetteablehnung:punkte:25:k1", DOM)
+    _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:punkte:25:k1", DOM)
     w.hintergrund_laufen()
     w.limits = ["Bad"]
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:strafe:1:k1", DOM)
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:strafe:1:k1", DOM)
     assert w.hw["status"] == "abgelehnt" and w.tasks == []
     assert any("Grenzen" in r and "Bad" in r for r in q.message.replies)
     w.limits = []
     w.sub_fehler = True
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:strafe:0:k1", DOM)
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:strafe:0:k1", DOM)
     assert w.hw["status"] == "abgelehnt" and w.geloescht == ["task-1"], "Aufgabe zurückgerollt"
     assert any("nicht geklappt" in r for r in q.message.replies)
 
@@ -355,21 +358,21 @@ def test_strafe_limit_und_zustellfehler():
 def test_neu_deckel_und_nur_punkte():
     w = _Welt().install()
     _abgelehnt(w)
-    _press(wh.callback_wetteablehnung, "wetteablehnung:punkte:50:k1", DOM)
+    _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:punkte:50:k1", DOM)
     w.hintergrund_laufen()
     for i in range(3):
-        _press(wh.callback_wetteablehnung, "wetteablehnung:neu:k1", DOM)
+        _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:neu:k1", DOM)
         w.hintergrund_laufen()
     assert w.hw["strafe_neu"] == 3 and len(w.llm_prompts) == 4
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:neu:k1", DOM)
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:neu:k1", DOM)
     assert len(w.llm_prompts) == 4 and any("reichen" in r for r in q.message.replies)
     # leere Vorschläge → Hinweis statt Liste, Knöpfe ohne Nummern
     w.strafen_json = "kaputt"
     w.hw["strafe_neu"] = 0
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:neu:k1", DOM)
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:neu:k1", DOM)
     w.hintergrund_laufen()
     assert w.hw["strafe_optionen"] == [] and "nichts Passendes" in q.edits[-1][0]
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:keine:k1", DOM)
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:keine:k1", DOM)
     assert w.hw["status"] == "abgelehnt_erledigt" and w.hw["strafe"] is None and w.tasks == []
     assert "Nur die Punkte" in q.edits[-1][0] and w.punkte == 150
 
@@ -377,23 +380,23 @@ def test_neu_deckel_und_nur_punkte():
 def test_eigene_strafe():
     w = _Welt().install()
     _abgelehnt(w)
-    _press(wh.callback_wetteablehnung, "wetteablehnung:punkte:50:k1", DOM)
+    _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:punkte:50:k1", DOM)
     w.hintergrund_laufen()
-    q = _press(wh.callback_wetteablehnung, "wetteablehnung:eigene:k1", DOM)
-    assert state.get_mode(DOM) == wh.MODE_STRAFE_EIGEN and state.get(DOM)["wette_strafe_kennung"] == "k1"
+    q = _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:eigene:k1", DOM)
+    assert state.get_mode(DOM) == wh_wette_annahme.MODE_STRAFE_EIGEN and state.get(DOM)["wette_strafe_kennung"] == "k1"
     assert any("Schreib mir die Strafe" in r for r in q.message.replies)
     bot = SimpleNamespace(edit_message_reply_markup=AsyncMock(return_value=None))
 
     def _nachricht(text):
         msg = _Msg()
         msg.text = text
-        _run(wh.handle_strafe_eigen(SimpleNamespace(message=msg, effective_chat=SimpleNamespace(id=int(DOM))),
+        _run(wh_wette_ablehnung.handle_strafe_eigen(SimpleNamespace(message=msg, effective_chat=SimpleNamespace(id=int(DOM))),
                                     SimpleNamespace(bot=bot)))
         return msg
     # Limits-Treffer → Hinweis, Modus bleibt für den nächsten Versuch
     w.limits = ["Blut"]
     msg = _nachricht("Etwas mit Blut")
-    assert any("Grenzen" in r for r in msg.replies) and state.get_mode(DOM) == wh.MODE_STRAFE_EIGEN
+    assert any("Grenzen" in r for r in msg.replies) and state.get_mode(DOM) == wh_wette_annahme.MODE_STRAFE_EIGEN
     w.limits = []
     msg = _nachricht("Zehn Minuten still in der Ecke stehen")
     assert state.get_mode(DOM) == "chat" and "wette_strafe_kennung" not in state.get(DOM)
@@ -401,7 +404,7 @@ def test_eigene_strafe():
     assert w.hw["status"] == "abgelehnt_erledigt" and any("Angeordnet" in r for r in msg.replies)
     bot.edit_message_reply_markup.assert_awaited()
     # veralteter Modus (Ablehnung schon erledigt) → Hinweis, nichts angelegt
-    state.set_mode(DOM, wh.MODE_STRAFE_EIGEN)
+    state.set_mode(DOM, wh_wette_annahme.MODE_STRAFE_EIGEN)
     state.get(DOM)["wette_strafe_kennung"] = "k1"
     msg = _nachricht("Noch eine")
     assert len(w.tasks) == 1 and any("schon erledigt" in r for r in msg.replies)
@@ -411,21 +414,21 @@ def test_eigene_strafe():
 def test_ablehnung_automatisch_nach_24h():
     w = _Welt(punkte=200).install()
     _abgelehnt(w)
-    _run(wh.wette_urteil_job(None))
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert w.hw["status"] == "abgelehnt"
     w.hw["letzte_aktion_am"] = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
     n_dom = len(w.dom_sends)
-    _run(wh.wette_urteil_job(None))
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert w.hw["status"] == "abgelehnt_erledigt" and w.hw["automatisch"] and w.punkte == 150
     assert any("50 Punkte fürs Ablehnen der Wette" in s[0] for s in w.sub_sends)
     assert len(w.dom_sends) == n_dom, "keine Extra-Nachricht an die Dom-Seite"
     # schon gewählter Abzug → kein zweiter
     w = _Welt(punkte=200).install()
     _abgelehnt(w)
-    _press(wh.callback_wetteablehnung, "wetteablehnung:punkte:25:k1", DOM)
+    _press(wh_wette_ablehnung.callback_wetteablehnung, "wetteablehnung:punkte:25:k1", DOM)
     w.hintergrund.pop().close()  # Strafvorschläge hier egal
     w.hw["letzte_aktion_am"] = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-    _run(wh.wette_urteil_job(None))
+    _run(wh_wette_urteil.wette_urteil_job(None))
     assert w.punkte == 175 and w.hw["status"] == "abgelehnt_erledigt" and w.hw["strafe"] is None
 
 
@@ -435,7 +438,7 @@ def test_ablehnung_automatisch_nach_24h():
 
 def test_wette_abruf():
     w = _Welt().install()
-    cq.qdrant.get_user_profile = w.get_profile
+    db_profile.get_user_profile = w.get_profile
     cq.telegram_helper.send_domina = w.send_domina
     zugestellt: list = []
 
@@ -455,7 +458,7 @@ def test_wette_abruf():
         _run(cq.wette_router(upd, SimpleNamespace(bot=object(), args=[])))
         assert any("noch eine Wette offen" in r and "Antwort" in r for r in msg.replies) and not w.hintergrund
         # frei → „Moment" mit Thema, Generierung im Hintergrund
-        w.profile["sklave"].pop(wh.FELD_WETTE)
+        w.profile["sklave"].pop(wh_kern.FELD_WETTE)
         w.idee = IDEE
         _run(cq.wette_router(upd, SimpleNamespace(bot=object(), args=["Film", "abend"])))
         assert "Film abend" in msg.replies[-1] and len(w.hintergrund) == 1
@@ -475,7 +478,7 @@ def test_strafen_machbarkeit():
     w = _Welt().install()
     # eine von drei fällt → zwei stimmige reichen, kein zweiter LLM-Lauf
     w.unmachbar = {STRAFEN[1]}
-    assert _run(wh._ablehnungs_strafen_generieren(IDEE)) == [STRAFEN[0], STRAFEN[2]]
+    assert _run(wh_wette_ablehnung._ablehnungs_strafen_generieren(IDEE)) == [STRAFEN[0], STRAFEN[2]]
     assert len(w.llm_prompts) == 1
     # zwei fallen → neuer Satz mit Mängel-Hinweis; stimmige aus beiden Sätzen, ohne Doppelte
     w = _Welt().install()
@@ -487,13 +490,13 @@ def test_strafen_machbarkeit():
         w.llm_prompts.append(prompt)
         return saetze.pop(0)
     wh.limits_check.generate_mit_limit_retry = _generate
-    assert _run(wh._ablehnungs_strafen_generieren(IDEE)) == [STRAFEN[0], neue[0], neue[2]]
+    assert _run(wh_wette_ablehnung._ablehnungs_strafen_generieren(IDEE)) == [STRAFEN[0], neue[0], neue[2]]
     assert len(w.llm_prompts) == 2
     assert "körperlich nicht stimmig" in w.llm_prompts[1][1] and "geht so nicht" in w.llm_prompts[1][1]
     # alles unstimmig, auch im zweiten Satz → leer (Dom-Seite sieht den Hinweis-Text)
     w = _Welt().install()
     w.unmachbar = set(STRAFEN)
-    assert _run(wh._ablehnungs_strafen_generieren(IDEE)) == []
+    assert _run(wh_wette_ablehnung._ablehnungs_strafen_generieren(IDEE)) == []
 
 
 def test_verlauf_wird_geschrieben():
@@ -501,42 +504,42 @@ def test_verlauf_wird_geschrieben():
     den vorhandenen Eintrag, statt einen zweiten anzulegen."""
     w = _Welt().install()
     _abgelehnt(w)
-    verlauf = w.profile["sklave"][wh.FELD_WETT_VERLAUF]
+    verlauf = w.profile["sklave"][wh_kern.FELD_WETT_VERLAUF]
     assert len(verlauf) == 1 and verlauf[0]["ergebnis"] == "abgelehnt" and verlauf[0]["kennung"] == "k1"
     assert IDEE[:50] in verlauf[0]["idee"] and verlauf[0]["datum"].count("-") == 2
     # Entschiedene Wette: neuer Eintrag; Einspruch korrigiert ihn
-    w.profile["sklave"][wh.FELD_WETTE] = {"kennung": "k2", "idee": "Zweite Wette: er kocht.",
+    w.profile["sklave"][wh_kern.FELD_WETTE] = {"kennung": "k2", "idee": "Zweite Wette: er kocht.",
                                           "einsatz": 50, "status": "gefragt"}
-    _run(wh._wette_abschliessen(None, "verloren"))
-    verlauf = w.profile["sklave"][wh.FELD_WETT_VERLAUF]
+    _run(wh_wette_urteil._wette_abschliessen(None, "verloren"))
+    verlauf = w.profile["sklave"][wh_kern.FELD_WETT_VERLAUF]
     assert [e["ergebnis"] for e in verlauf] == ["abgelehnt", "verloren"]
-    _press(wh.callback_wetteeinspruch, "wetteeinspruch:k2", DOM)
-    verlauf = w.profile["sklave"][wh.FELD_WETT_VERLAUF]
+    _press(wh_wette_urteil.callback_wetteeinspruch, "wetteeinspruch:k2", DOM)
+    verlauf = w.profile["sklave"][wh_kern.FELD_WETT_VERLAUF]
     assert len(verlauf) == 2 and verlauf[-1]["ergebnis"] == "gewonnen", "Einspruch korrigiert"
     # Deckel bei 5
     for i in range(5):
-        w.profile["sklave"][wh.FELD_WETTE] = {"kennung": f"x{i}", "idee": f"Wette {i}: er wischt.",
+        w.profile["sklave"][wh_kern.FELD_WETTE] = {"kennung": f"x{i}", "idee": f"Wette {i}: er wischt.",
                                               "einsatz": 50, "status": "gefragt"}
-        _run(wh._wette_abschliessen(None, "verloren"))
-    verlauf = w.profile["sklave"][wh.FELD_WETT_VERLAUF]
+        _run(wh_wette_urteil._wette_abschliessen(None, "verloren"))
+    verlauf = w.profile["sklave"][wh_kern.FELD_WETT_VERLAUF]
     assert len(verlauf) == 5 and [e["kennung"] for e in verlauf] == ["x0", "x1", "x2", "x3", "x4"]
-    assert wh.letzte_wetten({}) == [] and wh.letzte_wetten(w.profile["sklave"]) == verlauf
+    assert wh_wette_annahme.letzte_wetten({}) == [] and wh_wette_annahme.letzte_wetten(w.profile["sklave"]) == verlauf
     # Verfallene Wette wird als solche vermerkt
-    w.profile["sklave"][wh.FELD_WETTE] = {"kennung": "auto", "idee": "Letzte Wette: er schweigt.",
+    w.profile["sklave"][wh_kern.FELD_WETTE] = {"kennung": "auto", "idee": "Letzte Wette: er schweigt.",
                                           "einsatz": 50, "status": "gefragt"}
-    _run(wh._wette_abschliessen(None, "verloren", auto=True))
-    assert w.profile["sklave"][wh.FELD_WETT_VERLAUF][-1]["ergebnis"] == "verfallen"
+    _run(wh_wette_urteil._wette_abschliessen(None, "verloren", auto=True))
+    assert w.profile["sklave"][wh_kern.FELD_WETT_VERLAUF][-1]["ergebnis"] == "verfallen"
 
 
 def test_lage_und_anzeige():
-    assert wh.lage_text({}) == ""
-    assert "Antwort" in wh.lage_text({wh.FELD_WETTE: {"status": "angeboten"}})
-    assert "Urteil am" in wh.lage_text({wh.FELD_WETTE: {"status": "laeuft", "frist": "2026-09-18T15:30:00+00:00"}})
-    assert "Strafe" in wh.lage_text({wh.FELD_WETTE: {"status": "abgelehnt"}})
+    assert wh_wette_annahme.lage_text({}) == ""
+    assert "Antwort" in wh_wette_annahme.lage_text({wh_kern.FELD_WETTE: {"status": "angeboten"}})
+    assert "Urteil am" in wh_wette_annahme.lage_text({wh_kern.FELD_WETTE: {"status": "laeuft", "frist": "2026-09-18T15:30:00+00:00"}})
+    assert "Strafe" in wh_wette_annahme.lage_text({wh_kern.FELD_WETTE: {"status": "abgelehnt"}})
     for status, offen in (("angeboten", True), ("laeuft", True), ("gefragt", True), ("abgelehnt", True),
                           ("abgelehnt_erledigt", False), ("entschieden", False), ("gekippt", False)):
-        assert wh.wette_offen({wh.FELD_WETTE: {"status": status}}) is offen, status
-    assert not wh.wette_laeuft({wh.FELD_WETTE: {"status": "angeboten"}})
+        assert wh_wette_annahme.wette_offen({wh_kern.FELD_WETTE: {"status": status}}) is offen, status
+    assert not wh_wette_annahme.wette_laeuft({wh_kern.FELD_WETTE: {"status": "angeboten"}})
 
 
 def test_prompts_und_verdrahtung():
@@ -548,7 +551,7 @@ def test_prompts_und_verdrahtung():
     system, _ = fp.wette_an_sklaven(IDEE, einsatz=50)
     assert "ablehnen darf" in system and "kostet" in system
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    main_src = open(os.path.join(root, "bot", "main.py"), encoding="utf-8").read()
+    main_src = "".join(open(pf, encoding="utf-8").read() for pf in sorted(glob.glob(os.path.join(root, "bot", "app", "*.py"))))  # Routing/Registrierung/Gates liegen seit 05.11.2026 in bot/app/
     assert '("wetteantwort:",       paare.ROLLE_SUB)' in main_src
     assert '("wetteablehnung:",     paare.ROLLE_DOM)' in main_src
     assert "coach_quiz.wette_router" in main_src and "waehrung_h.MODE_STRAFE_EIGEN" in main_src

@@ -2,7 +2,7 @@
 Gemeinsamer Command-Katalog – einzige Datenquelle für:
 
   * das /hilfe-Menü (bot/handlers/hilfe.py)  – gruppierte Darstellung
-  * die BotCommand-Listen (bot/main.py)       – set_my_commands()
+  * die BotCommand-Listen (bot/app/registrierung.py)       – set_my_commands()
 
 Pro Rolle (Domina / Sklave) eine Liste von Gruppen mit Einträgen.
 

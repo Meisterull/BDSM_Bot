@@ -87,7 +87,7 @@ async def paar_loeschen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     persona_config.vergiss_paar(paar_id)
     from bot.services import inventar as inventar_service
     inventar_service.vergiss_paar(paar_id)
-    from bot.scheduler import followup as followup_mod  # lazy wie main_mod oben
+    from bot.scheduler import reflexion as followup_mod  # lazy wie main_mod oben
     followup_mod.vergiss_paar(paar_id)
 
     for chat in (paar.dom_chat_id, paar.sub_chat_id):

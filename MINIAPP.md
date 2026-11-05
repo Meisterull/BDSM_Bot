@@ -56,7 +56,7 @@ What it shows:
   running, generators and both chat personas take the absence into account), and
   the partner is notified in chat.
 
-The server is part of the bot process (`bot/services/miniapp.py`, stdlib only): it
+The server is part of the bot process (`bot/services/miniapp/`, stdlib only): it
 serves the page over HTTPS and validates Telegram's `initData` signature
 (HMAC-SHA256 with the bot token) on every API call. The user id inside is resolved
 against the configured pair — strangers get a 403 even if they know the URL. Without

@@ -152,7 +152,7 @@ BLITZ_MIN_ABSTAND_TAGE = int(os.getenv("BLITZ_MIN_ABSTAND_TAGE", "2"))
 # läuft alle 30 Min im Fenster ∩ kinderfreie Zeiten; Throttle-Anker
 # spiel_impuls_letzte_am im Sklaven-Profil.
 SPIEL_IMPULS = os.getenv("SPIEL_IMPULS", "") == "1"
-# Nachholen blockierter Einmal-Jobs (scheduler/followup.nachhol_tick_job): nur in
+# Nachholen blockierter Einmal-Jobs (scheduler/basis.nachhol_tick_job): nur in
 # diesem Fenster, damit nichts nachts oder am Vormittag nachgereicht wird.
 NACHHOL_FENSTER = os.getenv("NACHHOL_FENSTER", "18:00-23:00")
 SPIEL_IMPULS_FENSTER = os.getenv("SPIEL_IMPULS_FENSTER", "09:00-21:00")
@@ -239,7 +239,7 @@ GROK_TTS = os.getenv("GROK_TTS", "") == "1"
 GROK_TTS_VOICE_HERRIN = os.getenv("GROK_TTS_VOICE_HERRIN", "aurora")
 GROK_TTS_VOICE_COACH = os.getenv("GROK_TTS_VOICE_COACH", "ara")
 
-# Telegram-Mini-App (services/miniapp.py): Cockpit + Sprachnachrichten-Studio.
+# Telegram-Mini-App (services/miniapp/): Cockpit + Sprachnachrichten-Studio.
 # LAN-only-Betrieb: HTTPS mit Zertifikat der lokalen Heimnetz-CA, Port nur ins
 # LAN mappen (docker-compose.override.yml). MINIAPP_PORT=0 = aus (Default).
 # MINIAPP_URL ist die von den Handys erreichbare https-URL (für den /app-Knopf).

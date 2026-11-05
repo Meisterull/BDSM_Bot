@@ -48,6 +48,7 @@ except ImportError:
 from unittest.mock import AsyncMock, MagicMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.services.db import profile as db_profile, tasks as db_tasks  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -125,16 +126,16 @@ class _Welt:
         self.malus.append(task_id)
 
     def install(self):
-        hv.qdrant.get_task = self.get_task
-        hv.qdrant.update_task = self.update_task
-        hv.qdrant.get_user_profile = self.get_user_profile
-        hv.qdrant.patch_profile_fields = self.patch_profile_fields
-        hv.qdrant.followup_zeitpunkt_utc = lambda tage=1: (JETZT + timedelta(days=tage)).isoformat()
+        db_tasks.get_task = self.get_task
+        db_tasks.update_task = self.update_task
+        db_profile.get_user_profile = self.get_user_profile
+        db_profile.patch_profile_fields = self.patch_profile_fields
+        db_tasks.followup_zeitpunkt_utc = lambda tage=1: (JETZT + timedelta(days=tage)).isoformat()
         hv.grok.simple = self.grok_simple
         hv.telegram_helper.send_domina = self.send_domina
         hv.telegram_helper.send_sklave = self.send_sklave
-        fr.qdrant.get_task = self.get_task
-        fr.qdrant.update_task = self.update_task
+        db_tasks.get_task = self.get_task
+        db_tasks.update_task = self.update_task
         fr.malus_kette = self.malus_kette
         import bot.handlers.kette_adaptiv as ka
         ka.frage_bei_fehlschlag = self.kette_frage

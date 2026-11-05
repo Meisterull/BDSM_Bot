@@ -9,6 +9,7 @@ Läuft mit echten Deps (Docker) ODER lokal mit MagicMock-Stubs:
     python3 tests/test_inventar.py
 """
 import asyncio
+import glob
 import os
 import re
 import sys
@@ -37,6 +38,7 @@ except ImportError:
     sys.modules["dotenv"].load_dotenv = lambda *a, **k: None
 
 from bot.services import inventar as inv  # noqa: E402
+from bot.services.db import profile as db_profile  # noqa: E402
 from bot.services import persona_config as pc  # noqa: E402
 from bot.prompts import coach_persona, bestrafung, persona  # noqa: E402
 from bot.prompts import followup as fp  # noqa: E402
@@ -52,7 +54,7 @@ async def _fake_patch(user_id, fields, erlaube_geschuetzt=False):
     return "id"
 
 
-inv.qdrant.patch_profile_fields = _fake_patch
+db_profile.patch_profile_fields = _fake_patch
 
 
 def _reset(vorhanden=(), wuensche=(), zuletzt=()):
@@ -189,18 +191,18 @@ def test_impuls_wahl_gates_und_rotation():
 def test_impuls_wahl_persistenz_best_effort():
     """Qdrant-Fehler beim Sperrlisten-Schreiben darf den Impuls nicht verhindern."""
     _reset(vorhanden=["a", "b"])
-    original_patch, original_abw = inv.qdrant.patch_profile_fields, pc.ist_abwesend
+    original_patch, original_abw = db_profile.patch_profile_fields, pc.ist_abwesend
 
     async def _kaputt(*a, **k):
         raise RuntimeError("qdrant weg")
 
     try:
-        inv.qdrant.patch_profile_fields = _kaputt
+        db_profile.patch_profile_fields = _kaputt
         pc.ist_abwesend = lambda: False
         wahl = _run(inv.impuls_wahl(chance=1.0))
         assert wahl in ("a", "b") and inv.zuletzt() == [wahl]
     finally:
-        inv.qdrant.patch_profile_fields = original_patch
+        db_profile.patch_profile_fields = original_patch
         pc.ist_abwesend = original_abw
 
 
@@ -286,7 +288,7 @@ def test_bestrafung_und_persona():
 # ---------------------------------------------------------------------------
 
 def test_router_katalog_locales():
-    main_src = open(os.path.join(ROOT, "bot", "main.py"), encoding="utf-8").read()
+    main_src = "".join(open(pf, encoding="utf-8").read() for pf in sorted(glob.glob(os.path.join(ROOT, "bot", "app", "*.py"))))  # Routing/Registrierung/Gates liegen seit 05.11.2026 in bot/app/
     # Routing VOR der Rollen-Verzweigung (beide Rollen pflegen dieselben Listen)
     pos_route = main_src.find("if mode == inventar.MODE:")
     pos_rollen = main_src.find("if rolle == paare.ROLLE_DOM:\n        if mode == \"wochenplanung_thema\":")

@@ -50,6 +50,8 @@ except ImportError:
 from unittest.mock import AsyncMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.handlers.waehrung import wette_annahme as wh_wette_annahme  # noqa: E402
+from bot.services.db import profile as db_profile, vorschlaege as db_vorschlaege  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -58,6 +60,7 @@ _config.STATE_FILE = os.path.join(tempfile.mkdtemp(), "state.json")
 from bot import state  # noqa: E402
 from bot.handlers import coach_quiz as cq  # noqa: E402
 from bot.scheduler import followup as sched  # noqa: E402
+from bot.scheduler import basis, impulse  # noqa: E402
 from bot.prompts import followup as fp  # noqa: E402
 from bot.services import persona_config  # noqa: E402
 from bot.messages import t  # noqa: E402
@@ -148,9 +151,9 @@ class _Welt:
         cq.limits_check.verletzungen = self.verletzungen
         cq.grok.simple = self.fake_simple
         cq.grok.clean_text = lambda x: (x or "").strip()
-        cq.qdrant.get_user_profile = self.get_profile
-        cq.qdrant.patch_profile_fields = self.patch
-        cq.qdrant.get_recent_tiny_tasks = AsyncMock(return_value=([], [], []))
+        db_profile.get_user_profile = self.get_profile
+        db_profile.patch_profile_fields = self.patch
+        db_vorschlaege.get_recent_tiny_tasks = AsyncMock(return_value=([], [], []))
         cq.telegram_helper.send_domina = self.send_domina
         cq.telegram_helper.send_sklave = self.send_sklave
         cq.state.is_paused = lambda *a, **k: False
@@ -344,9 +347,9 @@ def test_callback_neu_mit_deckel():
 
 def test_impuls_reihenfolge():
     k = [("coach_quiz", 1), ("wett_idee", 2)]
-    assert [n for n, _ in sched._impuls_reihenfolge(k, "coach_quiz")] == ["wett_idee", "coach_quiz"]
-    assert [n for n, _ in sched._impuls_reihenfolge(k, "wett_idee")] == ["coach_quiz", "wett_idee"]
-    assert sorted(n for n, _ in sched._impuls_reihenfolge(k, "")) == ["coach_quiz", "wett_idee"]
+    assert [n for n, _ in impulse._impuls_reihenfolge(k, "coach_quiz")] == ["wett_idee", "coach_quiz"]
+    assert [n for n, _ in impulse._impuls_reihenfolge(k, "wett_idee")] == ["coach_quiz", "wett_idee"]
+    assert sorted(n for n, _ in impulse._impuls_reihenfolge(k, "")) == ["coach_quiz", "wett_idee"]
 
 
 def test_machbarkeit_im_wett_generator():
@@ -395,7 +398,7 @@ def test_verlauf_im_prompt():
         {"datum": "2026-09-16", "ergebnis": "verloren", "idee": "Er trägt die Schürze den ganzen Tag."}]
     _run(cq._wett_idee_generieren())
     from bot.handlers import waehrung as waehrung_h
-    assert waehrung_h.letzte_wetten(w.profile["sklave"])[0]["ergebnis"] == "verloren"
+    assert wh_wette_annahme.letzte_wetten(w.profile["sklave"])[0]["ergebnis"] == "verloren"
 
 
 def test_schwerpunkt_prompt_auswahl_und_neu():
@@ -430,7 +433,7 @@ def test_coach_impuls_wunsch_und_quiz_schalter():
     gesendet: list = []
     patches: list = []
     alt = (sched.config.COACH_IMPULS, sched.config.COACH_IMPULS_QUIZ, sched.config.COACH_IMPULS_CHANCE,
-           sched._flow_aktiv, sched.zeiten.ist_im_fenster, sched.qdrant.patch_profile_fields,
+           basis._flow_aktiv, sched.zeiten.ist_im_fenster, db_profile.patch_profile_fields,
            cq.sende_wett_idee, cq.sende_spontane_frage)
     profil: dict = {}
 
@@ -453,13 +456,13 @@ def test_coach_impuls_wunsch_und_quiz_schalter():
 
     try:
         sched.config.COACH_IMPULS = True
-        sched._flow_aktiv = lambda *a, **k: False
+        basis._flow_aktiv = lambda *a, **k: False
         sched.zeiten.ist_im_fenster = lambda *a, **k: True
-        sched.qdrant.get_user_profile = AsyncMock(side_effect=lambda rolle: profil)
-        sched.qdrant.patch_profile_fields = fake_patch
+        db_profile.get_user_profile = AsyncMock(side_effect=lambda rolle: profil)
+        db_profile.patch_profile_fields = fake_patch
         cq.sende_wett_idee = fake_wette
         cq.sende_spontane_frage = fake_quiz
-        sched._impuls_claim = None
+        impulse._impuls_claim = None
 
         # Wunsch für heute: sofort, ohne Würfel/Abstand, Wunsch wird geleert –
         # zwei verworfene Entwürfe im selben Tick verhindern den Versand nicht
@@ -467,29 +470,29 @@ def test_coach_impuls_wunsch_und_quiz_schalter():
         fehlversuche[0] = 2
         profil.update({"coach_impuls_letzte_am": datetime.now().astimezone().isoformat(),
                        "coach_wette_wunsch": {"datum": heute, "schwerpunkt": "Filmabend"}})
-        _run(sched.coach_impuls_job(None))
+        _run(impulse.coach_impuls_job(None))
         assert gesendet == [("wett_idee", "Filmabend")]
         assert patches[-1]["coach_wette_wunsch"] is None and patches[-1]["coach_impuls_letzter_typ"] == "wett_idee"
 
         # Wunsch von gestern verfällt, nichts wird gesendet
-        gesendet.clear(); patches.clear(); sched._impuls_claim = None
+        gesendet.clear(); patches.clear(); impulse._impuls_claim = None
         profil["coach_wette_wunsch"] = {"datum": "2000-01-01", "schwerpunkt": "Filmabend"}
-        _run(sched.coach_impuls_job(None))
+        _run(impulse.coach_impuls_job(None))
         assert gesendet == [] and patches == [{"coach_wette_wunsch": None}]
 
         # Quiz-Schalter aus: auch nach einer Wette kommt kein Quiz, nur wieder Wette
-        gesendet.clear(); patches.clear(); sched._impuls_claim = None
+        gesendet.clear(); patches.clear(); impulse._impuls_claim = None
         sched.config.COACH_IMPULS_CHANCE = 1.0
         sched.config.COACH_IMPULS_QUIZ = False
         profil.clear()
         profil.update({"coach_impuls_letzter_typ": "wett_idee"})
-        _run(sched.coach_impuls_job(None))
+        _run(impulse.coach_impuls_job(None))
         assert gesendet == [("wett_idee", "")]
     finally:
         (sched.config.COACH_IMPULS, sched.config.COACH_IMPULS_QUIZ, sched.config.COACH_IMPULS_CHANCE,
-         sched._flow_aktiv, sched.zeiten.ist_im_fenster, sched.qdrant.patch_profile_fields,
+         basis._flow_aktiv, sched.zeiten.ist_im_fenster, db_profile.patch_profile_fields,
          cq.sende_wett_idee, cq.sende_spontane_frage) = alt
-        sched._impuls_claim = None
+        impulse._impuls_claim = None
 
 
 def test_locale_keys():

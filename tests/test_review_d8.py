@@ -40,6 +40,7 @@ except ImportError:
 from unittest.mock import AsyncMock, MagicMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.services.db import conversations as db_conversations, kern as db_kern, ketten as db_ketten, profile as db_profile, tasks as db_tasks  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -54,6 +55,7 @@ from bot.handlers import domina as _domina  # noqa: E402
 from bot.handlers import reaktion as _reaktion  # noqa: E402
 from bot.handlers import aufgaben as _aufgaben  # noqa: E402
 from bot.scheduler import followup as _sched  # noqa: E402
+from bot.scheduler import aufgaben  # noqa: E402
 
 
 def _aw(fn):
@@ -146,10 +148,10 @@ async def test_reaktion_flippt_status_nicht():
     async def fake_update_task(task_id, fields):
         captured.update(fields)
 
-    orig_ut = _reaktion.qdrant.update_task
+    orig_ut = db_tasks.update_task
     orig_grok = _reaktion.grok.simple
     orig_send = _reaktion.telegram_helper.send_sklave
-    _reaktion.qdrant.update_task = fake_update_task
+    db_tasks.update_task = fake_update_task
     _reaktion.grok.simple = AsyncMock(return_value="Reaktion der Herrin")
     _reaktion.telegram_helper.send_sklave = AsyncMock()
 
@@ -162,7 +164,7 @@ async def test_reaktion_flippt_status_nicht():
         assert captured.get("domina_reaktion") == "mein Kommentar"
         assert captured.get("reaktion_am"), "reaktion_am-Zeitstempel fehlt"
     finally:
-        _reaktion.qdrant.update_task = orig_ut
+        db_tasks.update_task = orig_ut
         _reaktion.grok.simple = orig_grok
         _reaktion.telegram_helper.send_sklave = orig_send
         _state._state.clear()
@@ -212,9 +214,9 @@ async def test_cleanup_erstattet_unentschiedene():
     async def fake_patch(user_id, fields):
         captured.update(fields)
 
-    orig_get, orig_patch = _pe.qdrant.get_user_profile, _pe.qdrant.patch_profile_fields
-    _pe.qdrant.get_user_profile = _aw(lambda uid: profil)
-    _pe.qdrant.patch_profile_fields = fake_patch
+    orig_get, orig_patch = db_profile.get_user_profile, db_profile.patch_profile_fields
+    db_profile.get_user_profile = _aw(lambda uid: profil)
+    db_profile.patch_profile_fields = fake_patch
     try:
         entfernt = await _pe.cleanup()
         assert entfernt == 2, f"erwartet 2 entfernte Einträge, war {entfernt}"
@@ -223,8 +225,8 @@ async def test_cleanup_erstattet_unentschiedene():
         uebrig = [p["aktiv_id"] for p in captured.get("aktive_privilegien", [])]
         assert uebrig == ["a2"], f"falsche Einträge behalten: {uebrig}"
     finally:
-        _pe.qdrant.get_user_profile = orig_get
-        _pe.qdrant.patch_profile_fields = orig_patch
+        db_profile.get_user_profile = orig_get
+        db_profile.patch_profile_fields = orig_patch
 
 
 # --------------------------------------------------------------------------
@@ -247,17 +249,17 @@ async def test_kette_fangnetz():
     async def fake_update_task(task_id, fields):
         updates.append((task_id, fields))
 
-    orig_gts = _sched.qdrant.get_tasks_by_status
+    orig_gts = db_tasks.get_tasks_by_status
     orig_ggg = getattr(_sched.qdrant, "get_gruppen_glieder", None)
-    orig_ut = _sched.qdrant.update_task
+    orig_ut = db_tasks.update_task
     orig_send = _sched.telegram_helper.send_domina
-    _sched.qdrant.get_tasks_by_status = _aw(lambda status, **k: [dict(glied)])
-    _sched.qdrant.get_gruppen_glieder = _aw(lambda feld, wert, status=None: list(alle))
-    _sched.qdrant.update_task = fake_update_task
+    db_tasks.get_tasks_by_status = _aw(lambda status, **k: [dict(glied)])
+    db_ketten.get_gruppen_glieder = _aw(lambda feld, wert, status=None: list(alle))
+    db_tasks.update_task = fake_update_task
     _sched.telegram_helper.send_domina = AsyncMock()
     try:
         # 1. Lauf: nur beobachten (kette_sweep_am stempeln), keine Frage
-        await _sched._process_kette_tasks(MagicMock())
+        await aufgaben._process_kette_tasks(MagicMock())
         assert len(updates) == 1 and "kette_sweep_am" in updates[0][1]
         assert _sched.telegram_helper.send_domina.await_count == 0, \
             "Regression H3: Frage ging schon im Beobachtungs-Lauf raus"
@@ -266,8 +268,8 @@ async def test_kette_fangnetz():
         updates.clear()
         vor_drei_tagen = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
         alter_fall = dict(glied, kette_sweep_am=vor_drei_tagen)
-        _sched.qdrant.get_tasks_by_status = _aw(lambda status, **k: [alter_fall])
-        await _sched._process_kette_tasks(MagicMock())
+        db_tasks.get_tasks_by_status = _aw(lambda status, **k: [alter_fall])
+        await aufgaben._process_kette_tasks(MagicMock())
         assert _sched.telegram_helper.send_domina.await_count == 1, \
             "Regression H3: hängende Kette wurde nicht nachgefragt"
         assert len(updates) == 1 and "kette_sweep_am" in updates[0][1]
@@ -276,15 +278,15 @@ async def test_kette_fangnetz():
         updates.clear()
         _sched.telegram_helper.send_domina.reset_mock()
         alle[1] = {"kette_position": 2, "status": "offen"}
-        _sched.qdrant.get_tasks_by_status = _aw(lambda status, **k: [dict(glied)])
-        await _sched._process_kette_tasks(MagicMock())
+        db_tasks.get_tasks_by_status = _aw(lambda status, **k: [dict(glied)])
+        await aufgaben._process_kette_tasks(MagicMock())
         assert not updates and _sched.telegram_helper.send_domina.await_count == 0, \
             "Regression H3: Sweep greift ein, obwohl die Kette normal läuft"
     finally:
-        _sched.qdrant.get_tasks_by_status = orig_gts
+        db_tasks.get_tasks_by_status = orig_gts
         if orig_ggg is not None:
-            _sched.qdrant.get_gruppen_glieder = orig_ggg
-        _sched.qdrant.update_task = orig_ut
+            db_ketten.get_gruppen_glieder = orig_ggg
+        db_tasks.update_task = orig_ut
         _sched.telegram_helper.send_domina = orig_send
 
 
@@ -326,11 +328,11 @@ async def test_profile_patch_doppeltes_list_add():
     async def fake_patch(user_id, fields):
         captured.update(fields)
 
-    orig_get, orig_patch = _q.get_user_profile, _q.patch_profile_fields
-    _q.get_user_profile = _aw(lambda uid: {"user_id": "sklave", "vorlieben": ["Alt"]})
-    _q.patch_profile_fields = fake_patch
+    orig_get, orig_patch = db_profile.get_user_profile, db_profile.patch_profile_fields
+    db_profile.get_user_profile = _aw(lambda uid: {"user_id": "sklave", "vorlieben": ["Alt"]})
+    db_profile.patch_profile_fields = fake_patch
     try:
-        bericht = await _q.apply_profile_patch("sklave", {"changes": [
+        bericht = await db_profile.apply_profile_patch("sklave", {"changes": [
             {"feld": "vorlieben", "operation": "list_add", "wert": "Neu1"},
             {"feld": "vorlieben", "operation": "list_add", "wert": "Neu2"},
         ]})
@@ -338,7 +340,7 @@ async def test_profile_patch_doppeltes_list_add():
             f"Regression M5: zweites list_add verwarf das erste ({captured.get('vorlieben')})"
         assert len(bericht["angewandt"]) == 2
     finally:
-        _q.get_user_profile, _q.patch_profile_fields = orig_get, orig_patch
+        db_profile.get_user_profile, db_profile.patch_profile_fields = orig_get, orig_patch
 
 
 # --------------------------------------------------------------------------
@@ -356,18 +358,18 @@ async def test_profil_neuanlage_deterministische_id():
     def fake_upsert(collection_name=None, points=None, **kwargs):
         ids.append(str(points[0].id))
 
-    orig_client, orig_emb = _q.client, _q.emb.get_embedding
-    _q.client = MagicMock()
-    _q.client.scroll = fake_scroll
-    _q.client.upsert = fake_upsert
+    orig_client, orig_emb = db_kern.client, _q.emb.get_embedding
+    db_kern.client = MagicMock()
+    db_kern.client.scroll = fake_scroll
+    db_kern.client.upsert = fake_upsert
     _q.emb.get_embedding = AsyncMock(return_value=[0.0] * 8)
     try:
-        await _q.upsert_user_profile("sklave", {"rolle": "sklave"})
-        await _q.upsert_user_profile("sklave", {"rolle": "sklave"})
+        await db_profile.upsert_user_profile("sklave", {"rolle": "sklave"})
+        await db_profile.upsert_user_profile("sklave", {"rolle": "sklave"})
         assert ids[0] == ids[1], \
             "Regression M13: parallele Erstanlagen erzeugen verschiedene Punkt-IDs (Duplikat-Profil)"
     finally:
-        _q.client, _q.emb.get_embedding = orig_client, orig_emb
+        db_kern.client, _q.emb.get_embedding = orig_client, orig_emb
 
 
 # --------------------------------------------------------------------------
@@ -386,10 +388,10 @@ async def test_resume_ueberspringt_manuelle_pause():
         {"qdrant_point_id": "t1", "status": "pausiert", "status_vor_pause": "offen"},
         {"qdrant_point_id": "t2", "status": "pausiert", "status_vor_pause": "pausiert"},  # manuell
     ]
-    orig_gts, orig_ut = _sw.qdrant.get_tasks_by_status, _sw.qdrant.update_task
+    orig_gts, orig_ut = db_tasks.get_tasks_by_status, db_tasks.update_task
     orig_dom, orig_skl = _sw.telegram_helper.send_domina, _sw.telegram_helper.send_sklave
-    _sw.qdrant.get_tasks_by_status = _aw(lambda status, **k: list(tasks))
-    _sw.qdrant.update_task = fake_update_task
+    db_tasks.get_tasks_by_status = _aw(lambda status, **k: list(tasks))
+    db_tasks.update_task = fake_update_task
     _sw.telegram_helper.send_domina = AsyncMock()
     _sw.telegram_helper.send_sklave = AsyncMock()
     _state._state.clear()
@@ -399,7 +401,7 @@ async def test_resume_ueberspringt_manuelle_pause():
         assert beruehrt == {"t1"}, \
             f"Regression M7: Resume fasste manuell geparkte Aufgabe an ({beruehrt})"
     finally:
-        _sw.qdrant.get_tasks_by_status, _sw.qdrant.update_task = orig_gts, orig_ut
+        db_tasks.get_tasks_by_status, db_tasks.update_task = orig_gts, orig_ut
         _sw.telegram_helper.send_domina, _sw.telegram_helper.send_sklave = orig_dom, orig_skl
         _state._state.clear()
 
@@ -433,19 +435,19 @@ async def test_hybrid_kontext_semantik_garantie():
     def fake_query_points(**kwargs):
         return _QP()
 
-    orig_client = _q.client
-    _q.client = MagicMock()
-    _q.client.scroll = fake_scroll
-    _q.client.query_points = fake_query_points
+    orig_client = db_kern.client
+    db_kern.client = MagicMock()
+    db_kern.client.scroll = fake_scroll
+    db_kern.client.query_points = fake_query_points
     try:
-        out = await _q.get_hybrid_conversation_context("sklave", [0.0] * 8, limit=6)
+        out = await db_conversations.get_hybrid_conversation_context("sklave", [0.0] * 8, limit=6)
         ids = [e.get("session_id") for e in out]
         assert "sem1" in ids and "sem2" in ids, \
             f"Regression N3: semantische Treffer fehlen im Kontext ({ids})"
         assert ids[:3] == ["r0", "r1", "r2"], f"Kontinuitäts-Kopf kaputt: {ids[:3]}"
         assert len(ids) == 6 and len(set(ids)) == 6, f"Duplikate/falsche Länge: {ids}"
     finally:
-        _q.client = orig_client
+        db_kern.client = orig_client
 
 
 # --------------------------------------------------------------------------
@@ -461,19 +463,19 @@ async def test_erstelle_task_ohne_none_defaults():
         captured.update(payload)
         return "pid"
 
-    orig = _q.save_task
-    _q.save_task = fake_save_task
+    orig = db_tasks.save_task
+    db_tasks.save_task = fake_save_task
     try:
-        await _q.erstelle_task("Aufgabe", "allgemein", 1)
+        await db_tasks.erstelle_task("Aufgabe", "allgemein", 1)
         for feld in ("serie_id", "serie_tag", "serie_gesamt", "gefuehl", "domina_reaktion"):
             assert feld not in captured, \
                 f"Regression A1: toter None-Default {feld} ist zurück"
         # Serien setzen ihre Felder weiterhin über extra
         captured.clear()
-        await _q.erstelle_task("Aufgabe", "allgemein", 1, extra={"serie_id": "s1", "serie_tag": 2})
+        await db_tasks.erstelle_task("Aufgabe", "allgemein", 1, extra={"serie_id": "s1", "serie_tag": 2})
         assert captured.get("serie_id") == "s1" and captured.get("serie_tag") == 2
     finally:
-        _q.save_task = orig
+        db_tasks.save_task = orig
 
 
 # --------------------------------------------------------------------------

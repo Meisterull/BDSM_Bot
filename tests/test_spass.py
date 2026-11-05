@@ -32,6 +32,7 @@ except ImportError:
     sys.modules["dotenv"].load_dotenv = lambda *a, **k: None
 
 from bot.services import zeiten, punkte, qdrant  # noqa: E402
+from bot.services.db import profile as db_profile, tasks as db_tasks  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -126,14 +127,15 @@ def _fake_qdrant(profil: dict):
     async def _hoch():
         return 99
 
+    # Gepatcht wird das definierende Teilmodul (bot.services.db.*), nie die Fassade.
     for name, fn in ersatz.items():
-        alt[name] = getattr(qdrant, name)
-        setattr(qdrant, name, fn)
+        alt[name] = getattr(qdrant.modul_von(name), name)
+        setattr(qdrant.modul_von(name), name, fn)
     try:
         yield patches
     finally:
         for name, fn in alt.items():
-            setattr(qdrant, name, fn)
+            setattr(qdrant.modul_von(name), name, fn)
 
 
 def test_wette_gewonnen_bei_erledigt():
@@ -332,27 +334,28 @@ def test_wette_angebots_lage():
     async def _tasks_nur_blitz(*_a, **_k):
         return [{"quelle": "blitz"}]
 
-    alt = qdrant.get_tasks_by_status
+    alt = db_tasks.get_tasks_by_status
     try:
-        qdrant.get_tasks_by_status = _tasks_regulaer
+        db_tasks.get_tasks_by_status = _tasks_regulaer
         assert asyncio.run(wette.angebots_lage({"punkte": 50})) == "ok"
         assert asyncio.run(wette.angebots_lage(
             {"punkte": 50, "wette": {"einsatz": 10}})) == "aktiv"
         assert asyncio.run(wette.angebots_lage({"punkte": 5})) == "zu_wenig"
-        qdrant.get_tasks_by_status = _tasks_nur_blitz
+        db_tasks.get_tasks_by_status = _tasks_nur_blitz
         assert asyncio.run(wette.angebots_lage({"punkte": 50})) == "keine_aufgabe"
     finally:
-        qdrant.get_tasks_by_status = alt
+        db_tasks.get_tasks_by_status = alt
 
 
 def test_spiel_impuls_gate():
     """Env-Gate aus → Job kehrt sofort um (und die Verdrahtung importiert sauber)."""
     from bot import config
     from bot.scheduler import followup
+    from bot.scheduler import basis, impulse  # noqa: E402
     alt = config.SPIEL_IMPULS
     try:
         config.SPIEL_IMPULS = False
-        asyncio.run(followup.spiel_impuls_job(None))
+        asyncio.run(impulse.spiel_impuls_job(None))
     finally:
         config.SPIEL_IMPULS = alt
 
@@ -362,13 +365,14 @@ def test_spiel_impuls_pool():
     Pool leer – der Impuls setzt aus, statt doch ein Quiz zu schicken."""
     from bot import config
     from bot.scheduler import followup
+    from bot.scheduler import basis, impulse  # noqa: E402
     from bot.handlers import quiz, wette
     from bot.services import paare, qdrant, zeiten
     gesendet = []
     alt = (config.SPIEL_IMPULS, config.SPIEL_IMPULS_QUIZ, config.SPIEL_IMPULS_CHANCE,
-           followup._flow_aktiv, zeiten.ist_im_fenster, qdrant.get_user_profile,
-           qdrant.patch_profile_fields, quiz.sende_spontane_frage, wette.angebots_lage,
-           wette.sende_spontanes_angebot, followup._impuls_claim,
+           basis._flow_aktiv, zeiten.ist_im_fenster, db_profile.get_user_profile,
+           db_profile.patch_profile_fields, quiz.sende_spontane_frage, wette.angebots_lage,
+           wette.sende_spontanes_angebot, impulse._impuls_claim,
            paare.sub_chat_id, paare.dom_chat_id)
     lage = ["keine_aufgabe"]
 
@@ -384,10 +388,10 @@ def test_spiel_impuls_pool():
         return True
     try:
         config.SPIEL_IMPULS, config.SPIEL_IMPULS_CHANCE = True, 1.0
-        followup._flow_aktiv = lambda *a, **k: False
+        basis._flow_aktiv = lambda *a, **k: False
         zeiten.ist_im_fenster = lambda *a, **k: True
-        qdrant.get_user_profile = _profil
-        qdrant.patch_profile_fields = lambda *a, **k: _profil("x")
+        db_profile.get_user_profile = _profil
+        db_profile.patch_profile_fields = lambda *a, **k: _profil("x")
         quiz.sende_spontane_frage, wette.sende_spontanes_angebot = _quiz, _wette
         paare.sub_chat_id, paare.dom_chat_id = (lambda: "222"), (lambda: "111")
 
@@ -396,32 +400,33 @@ def test_spiel_impuls_pool():
         wette.angebots_lage = _lage
         # Quiz aus + keine Aufgabe → nichts, Claim wieder frei
         config.SPIEL_IMPULS_QUIZ = False
-        followup._impuls_claim = None
-        asyncio.run(followup.spiel_impuls_job(None))
-        assert gesendet == [] and followup._impuls_claim is None
+        impulse._impuls_claim = None
+        asyncio.run(impulse.spiel_impuls_job(None))
+        assert gesendet == [] and impulse._impuls_claim is None
         # Quiz aus, aber Wette möglich → Wette
         lage[0] = "ok"
-        followup._impuls_claim = None
-        asyncio.run(followup.spiel_impuls_job(None))
+        impulse._impuls_claim = None
+        asyncio.run(impulse.spiel_impuls_job(None))
         assert gesendet == ["wette"]
         # Quiz an, keine Aufgabe → Quiz
         gesendet.clear(); lage[0] = "keine_aufgabe"
         config.SPIEL_IMPULS_QUIZ = True
-        followup._impuls_claim = None
-        asyncio.run(followup.spiel_impuls_job(None))
+        impulse._impuls_claim = None
+        asyncio.run(impulse.spiel_impuls_job(None))
         assert gesendet == ["quiz"]
     finally:
         (config.SPIEL_IMPULS, config.SPIEL_IMPULS_QUIZ, config.SPIEL_IMPULS_CHANCE,
-         followup._flow_aktiv, zeiten.ist_im_fenster, qdrant.get_user_profile,
-         qdrant.patch_profile_fields, quiz.sende_spontane_frage, wette.angebots_lage,
-         wette.sende_spontanes_angebot, followup._impuls_claim,
+         basis._flow_aktiv, zeiten.ist_im_fenster, db_profile.get_user_profile,
+         db_profile.patch_profile_fields, quiz.sende_spontane_frage, wette.angebots_lage,
+         wette.sende_spontanes_angebot, impulse._impuls_claim,
          paare.sub_chat_id, paare.dom_chat_id) = alt
 
 
 def test_impuls_kollision_dauer():
     from bot import config
     from bot.scheduler import followup
-    assert followup._IMPULS_KOLLISION.total_seconds() == config.IMPULS_KOLLISION_MINUTEN * 60
+    from bot.scheduler import basis, impulse  # noqa: E402
+    assert impulse._IMPULS_KOLLISION.total_seconds() == config.IMPULS_KOLLISION_MINUTEN * 60
     assert 30 <= config.IMPULS_KOLLISION_MINUTEN <= 60, "blockt einen Takt, nicht den Abend"
 
 

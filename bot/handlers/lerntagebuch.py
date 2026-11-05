@@ -9,7 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot import config
 from bot.services import paare
-from bot.scheduler.followup import generiere_lerntagebuch
+from bot.scheduler.reflexion import generiere_lerntagebuch
 from bot.messages import t
 
 logger = logging.getLogger(__name__)

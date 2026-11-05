@@ -104,7 +104,7 @@ async def letzte_domina_eingabe() -> datetime | None:
     Button, state.touch_eingang) ∪ neueste erteilte Aufgabe / Coach-Gespräch
     (scheduler._letzte_domina_aktivitaet, 30 Tage) ∪ Coach-Gespräch bis 400
     Tage zurück (damit auch eine lange Stille einen Anker hat). None = nie."""
-    from bot.scheduler import followup as fu  # lazy: zirkulären Import vermeiden
+    from bot.scheduler import luecken as fu  # lazy: zirkulären Import vermeiden
     stempel: list[datetime] = []
     ts = state.letzter_eingang(paare.dom_chat_id())
     if ts:

@@ -13,17 +13,8 @@ import sys
 from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-os.environ.setdefault("DOMINA_CHAT_ID", "111")
-os.environ.setdefault("SKLAVE_CHAT_ID", "222")
-
-try:  # pragma: no cover
-    import dotenv  # noqa: F401
-except ImportError:
-    from unittest.mock import MagicMock
-    _m = MagicMock(name="dotenv")
-    _m.load_dotenv = lambda *a, **k: None
-    sys.modules["dotenv"] = _m
+from tests import stubs  # noqa: E402
+stubs.aktivieren()
 
 from bot.services import datum_erkennung as de  # noqa: E402
 

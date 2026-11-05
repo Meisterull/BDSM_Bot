@@ -28,6 +28,8 @@ from telegram import (
 from telegram.ext import ApplicationBuilder
 
 from bot import config, state
+from bot.app import registrierung as app_registrierung  # noqa: E402
+from bot.services.db import kern as db_kern  # noqa: E402
 from bot import main as botmain
 from bot.services import persona_config, qdrant
 
@@ -102,12 +104,12 @@ class Harness:
 
     # ------------------------------------------------------------------ Setup
     async def start(self) -> None:
-        qdrant.ensure_collections()
+        db_kern.ensure_collections()
         self.app = ApplicationBuilder().token("4242:TESTTOKEN").build()
         self.bot = self.app.bot
         self._patch_bot()
         await self.app.initialize()
-        botmain.register_handlers(self.app)
+        app_registrierung.register_handlers(self.app)
         # Fehler zusätzlich für den Testbericht einsammeln (läuft NEBEN dem
         # echten error_handler, der die FEHLER_ALLGEMEIN-Antwort sendet).
         async def _fehler_rec(update, context):

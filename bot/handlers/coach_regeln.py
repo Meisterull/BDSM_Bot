@@ -282,7 +282,7 @@ async def profil_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     await update.message.reply_text(t("COACHREGELN_PROFILCHECK_WARTE", days=days))
 
-    from bot.scheduler.followup import generiere_profil_vorschlaege
+    from bot.scheduler.reflexion import generiere_profil_vorschlaege
     result = await generiere_profil_vorschlaege(context.bot, days=days)
     if result["status"] == "ok":
         await update.message.reply_text(

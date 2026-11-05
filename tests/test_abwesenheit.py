@@ -35,6 +35,7 @@ except ImportError:
     sys.modules["dotenv"].load_dotenv = lambda *a, **k: None
 
 from bot.services import datum_erkennung as de  # noqa: E402
+from bot.services.db import profile as db_profile  # noqa: E402
 from bot.services import persona_config as pc  # noqa: E402
 from bot.handlers import abwesenheit  # noqa: E402
 
@@ -133,8 +134,8 @@ def test_set_abwesenheit_persistiert():
         async def fake_patch(user_id, felder):
             gepatcht.update(felder)
 
-        original = pc.qdrant.patch_profile_fields
-        pc.qdrant.patch_profile_fields = fake_patch
+        original = db_profile.patch_profile_fields
+        db_profile.patch_profile_fields = fake_patch
         try:
             await pc.set_abwesenheit(date(2026, 7, 27), date(2026, 8, 2), "Dienstreise")
             assert gepatcht == {"abwesend_von": "2026-07-27", "abwesend_bis": "2026-08-02",
@@ -144,7 +145,7 @@ def test_set_abwesenheit_persistiert():
             assert gepatcht["abwesend_von"] == "" and gepatcht["abwesend_grund"] == ""
             assert pc.abwesenheit() is None
         finally:
-            pc.qdrant.patch_profile_fields = original
+            db_profile.patch_profile_fields = original
 
     asyncio.run(_run())
 

@@ -177,7 +177,7 @@ async def starte_faellige(bot) -> None:
     from bot.handlers import arc  # lazy: zirkulären Import vermeiden
     # Guards (D9/N7, Muster luecke/serie): nicht in einen aktiven Domina-Flow
     # oder die Safeword-Pause hineinstarten; lazy wegen Zirkular-Import.
-    from bot.scheduler.followup import _flow_aktiv, _nach_llm_verworfen
+    from bot.scheduler.basis import _flow_aktiv, _nach_llm_verworfen
     if _flow_aktiv(paare.dom_chat_id(), "Event-Arc-Start"):
         return
     plaene = await _geplante()

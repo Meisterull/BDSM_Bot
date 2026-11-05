@@ -35,6 +35,7 @@ except ImportError:
     sys.modules["dotenv"].load_dotenv = lambda *a, **k: None
 
 from bot import config  # noqa: E402
+from bot.services.db import kern as db_kern, profile as db_profile, skills as db_skills, tasks as db_tasks  # noqa: E402
 from bot.services import paare, telegram_helper  # noqa: E402
 
 # load_dotenv kann die os.environ-Werte NICHT überschrieben haben (override=False),
@@ -114,15 +115,15 @@ def test_erstelle_task_mandanten_key():
         captured.update(payload)
         return "pid"
 
-    orig = qdrant.save_task
-    qdrant.save_task = _fake_save
+    orig = db_tasks.save_task
+    db_tasks.save_task = _fake_save
     try:
-        asyncio.run(qdrant.erstelle_task("tu was", "Dienst", 2))
+        asyncio.run(db_tasks.erstelle_task("tu was", "Dienst", 2))
         assert captured["user_id"] == "sklave"
-        asyncio.run(qdrant.erstelle_task("tu was", "Dienst", 2, user_id="7:sklave"))
+        asyncio.run(db_tasks.erstelle_task("tu was", "Dienst", 2, user_id="7:sklave"))
         assert captured["user_id"] == "7:sklave"
     finally:
-        qdrant.save_task = orig
+        db_tasks.save_task = orig
 
 
 def test_persona_config_pro_paar():
@@ -161,8 +162,8 @@ def test_persona_config_setter_mandanten_key():
         captured.append((user_id, dict(fields)))
         return "pid"
 
-    orig = qdrant.patch_profile_fields
-    qdrant.patch_profile_fields = _fake_patch
+    orig = db_profile.patch_profile_fields
+    db_profile.patch_profile_fields = _fake_patch
     alt = dict(persona_config._cache)
     try:
         asyncio.run(persona_config.set_bot_name("Lady Eins"))
@@ -173,7 +174,7 @@ def test_persona_config_setter_mandanten_key():
         assert persona_config._cache["bot_name"] == "Lady Eins"
         assert persona_config._cache_fuer("7")["bot_name"] == "Sir Sieben"
     finally:
-        qdrant.patch_profile_fields = orig
+        db_profile.patch_profile_fields = orig
         persona_config._cache.clear()
         persona_config._cache.update(alt)
         persona_config._caches.pop("7", None)
@@ -246,8 +247,8 @@ def test_zeiten_pro_paar():
     async def _fake_patch(user_id, fields, **kwargs):
         captured.append((user_id, dict(fields)))
 
-    orig = qdrant.patch_profile_fields
-    qdrant.patch_profile_fields = _fake_patch
+    orig = db_profile.patch_profile_fields
+    db_profile.patch_profile_fields = _fake_patch
     alt = dict(persona_config._cache)
     try:
         assert persona_config.zeit("followup_time") == config.FOLLOWUP_TIME  # Env-Default
@@ -270,7 +271,7 @@ def test_zeiten_pro_paar():
         except ValueError:
             pass
     finally:
-        qdrant.patch_profile_fields = orig
+        db_profile.patch_profile_fields = orig
         persona_config._cache.clear()
         persona_config._cache.update(alt)
         persona_config._caches.pop("7", None)
@@ -281,14 +282,14 @@ def test_skills_pro_paar_gefiltert():
     Paares dürfen nie in den Prompts eines anderen Paares landen."""
     from bot.services import qdrant
 
-    f1 = qdrant._skills_filter("Anal")
+    f1 = db_skills._skills_filter("Anal")
     with paare.kontext("7"):
-        f7 = qdrant._skills_filter("Anal")
+        f7 = db_skills._skills_filter("Anal")
     # Mit gestubbtem qm sind die Filter MagicMocks – die entscheidende Zusicherung
     # ist der Mandanten-Key, der in die FieldCondition einfließt:
-    assert qdrant.mandanten_key("domina") == "domina"
+    assert db_kern.mandanten_key("domina") == "domina"
     with paare.kontext("7"):
-        assert qdrant.mandanten_key("domina") == "7:domina"
+        assert db_kern.mandanten_key("domina") == "7:domina"
     assert f1 is not None and f7 is not None
 
 
@@ -301,8 +302,8 @@ def test_ui_locale_pro_paar():
     async def _fake_patch(user_id, fields, **kwargs):
         pass
 
-    orig = qdrant.patch_profile_fields
-    qdrant.patch_profile_fields = _fake_patch
+    orig = db_profile.patch_profile_fields
+    db_profile.patch_profile_fields = _fake_patch
     alt = dict(persona_config._cache)
     try:
         assert messages.t("COMMON_NICHT_AUTORISIERT") == "Nicht autorisiert."
@@ -322,7 +323,7 @@ def test_ui_locale_pro_paar():
             asyncio.run(persona_config.set_ui_locale("xx"))
             assert persona_config.ui_locale() == ""
     finally:
-        qdrant.patch_profile_fields = orig
+        db_profile.patch_profile_fields = orig
         persona_config._cache.clear()
         persona_config._cache.update(alt)
         persona_config._caches.pop("7", None)
@@ -408,8 +409,8 @@ def test_safeword_pro_paar():
     async def _fake_patch(user_id, fields, **kwargs):
         pass
 
-    orig = qdrant.patch_profile_fields
-    qdrant.patch_profile_fields = _fake_patch
+    orig = db_profile.patch_profile_fields
+    db_profile.patch_profile_fields = _fake_patch
     alt = dict(persona_config._cache)
     try:
         assert persona_config.safeword() == config.SAFEWORD
@@ -420,7 +421,7 @@ def test_safeword_pro_paar():
             assert persona_config.resume_wort() == "green"
         assert persona_config.safeword() == config.SAFEWORD  # kein Leak ins Env-Paar
     finally:
-        qdrant.patch_profile_fields = orig
+        db_profile.patch_profile_fields = orig
         persona_config._cache.clear()
         persona_config._cache.update(alt)
         persona_config._caches.pop("7", None)
@@ -444,19 +445,19 @@ class _FakeBot:
 
 
 def test_mandanten_grenze_qdrant():
-    """qdrant.mandanten_key: Rollen-Literale werden über den Paar-Kontext
+    """db_kern.mandanten_key: Rollen-Literale werden über den Paar-Kontext
     qualifiziert; Legacy-Kontext = Identität (Bestandsdaten), qualifizierte
     Keys und None passieren unverändert."""
     from bot.services import qdrant
 
-    assert qdrant.mandanten_key("sklave") == "sklave"        # Legacy-Kontext
-    assert qdrant.mandanten_key("domina") == "domina"
-    assert qdrant.mandanten_key("7:sklave") == "7:sklave"    # schon qualifiziert
-    assert qdrant.mandanten_key(None) is None
+    assert db_kern.mandanten_key("sklave") == "sklave"        # Legacy-Kontext
+    assert db_kern.mandanten_key("domina") == "domina"
+    assert db_kern.mandanten_key("7:sklave") == "7:sklave"    # schon qualifiziert
+    assert db_kern.mandanten_key(None) is None
     with paare.kontext("7"):
-        assert qdrant.mandanten_key("sklave") == "7:sklave"
-        assert qdrant.mandanten_key("domina") == "7:domina"
-        assert qdrant.mandanten_key("1:foo") == "1:foo"
+        assert db_kern.mandanten_key("sklave") == "7:sklave"
+        assert db_kern.mandanten_key("domina") == "7:domina"
+        assert db_kern.mandanten_key("1:foo") == "1:foo"
 
 
 def _mit_zwei_paaren():

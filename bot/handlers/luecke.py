@@ -34,7 +34,7 @@ async def _generiere_vorschlag(domina_profile: dict, sklave_profile: dict) -> tu
     """Erzeugt EINEN limit-sauberen Tiny-Task-Vorschlag (gleiche Pipeline wie der
     abendliche Tiny-Task-Job). Gibt (text, kategorien) zurück; text=None bei
     Grenzverletzung/Fehler."""
-    from bot.scheduler import followup as sched  # lazy: zirkulären Import vermeiden
+    from bot.scheduler import tiny_task as sched  # lazy: zirkulären Import vermeiden
     try:
         kwargs = await sched._vorschlag_kontext(domina_profile, sklave_profile, False)
         gewaehlte = kwargs.get("gewaehlte_kategorien", []) or []

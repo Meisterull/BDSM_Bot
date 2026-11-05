@@ -42,6 +42,7 @@ except ImportError:
 from unittest.mock import AsyncMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.services.db import progress as db_progress, vorschlaege as db_vorschlaege  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -56,15 +57,15 @@ WETTER = "Ich frage mich gerade, wenn dein Tag ein Wetter wäre – welches wür
 
 def _mit_stubs(eintraege, antworten):
     """Patcht Sperr-Listen-Abfrage und LLM; gibt eine Restore-Funktion zurück."""
-    orig_q, orig_g = _st.qdrant.get_recent_stimmung_eintraege, _st.grok.simple
-    _st.qdrant.get_recent_stimmung_eintraege = AsyncMock(return_value=eintraege)
+    orig_q, orig_g = db_vorschlaege.get_recent_stimmung_eintraege, _st.grok.simple
+    db_vorschlaege.get_recent_stimmung_eintraege = AsyncMock(return_value=eintraege)
     rest = list(antworten)
     async def _simple(*a, **k):
         return rest.pop(0) if rest else antworten[-1]
     _st.grok.simple = _simple
 
     def restore():
-        _st.qdrant.get_recent_stimmung_eintraege = orig_q
+        db_vorschlaege.get_recent_stimmung_eintraege = orig_q
         _st.grok.simple = orig_g
     return restore
 
@@ -106,8 +107,8 @@ async def test_frische_frage_wird_mit_richtung_zurueckgegeben():
 
 async def test_verworfener_kandidat_geht_in_die_naechste_sperrliste():
     prompts = []
-    orig_q, orig_g = _st.qdrant.get_recent_stimmung_eintraege, _st.grok.simple
-    _st.qdrant.get_recent_stimmung_eintraege = AsyncMock(
+    orig_q, orig_g = db_vorschlaege.get_recent_stimmung_eintraege, _st.grok.simple
+    db_vorschlaege.get_recent_stimmung_eintraege = AsyncMock(
         return_value=[{"zusammenfassung": WETTER, "richtung": "ein Wetter-Bild für den heutigen Tag"}])
     antworten = [WETTER, "Sag mir, wie schwer der Tag heute auf dir liegt."]
 
@@ -123,7 +124,7 @@ async def test_verworfener_kandidat_geht_in_die_naechste_sperrliste():
         # Versuch 2 kennt den verworfenen Kandidaten aus Versuch 1
         assert prompts[1].count(WETTER) >= 2
     finally:
-        _st.qdrant.get_recent_stimmung_eintraege, _st.grok.simple = orig_q, orig_g
+        db_vorschlaege.get_recent_stimmung_eintraege, _st.grok.simple = orig_q, orig_g
 
 
 # --------------------------------------------------------------------------
@@ -212,13 +213,13 @@ async def test_frage_ohne_mode_knopf_und_getippte_antwort():
         def __init__(self, zeilen):
             self.inline_keyboard = zeilen
 
-    orig = (_st.InlineKeyboardButton, _st.InlineKeyboardMarkup, _st.qdrant.save_training,
-            _st.qdrant.get_recent_stimmung_eintraege, _st.grok.simple, _st.telegram_helper.send_domina,
+    orig = (_st.InlineKeyboardButton, _st.InlineKeyboardMarkup, db_progress.save_training,
+            db_vorschlaege.get_recent_stimmung_eintraege, _st.grok.simple, _st.telegram_helper.send_domina,
             _config.STIMMUNG_ENABLED)
     _st.InlineKeyboardButton, _st.InlineKeyboardMarkup = _Knopf, _Tasten
     gespeichert = []
-    _st.qdrant.save_training = AsyncMock(side_effect=lambda rolle, daten: gespeichert.append(daten))
-    _st.qdrant.get_recent_stimmung_eintraege = AsyncMock(return_value=[])
+    db_progress.save_training = AsyncMock(side_effect=lambda rolle, daten: gespeichert.append(daten))
+    db_vorschlaege.get_recent_stimmung_eintraege = AsyncMock(return_value=[])
     _st.grok.simple = AsyncMock(return_value="Eine frische Frage an dich?")
     _st.telegram_helper.send_domina = AsyncMock()
     _config.STIMMUNG_ENABLED = True
@@ -289,8 +290,8 @@ async def test_frage_ohne_mode_knopf_und_getippte_antwort():
         assert "stimmung_offen_bis" not in _state.get(sub)
     finally:
         _state._state.clear()
-        (_st.InlineKeyboardButton, _st.InlineKeyboardMarkup, _st.qdrant.save_training,
-         _st.qdrant.get_recent_stimmung_eintraege, _st.grok.simple, _st.telegram_helper.send_domina,
+        (_st.InlineKeyboardButton, _st.InlineKeyboardMarkup, db_progress.save_training,
+         db_vorschlaege.get_recent_stimmung_eintraege, _st.grok.simple, _st.telegram_helper.send_domina,
          _config.STIMMUNG_ENABLED) = orig
 
 

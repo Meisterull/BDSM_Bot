@@ -31,6 +31,7 @@ except ImportError:
     sys.modules["dotenv"].load_dotenv = lambda *a, **k: None
 
 from bot import config  # noqa: E402
+from bot.services.db import lernen as db_lernen, profile as db_profile, vorschlaege as db_vorschlaege  # noqa: E402
 config.DOMINA_CHAT_ID = config.DOMINA_CHAT_ID or "111"
 config.SKLAVE_CHAT_ID = config.SKLAVE_CHAT_ID or "222"
 from bot.handlers import coach_quiz  # noqa: E402
@@ -72,17 +73,17 @@ def _mit_stubs(vorlieben, hard_limits, grenzen, juengste, offene, wuerfel=0.99):
     async def fake_offene(user_id):
         return list(offene)
 
-    orig = (qdrant.get_user_profile, qdrant.get_recent_quiz_wissen,
-            qdrant.get_offene_quiz_themen, coach_quiz.random.random)
-    qdrant.get_user_profile = fake_profile
-    qdrant.get_recent_quiz_wissen = fake_recent
-    qdrant.get_offene_quiz_themen = fake_offene
+    orig = (db_profile.get_user_profile, db_lernen.get_recent_quiz_wissen,
+            db_lernen.get_offene_quiz_themen, coach_quiz.random.random)
+    db_profile.get_user_profile = fake_profile
+    db_lernen.get_recent_quiz_wissen = fake_recent
+    db_lernen.get_offene_quiz_themen = fake_offene
     coach_quiz.random.random = lambda: wuerfel
     try:
         return asyncio.run(coach_quiz._thema_waehlen())
     finally:
-        (qdrant.get_user_profile, qdrant.get_recent_quiz_wissen,
-         qdrant.get_offene_quiz_themen, coach_quiz.random.random) = orig
+        (db_profile.get_user_profile, db_lernen.get_recent_quiz_wissen,
+         db_lernen.get_offene_quiz_themen, coach_quiz.random.random) = orig
 
 
 def test_thema_wahl_limits_und_vorlieben():
@@ -169,18 +170,19 @@ def test_impuls_slot_frei():
     In-Prozess-Claim blockieren den Slot."""
     from datetime import datetime, timezone, timedelta
     from bot.scheduler import followup as sched
-    alt = sched._impuls_claim
+    from bot.scheduler import impulse  # noqa: E402
+    alt = impulse._impuls_claim
     try:
-        sched._impuls_claim = None
-        assert sched._impuls_slot_frei("") is True
+        impulse._impuls_claim = None
+        assert impulse._impuls_slot_frei("") is True
         frisch = datetime.now(timezone.utc).isoformat()
-        assert sched._impuls_slot_frei(frisch) is False
+        assert impulse._impuls_slot_frei(frisch) is False
         vor3h = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
-        assert sched._impuls_slot_frei(vor3h) is True
-        sched._impuls_claim = datetime.now(timezone.utc)
-        assert sched._impuls_slot_frei(vor3h) is False
+        assert impulse._impuls_slot_frei(vor3h) is True
+        impulse._impuls_claim = datetime.now(timezone.utc)
+        assert impulse._impuls_slot_frei(vor3h) is False
     finally:
-        sched._impuls_claim = alt
+        impulse._impuls_claim = alt
 
 
 def test_quiz_verfall_nachreichen():
@@ -189,32 +191,33 @@ def test_quiz_verfall_nachreichen():
     from unittest.mock import AsyncMock, MagicMock
     from bot import state
     from bot.scheduler import followup as sched
+    from bot.scheduler import impulse  # noqa: E402
     from bot.services import paare, telegram_helper
     cid = paare.dom_chat_id()
     s = state.get(cid)
     daten = {"thema": "T", "frage": "F", "muster": "M", "aufloesung": "A"}
     gesendet, gespeichert = [], []
-    orig_send, orig_save = telegram_helper.send_domina, sched.qdrant.save_quiz_wissen
+    orig_send, orig_save = telegram_helper.send_domina, db_lernen.save_quiz_wissen
     telegram_helper.send_domina = AsyncMock(
         side_effect=lambda b, txt, **k: gesendet.append(txt))
-    sched.qdrant.save_quiz_wissen = AsyncMock(
+    db_lernen.save_quiz_wissen = AsyncMock(
         side_effect=lambda uid, d: gespeichert.append(d))
     try:
         # aktiver Flow → vertagt
         s["coach_quiz_verfallen"] = dict(daten)
         state.set_mode(cid, "stimmung")
-        asyncio.run(sched._quiz_verfall_nachreichen(MagicMock()))
+        asyncio.run(impulse._quiz_verfall_nachreichen(MagicMock()))
         assert not gesendet and s.get("coach_quiz_verfallen")
         # freier Chat → Send + Wissens-Eintrag, Park-Key weg
         state.set_mode(cid, "chat")
-        asyncio.run(sched._quiz_verfall_nachreichen(MagicMock()))
+        asyncio.run(impulse._quiz_verfall_nachreichen(MagicMock()))
         assert gesendet and "A" in gesendet[0], gesendet
         assert gespeichert and gespeichert[0]["status"] == "offen"
         assert gespeichert[0]["urteil"] == "UNBEANTWORTET"
         assert not s.get("coach_quiz_verfallen")
     finally:
         telegram_helper.send_domina = orig_send
-        sched.qdrant.save_quiz_wissen = orig_save
+        db_lernen.save_quiz_wissen = orig_save
         state.set_mode(cid, "chat")
 
 
@@ -236,10 +239,10 @@ def test_frage_prompts_gehaertet():
 
     orig_simple = coach_quiz.grok.simple
     orig_retry = coach_quiz.limits_check.generate_mit_limit_retry
-    orig_profil = coach_quiz.qdrant.get_user_profile
+    orig_profil = db_profile.get_user_profile
     coach_quiz.grok.simple = fake_simple
     coach_quiz.limits_check.generate_mit_limit_retry = fake_retry
-    coach_quiz.qdrant.get_user_profile = AsyncMock(return_value={})
+    db_profile.get_user_profile = AsyncMock(return_value={})
     try:
         assert asyncio.run(coach_quiz._generiere_sklavenfrage("999002", "Daten: X"))
         sk_system = captured.pop("system")
@@ -254,7 +257,7 @@ def test_frage_prompts_gehaertet():
     finally:
         coach_quiz.grok.simple = orig_simple
         coach_quiz.limits_check.generate_mit_limit_retry = orig_retry
-        coach_quiz.qdrant.get_user_profile = orig_profil
+        db_profile.get_user_profile = orig_profil
 
 
 def test_wett_idee_rahmen_und_nachsatz():
@@ -290,16 +293,16 @@ def test_wett_idee_rahmen_und_nachsatz():
     async def fake_send(bot, text, **kw):
         gesendet.append(text)
 
-    orig = (coach_quiz.limits_check.generate_mit_limit_retry, coach_quiz.qdrant.get_user_profile,
-            coach_quiz.qdrant.get_recent_tiny_tasks, coach_quiz.telegram_helper.send_domina,
-            coach_quiz.state.is_paused, coach_quiz.state.get_mode, coach_quiz.qdrant.patch_profile_fields)
-    coach_quiz.qdrant.patch_profile_fields = AsyncMock(return_value="ok")
+    orig = (coach_quiz.limits_check.generate_mit_limit_retry, db_profile.get_user_profile,
+            db_vorschlaege.get_recent_tiny_tasks, coach_quiz.telegram_helper.send_domina,
+            coach_quiz.state.is_paused, coach_quiz.state.get_mode, db_profile.patch_profile_fields)
+    db_profile.patch_profile_fields = AsyncMock(return_value="ok")
     from bot.services import machbarkeit
     machbarkeit.maengel = AsyncMock(return_value=[])
     coach_quiz.limits_check.generate_mit_limit_retry = fake_retry
-    coach_quiz.qdrant.get_user_profile = AsyncMock(return_value={
+    db_profile.get_user_profile = AsyncMock(return_value={
         "vorlieben": ["Fesseln mag ich"], "hard_limits": [], "interessen": [], "grenzen": []})
-    coach_quiz.qdrant.get_recent_tiny_tasks = AsyncMock(
+    db_vorschlaege.get_recent_tiny_tasks = AsyncMock(
         return_value=([], [], ["Fessel ihn heute an den Stuhl."]))
     coach_quiz.telegram_helper.send_domina = fake_send
     coach_quiz.state.is_paused = lambda: False
@@ -310,9 +313,9 @@ def test_wett_idee_rahmen_und_nachsatz():
         assert "Fesseln mag ich" in captured["prompt"]
         assert gesendet and "pünktlich" in gesendet[0] and "ändern" not in gesendet[0]
     finally:
-        (coach_quiz.limits_check.generate_mit_limit_retry, coach_quiz.qdrant.get_user_profile,
-         coach_quiz.qdrant.get_recent_tiny_tasks, coach_quiz.telegram_helper.send_domina,
-         coach_quiz.state.is_paused, coach_quiz.state.get_mode, coach_quiz.qdrant.patch_profile_fields) = orig
+        (coach_quiz.limits_check.generate_mit_limit_retry, db_profile.get_user_profile,
+         db_vorschlaege.get_recent_tiny_tasks, coach_quiz.telegram_helper.send_domina,
+         coach_quiz.state.is_paused, coach_quiz.state.get_mode, db_profile.patch_profile_fields) = orig
 
 
 def _run():

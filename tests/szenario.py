@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 
 from tests.harness import Harness
 from bot.scheduler import followup as jobs
+from bot.services.db import tasks as db_tasks  # noqa: E402
+from bot.scheduler import aufgaben, tagesjobs, tiny_task, wartung  # noqa: E402
 from bot.services import qdrant
 from bot import config
 from bot import state as st
@@ -23,10 +25,10 @@ logging.getLogger().setLevel(logging.INFO)
 async def zeitraffer_followups() -> int:
     """Harness-ZEITRAFFER (kein Logik-Bypass): zieht follow_up_datum offener Tasks
     auf 'vor 1 Minute' vor, damit followup_job sie wie am Folgetag abfragt."""
-    offene = await qdrant.get_tasks_by_status(["offen"])
+    offene = await db_tasks.get_tasks_by_status(["offen"])
     frueher = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
     for t in offene:
-        await qdrant.update_task(t["qdrant_point_id"], {"follow_up_datum": frueher})
+        await db_tasks.update_task(t["qdrant_point_id"], {"follow_up_datum": frueher})
     return len(offene)
 
 
@@ -201,7 +203,7 @@ async def lauf(h: Harness, d: int) -> None:
         await aufgaben_dialog(h)
         n = await zeitraffer_followups()
         h.note(f"⏩ ZEITRAFFER: {n} offene Tasks auf fällig gesetzt")
-        await h.job("followup_job", jobs.followup_job)
+        await h.job("followup_job", aufgaben.followup_job)
         ok = await h.press("sklave", "followup:nein")
         if not ok:
             await h.send("sklave", "nein")
@@ -391,7 +393,7 @@ async def lauf(h: Harness, d: int) -> None:
         await h.send("domina", "/geheimnis")
         await h.send("domina", "Ich plane für sein Jubiläum eine besondere Belohnungsnacht.")
         await h.send("domina", "in 2 Tagen")
-        await h.job("geheimnis_job", jobs.geheimnis_job)
+        await h.job("geheimnis_job", tagesjobs.geheimnis_job)
     await phase(h, f"D{d} Geheimnis", p_geheimnis())
 
     # ------------------------------------------------------ Freitext-Coaching
@@ -423,12 +425,12 @@ async def lauf(h: Harness, d: int) -> None:
 
     # -------------------------------------------------- Scheduler-Jobs (Rest)
     async def p_jobs():
-        await h.job("tiny_task_vorschlag_job", jobs.tiny_task_vorschlag_job)
-        await h.job("offene_faeden_job", jobs.offene_faeden_job)
-        await h.job("resurface_job", jobs.resurface_job)
+        await h.job("tiny_task_vorschlag_job", tiny_task.tiny_task_vorschlag_job)
+        await h.job("offene_faeden_job", wartung.offene_faeden_job)
+        await h.job("resurface_job", tagesjobs.resurface_job)
         if d == 2:
-            await h.job("ziel_erinnerung_job", jobs.ziel_erinnerung_job)
-            await h.job("tiny_task_feedback_job", jobs.tiny_task_feedback_job)
+            await h.job("ziel_erinnerung_job", tagesjobs.ziel_erinnerung_job)
+            await h.job("tiny_task_feedback_job", tiny_task.tiny_task_feedback_job)
     await phase(h, f"D{d} Scheduler-Jobs", p_jobs())
 
 

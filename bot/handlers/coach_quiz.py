@@ -522,7 +522,7 @@ async def _wett_idee_generieren(schwerpunkt: str = "") -> str | None:
     Schablonen-Detektor + Drift-Prüfung (_idee_verstoesse) mit genau einem Retry,
     Nachsatz-Schnitt. None = nichts Brauchbares (der Impuls fällt dann auf Quiz)."""
     # lazy: der Scheduler importiert coach_quiz selbst lazy (zirkulärer Import)
-    from bot.scheduler.followup import _formel_verstoesse, _verbrauchte_zutaten
+    from bot.scheduler.schablonen import _formel_verstoesse, _verbrauchte_zutaten
     from bot.prompts import followup as followup_prompts, rollen
 
     sklave_profil = await qdrant.get_user_profile("sklave") or {}

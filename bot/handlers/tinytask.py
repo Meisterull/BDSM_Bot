@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from bot import config
 from bot.services import paare
-from bot.scheduler.followup import _send_tiny_task_vorschlag
+from bot.scheduler.tiny_task import _send_tiny_task_vorschlag
 from bot.messages import t
 
 

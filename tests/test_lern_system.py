@@ -40,6 +40,8 @@ except ImportError:
 from unittest.mock import AsyncMock, MagicMock  # noqa: E402
 
 from bot.handlers import gefuehl  # noqa: E402
+from bot.app import gates as app_gates  # noqa: E402
+from bot.services.db import auswertung as db_auswertung, coach_regeln as db_coach_regeln, conversations as db_conversations, kern as db_kern, profile as db_profile, skills as db_skills, tasks as db_tasks, vorschlaege as db_vorschlaege  # noqa: E402
 from bot.handlers import kette_adaptiv  # noqa: E402
 from bot.handlers import serie_handler  # noqa: E402
 from bot.handlers import wochenplanung  # noqa: E402
@@ -77,8 +79,8 @@ async def test_lernkern_schreibt_profil():
     async def fake_grok(prompt, **kwargs):  # **kwargs: akzeptiert temperature=/reasoning= etc.
         return '{"stimmung":"begeistert","intensitaet":"hoch","kategorie_reaktion":"mag_sehr"}'
 
-    gefuehl.qdrant.get_user_profile = _aw(lambda uid: {"kategorie_reaktionen": {}, "persoenlichkeit_tags": []})
-    gefuehl.qdrant.patch_profile_fields = fake_patch
+    db_profile.get_user_profile = _aw(lambda uid: {"kategorie_reaktionen": {}, "persoenlichkeit_tags": []})
+    db_profile.patch_profile_fields = fake_patch
     gefuehl.grok.simple = fake_grok
 
     res = await gefuehl._update_sklave_persoenlichkeit(
@@ -103,8 +105,8 @@ async def test_tag_flip_bei_umkehr():
     async def fake_grok(prompt, **kwargs):  # **kwargs: akzeptiert temperature=/reasoning= etc.
         return '{"stimmung":"abgelehnt","intensitaet":"niedrig","kategorie_reaktion":"mag_nicht"}'
 
-    gefuehl.qdrant.get_user_profile = _aw(lambda uid: prof)
-    gefuehl.qdrant.patch_profile_fields = fake_patch
+    db_profile.get_user_profile = _aw(lambda uid: prof)
+    db_profile.patch_profile_fields = fake_patch
     gefuehl.grok.simple = fake_grok
 
     await gefuehl._update_sklave_persoenlichkeit(
@@ -197,8 +199,8 @@ async def test_gefuehl_schreibt_kategorie_level():
     async def fake_grok(prompt, **kwargs):  # **kwargs: akzeptiert temperature=/reasoning= etc.
         return '{"stimmung":"begeistert","intensitaet":"hoch","kategorie_reaktion":"mag_sehr"}'
 
-    gefuehl.qdrant.get_user_profile = _aw(lambda uid: {"kategorie_reaktionen": {}, "persoenlichkeit_tags": [], "kategorie_level": {}})
-    gefuehl.qdrant.patch_profile_fields = fake_patch
+    db_profile.get_user_profile = _aw(lambda uid: {"kategorie_reaktionen": {}, "persoenlichkeit_tags": [], "kategorie_level": {}})
+    db_profile.patch_profile_fields = fake_patch
     gefuehl.grok.simple = fake_grok
 
     await gefuehl._update_sklave_persoenlichkeit(
@@ -220,8 +222,8 @@ def test_prompt_enthaelt_level_hinweis():
 async def test_adaptive_kette_vorschlag():
     """schlage_vor: generiert Anpassung, speichert sie, schickt der Domina Buttons -> True."""
     gespeichert = {}
-    kette_adaptiv.qdrant.get_user_profile = _aw(lambda u: {"hard_limits": [], "grenzen": []})
-    kette_adaptiv.qdrant.update_task = _aw(lambda tid, fields: gespeichert.update({tid: fields}))
+    db_profile.get_user_profile = _aw(lambda u: {"hard_limits": [], "grenzen": []})
+    db_tasks.update_task = _aw(lambda tid, fields: gespeichert.update({tid: fields}))
     kette_adaptiv.grok.simple = AsyncMock(return_value="Eine schärfere Variante.")
     kette_adaptiv.limits_check.verletzungen = _aw(lambda t, a, b, **k: [])
     bot = MagicMock()
@@ -248,13 +250,13 @@ def _fake_callback(data):
 
 async def _callback_setzt(action: str, erwartet: str):
     cap = {}
-    kette_adaptiv.qdrant.get_task = _aw(lambda tid: {
+    db_tasks.get_task = _aw(lambda tid: {
         "qdrant_point_id": "t2", "aufgabe": "ALT", "kette_anpass_vorschlag": "NEU",
         "kette_position": 2, "kette_gesamt": 3,
         # Der Doppel-Tap-Guard (Review D8/M6) lässt nur noch wartende Glieder zu.
         "status": "kette_wartend",
     })
-    kette_adaptiv.qdrant.update_task = _aw(lambda tid, fields: cap.update(fields))
+    db_tasks.update_task = _aw(lambda tid, fields: cap.update(fields))
     # kette_adaptiv.state IST das bot.state-Modul – Patch ohne Restore würde
     # set_followup_task für ALLE folgenden Tests lahmlegen (Review D5).
     _orig_sft = kette_adaptiv.state.set_followup_task
@@ -277,10 +279,10 @@ async def test_adaptive_kette_callbacks():
     # Doppel-Tap-Guard (Review D8/M6): bereits entschiedenes Glied (status !=
     # kette_wartend) darf NICHT wieder auf offen gesetzt und erneut gesendet werden.
     cap = {}
-    kette_adaptiv.qdrant.get_task = _aw(lambda tid: {
+    db_tasks.get_task = _aw(lambda tid: {
         "qdrant_point_id": "t2", "aufgabe": "ALT", "status": "erledigt",
     })
-    kette_adaptiv.qdrant.update_task = _aw(lambda tid, fields: cap.update(fields))
+    db_tasks.update_task = _aw(lambda tid, fields: cap.update(fields))
     kette_adaptiv.telegram_helper.send_sklave = AsyncMock()
     await kette_adaptiv.callback(_fake_callback("ketteanpass:approve:t2"), MagicMock())
     assert not cap, f"Doppel-Tap setzte entschiedenes Glied zurück: {cap}"
@@ -384,16 +386,16 @@ def test_sklave_themen():
 
 async def test_dossier_build():
     """Dossier wird aus Profil/Gefühlen synthetisiert und im Profil gespeichert."""
-    _dossier.qdrant.get_user_profile = _aw(lambda u: {
+    db_profile.get_user_profile = _aw(lambda u: {
         "vorlieben": ["lob"], "persoenlichkeit_tags": ["mag_Pegging"],
         "kategorie_reaktionen": {"Pegging": {"positiv": 3, "neutral": 0, "negativ": 0}},
         "kategorie_level": {"Pegging": 3}, "wunsch_kategorien": ["Toiletten_Sklave"],
     })
-    _dossier.qdrant.get_tasks_by_status = _aw(lambda s, sort_by_datum=False: [
+    db_tasks.get_tasks_by_status = _aw(lambda s, sort_by_datum=False: [
         {"kategorie": "Pegging", "gefuehl": "war intensiv"},
     ])
-    _dossier.qdrant.get_latest_stimmung = _aw(lambda u: {"zusammenfassung": "zufrieden"})
-    _dossier.qdrant.get_hybrid_conversation_context = _aw(lambda u, qv, limit=8: [])
+    db_vorschlaege.get_latest_stimmung = _aw(lambda u: {"zusammenfassung": "zufrieden"})
+    db_conversations.get_hybrid_conversation_context = _aw(lambda u, qv, limit=8: [])
     _dossier.emb.get_embedding = AsyncMock(return_value=[0.1] * 768)
     _dossier.grok.simple = AsyncMock(return_value="Er ist hingebungsvoll.")
     cap = {}
@@ -401,12 +403,12 @@ async def test_dossier_build():
     async def fake_patch(uid, fields):
         cap.update(fields)
 
-    _dossier.qdrant.patch_profile_fields = fake_patch
+    db_profile.patch_profile_fields = fake_patch
     txt = await _dossier.aktualisiere_dossier()
     assert txt == "Er ist hingebungsvoll." and cap.get("dossier") == txt
 
-    _dossier.qdrant.get_user_profile = _aw(lambda u: {})
-    _dossier.qdrant.get_tasks_by_status = _aw(lambda s, sort_by_datum=False: [])
+    db_profile.get_user_profile = _aw(lambda u: {})
+    db_tasks.get_tasks_by_status = _aw(lambda s, sort_by_datum=False: [])
     assert await _dossier.aktualisiere_dossier() is None
 
 
@@ -433,14 +435,14 @@ def test_decay_reaktionen():
 
 async def test_offene_faeden():
     _dossier.emb.get_embedding = AsyncMock(return_value=[0.1] * 768)
-    _dossier.qdrant.get_hybrid_conversation_context = _aw(lambda u, qv, limit=8: [{"zusammenfassung": "Sklave: Stress."}])
-    _dossier.qdrant.get_tasks_by_status = _aw(lambda s, sort_by_datum=False: [{"kategorie": "Pegging", "gefuehl": "x"}])
+    db_conversations.get_hybrid_conversation_context = _aw(lambda u, qv, limit=8: [{"zusammenfassung": "Sklave: Stress."}])
+    db_tasks.get_tasks_by_status = _aw(lambda s, sort_by_datum=False: [{"kategorie": "Pegging", "gefuehl": "x"}])
     cap = {}
 
     async def fp(uid, fields):
         cap.update(fields)
 
-    _dossier.qdrant.patch_profile_fields = fp
+    db_profile.patch_profile_fields = fp
     _dossier.grok.simple = AsyncMock(return_value="Stress bei der Arbeit\nWunsch nach Pegging")
     faeden = await _dossier.aktualisiere_offene_faeden()
     assert faeden == ["Stress bei der Arbeit", "Wunsch nach Pegging"]
@@ -449,16 +451,16 @@ async def test_offene_faeden():
 
 async def test_domina_dossier():
     _dossier.emb.get_embedding = AsyncMock(return_value=[0.1] * 768)
-    _dossier.qdrant.get_user_profile = _aw(lambda u: {"interessen": ["X"], "ziele": "Y", "erfahrungsstand": "Z", "aktuelles_level": 3})
-    _dossier.qdrant.get_bewertungs_kontext = _aw(lambda u: "")
-    _dossier.qdrant.get_recent_task_kategorien = _aw(lambda u, limit=8: [])
-    _dossier.qdrant.get_hybrid_conversation_context = _aw(lambda u, qv, limit=8: [])
+    db_profile.get_user_profile = _aw(lambda u: {"interessen": ["X"], "ziele": "Y", "erfahrungsstand": "Z", "aktuelles_level": 3})
+    db_auswertung.get_bewertungs_kontext = _aw(lambda u: "")
+    db_auswertung.get_recent_task_kategorien = _aw(lambda u, limit=8: [])
+    db_conversations.get_hybrid_conversation_context = _aw(lambda u, qv, limit=8: [])
     cap = {}
 
     async def fp(uid, fields):
         cap.update(fields)
 
-    _dossier.qdrant.patch_profile_fields = fp
+    db_profile.patch_profile_fields = fp
     _dossier.grok.simple = AsyncMock(return_value="Sie führt streng.")
     dt = await _dossier.aktualisiere_domina_dossier()
     assert dt == "Sie führt streng." and cap.get("domina_dossier") == dt
@@ -473,8 +475,8 @@ async def test_wunsch_erfassung():
     async def fp(uid, fields):
         cap.update(fields)
 
-    _dossier.qdrant.patch_profile_fields = fp
-    _dossier.qdrant.get_user_profile = _aw(lambda u: ({"hard_limits": [], "entdeckte_wuensche": []} if u == "sklave" else {"grenzen": []}))
+    db_profile.patch_profile_fields = fp
+    db_profile.get_user_profile = _aw(lambda u: ({"hard_limits": [], "entdeckte_wuensche": []} if u == "sklave" else {"grenzen": []}))
 
     # ohne Signalwort -> kein Grok, None
     _dossier.grok.simple = AsyncMock(side_effect=AssertionError("Grok darf nicht laufen"))
@@ -496,7 +498,7 @@ async def test_apply_profile_patch_limit_add():
     from bot.services import qdrant as _q
     calls = {"limits": [], "patch": []}
 
-    _q.get_user_profile = _aw(lambda uid: {"user_id": uid, "hard_limits": ["Atemkontrolle"], "vorlieben": ["X"]})
+    db_profile.get_user_profile = _aw(lambda uid: {"user_id": uid, "hard_limits": ["Atemkontrolle"], "vorlieben": ["X"]})
 
     async def fake_append(uid, feld, werte):
         calls["limits"].append((uid, feld, list(werte)))
@@ -507,14 +509,14 @@ async def test_apply_profile_patch_limit_add():
         calls["patch"].append((uid, dict(fields)))
         return "pid"
 
-    _q.append_profile_limits = fake_append
-    _q.patch_profile_fields = fake_patch
+    db_profile.append_profile_limits = fake_append
+    db_profile.patch_profile_fields = fake_patch
 
     patch = {"changes": [
         {"feld": "hard_limits", "operation": "limit_add", "wert": ["Nadeln", "Atemkontrolle"]},
         {"feld": "vorlieben", "operation": "list_add", "wert": ["langsame Steigerung"]},
     ]}
-    bericht = await _q.apply_profile_patch("sklave", patch)
+    bericht = await db_profile.apply_profile_patch("sklave", patch)
     assert calls["limits"], "limit_add muss append_profile_limits aufrufen"
     assert calls["limits"][0][1] == "hard_limits" and "Nadeln" in calls["limits"][0][2]
     assert any("hard_limits" in a for a in bericht["angewandt"]), bericht
@@ -523,7 +525,7 @@ async def test_apply_profile_patch_limit_add():
     # limit_add auf ein NICHT-Grenzen-Feld → ignoriert, append wird NICHT aufgerufen
     calls["limits"].clear()
     patch2 = {"changes": [{"feld": "vorlieben", "operation": "limit_add", "wert": ["x"]}]}
-    bericht2 = await _q.apply_profile_patch("sklave", patch2)
+    bericht2 = await db_profile.apply_profile_patch("sklave", patch2)
     assert not calls["limits"], "limit_add darf nur das Grenzen-Feld der Rolle schreiben"
     assert any("nicht erlaubt" in i for i in bericht2["ignoriert"]), bericht2
 
@@ -542,7 +544,7 @@ async def test_praeferenz_detektor():
     assert not pd._ist_neu("nadeln", ["Nadeln"])
 
     pd.grok.simple = _aw(lambda *a, **k: '{"vorlieben":["langsame Steigerung","Würgen"],"nogos":["Atemkontrolle"]}')
-    pd.qdrant.get_user_profile = _aw(lambda uid: {"vorlieben": [], "hard_limits": []})
+    db_profile.get_user_profile = _aw(lambda uid: {"vorlieben": [], "hard_limits": []})
     # "Würgen" ist grenzverletzend → muss als Vorliebe rausgefiltert werden
     pd.limits_check.verletzungen = _aw(lambda v, a=None, b=None, **k: [{"limit": "x"}] if "würgen" in v.lower() else [])
 
@@ -550,7 +552,7 @@ async def test_praeferenz_detektor():
     async def fake_save(**kwargs):
         saved.update(kwargs)
         return "pid-1"
-    pd.qdrant.save_coach_regel = fake_save
+    db_coach_regeln.save_coach_regel = fake_save
 
     from bot.services import telegram_helper as _th
     from bot.handlers import coach_regeln as _cr
@@ -574,7 +576,7 @@ async def test_praeferenz_detektor():
     assert "domina" not in sent and "langsame Steigerung" in sent["text"]
 
     # Nichts Neues (alles schon im Profil) → kein Vorschlag
-    pd.qdrant.get_user_profile = _aw(lambda uid: {"vorlieben": ["langsame Steigerung"], "hard_limits": ["Atemkontrolle"]})
+    db_profile.get_user_profile = _aw(lambda uid: {"vorlieben": ["langsame Steigerung"], "hard_limits": ["Atemkontrolle"]})
     pd.grok.simple = _aw(lambda *a, **k: '{"vorlieben":["langsame Steigerung"],"nogos":["Atemkontrolle"]}')
     saved.clear()
     ok2 = await pd.erkenne_und_schlage_vor(object(), "sklave", "ich mag langsame Steigerung")
@@ -603,10 +605,10 @@ async def test_refine_profile_limit_und_patch():
     from bot.services import qdrant as _q
 
     # Falsches Feld → ohne DB-Zugriff abgelehnt
-    assert await _q.refine_profile_limit("sklave", "vorlieben", "a", "a (Ausnahme: b)") is False
+    assert await db_profile.refine_profile_limit("sklave", "vorlieben", "a", "a (Ausnahme: b)") is False
     # Basis-Begriff nicht in `neu` enthalten → abgelehnt (Check VOR jedem DB-Zugriff)
-    _q._aio = AsyncMock(side_effect=AssertionError("kein DB-Zugriff erwartet"))
-    assert await _q.refine_profile_limit("sklave", "hard_limits", "Öffentlichkeit", "Plug tragen") is False
+    db_kern._aio = AsyncMock(side_effect=AssertionError("kein DB-Zugriff erwartet"))
+    assert await db_profile.refine_profile_limit("sklave", "hard_limits", "Öffentlichkeit", "Plug tragen") is False
 
     # Happy Path: Eintrag wird in-place ersetzt (set_payload), Vektor separat
     # (update_vectors) – KEIN Full-Upsert (Lost-Update-Fix, Review Durchgang 4).
@@ -621,16 +623,16 @@ async def test_refine_profile_limit_und_patch():
         (rcalls["set"] if "payload" in kwargs else rcalls["vec"]).append(kwargs)
         return None
 
-    _q._aio = fake_aio
+    db_kern._aio = fake_aio
     _q.emb.get_embedding = AsyncMock(return_value=[0.0])
-    ok = await _q.refine_profile_limit(
+    ok = await db_profile.refine_profile_limit(
         "sklave", "hard_limits", "Öffentlichkeit", "Öffentlichkeit (Ausnahme: Plug tragen)")
     assert ok is True
     assert rcalls["set"][0]["payload"]["hard_limits"] == \
         ["Blut", "Öffentlichkeit (Ausnahme: Plug tragen)"]
     assert rcalls["vec"], "Vektor muss separat via update_vectors geschrieben werden"
     # `alt` nicht im Bestand → False
-    assert await _q.refine_profile_limit("sklave", "hard_limits", "Nadeln", "Nadeln (Ausnahme: x)") is False
+    assert await db_profile.refine_profile_limit("sklave", "hard_limits", "Nadeln", "Nadeln (Ausnahme: x)") is False
 
     # apply_profile_patch routet limit_refine; falsches Feld wird ignoriert
     calls = []
@@ -639,14 +641,14 @@ async def test_refine_profile_limit_und_patch():
         calls.append((uid, feld, alt, neu))
         return True
 
-    _q.refine_profile_limit = fake_refine
-    _q.get_user_profile = _aw(lambda uid: {"user_id": uid})
+    db_profile.refine_profile_limit = fake_refine
+    db_profile.get_user_profile = _aw(lambda uid: {"user_id": uid})
     patch = {"changes": [
         {"feld": "hard_limits", "operation": "limit_refine",
          "wert": {"alt": "Öffentlichkeit", "neu": "Öffentlichkeit (Ausnahme: Plug)"}},
         {"feld": "vorlieben", "operation": "limit_refine", "wert": {"alt": "a", "neu": "a b"}},
     ]}
-    bericht = await _q.apply_profile_patch("sklave", patch)
+    bericht = await db_profile.apply_profile_patch("sklave", patch)
     assert calls == [("sklave", "hard_limits", "Öffentlichkeit", "Öffentlichkeit (Ausnahme: Plug)")]
     assert any("✏️" in a for a in bericht["angewandt"]), bericht
     assert any("nicht erlaubt" in i for i in bericht["ignoriert"]), bericht
@@ -657,7 +659,7 @@ async def test_patch_profile_fields_kein_full_upsert():
     Full-Upsert mit stale Read (würde parallel gepatchte punkte/streak verlieren)."""
     import importlib
     from bot.services import qdrant as _q
-    _q = importlib.reload(_q)  # frühere Tests ersetzen patch_profile_fields durch Fakes
+    importlib.reload(db_profile)  # frühere Tests ersetzen patch_profile_fields durch Fakes
     punkt = MagicMock()
     punkt.id = "p1"
     punkt.payload = {"user_id": "sklave", "vorlieben": ["X"], "punkte": 42}
@@ -675,17 +677,17 @@ async def test_patch_profile_fields_kein_full_upsert():
             calls["upsert"].append(kwargs)
         return None
 
-    _q._aio = fake_aio
+    db_kern._aio = fake_aio
     _q.emb.get_embedding = AsyncMock(return_value=[0.0])
 
-    await _q.patch_profile_fields("sklave", {"vorlieben": ["X", "Neu"]})
+    await db_profile.patch_profile_fields("sklave", {"vorlieben": ["X", "Neu"]})
     assert calls["set"] and calls["set"][0]["payload"] == {"vorlieben": ["X", "Neu"]}
     assert calls["vec"], "vorlieben ändert den Vektor → update_vectors erwartet"
     assert not calls["upsert"], "kein Full-Upsert im Re-Embed-Pfad"
 
     # Feld ohne Vektor-Relevanz → nur set_payload, kein Embedding/update_vectors
     calls["set"].clear(); calls["vec"].clear()
-    await _q.patch_profile_fields("sklave", {"punkte": 43})
+    await db_profile.patch_profile_fields("sklave", {"punkte": 43})
     assert calls["set"] and not calls["vec"] and not calls["upsert"]
 
 
@@ -728,12 +730,12 @@ async def test_praeferenz_detektor_ausnahmen():
     async def fake_save(**kwargs):
         saved.update(kwargs)
         return "pid-2"
-    pd.qdrant.save_coach_regel = fake_save
+    db_coach_regeln.save_coach_regel = fake_save
     _th.send_sklave = _aw(lambda bot, text, **k: sent.update(text=text))
     _cr.vorschlag_buttons = lambda pid: None
 
     # Grenze existiert → limit_refine mit alt/neu
-    pd.qdrant.get_user_profile = _aw(lambda uid:
+    db_profile.get_user_profile = _aw(lambda uid:
         {"vorlieben": [], "hard_limits": ["Öffentlichkeit", "Blut"]} if uid == "sklave" else {"grenzen": []})
     ok = await pd.erkenne_und_schlage_vor(
         object(), "sklave", "öffentlichkeit ist ein no go aber ein plug tragen wäre ok")
@@ -744,7 +746,7 @@ async def test_praeferenz_detektor_ausnahmen():
     assert "präzisiert" in sent["text"]
 
     # Grenze noch nicht im Profil → direkt annotiertes limit_add
-    pd.qdrant.get_user_profile = _aw(lambda uid:
+    db_profile.get_user_profile = _aw(lambda uid:
         {"vorlieben": [], "hard_limits": []} if uid == "sklave" else {"grenzen": []})
     saved.clear()
     ok2 = await pd.erkenne_und_schlage_vor(
@@ -753,7 +755,7 @@ async def test_praeferenz_detektor_ausnahmen():
     assert ok2 is True and adds and adds[0]["wert"] == ["Öffentlichkeit (Ausnahme: Plug tragen)"]
 
     # Ausnahme steht schon im Eintrag → nichts Neues, kein Vorschlag
-    pd.qdrant.get_user_profile = _aw(lambda uid:
+    db_profile.get_user_profile = _aw(lambda uid:
         {"vorlieben": [], "hard_limits": ["Öffentlichkeit (Ausnahme: Plug tragen)"]} if uid == "sklave"
         else {"grenzen": []})
     saved.clear()
@@ -775,8 +777,8 @@ async def test_skill_kontext_block():
                   "inhalt": "🧠 *Worum es geht*\nIntro\n\n⚠️ *Sicherheit & rote Linien*\n"
                             "- Nur Paraffin\n- Nie ins Gesicht\n\n📈 *Progression*\nStufen"},
     }
-    _q.get_skill = _aw(lambda k: skills.get(k))
-    _q.list_skills = _aw(lambda: list(skills.values()))
+    db_skills.get_skill = _aw(lambda k: skills.get(k))
+    db_skills.list_skills = _aw(lambda: list(skills.values()))
 
     block = await cp.skill_kontext_block(["Pegging", "Unbekannt"])
     assert "Pegging: Nie ohne Gleitgel" in block and "Unbekannt" not in block
@@ -790,12 +792,12 @@ async def test_skill_kontext_block():
     assert "Pegging" in block3 and "Wachs" in block3
 
     # Kein Eintrag / DB-Fehler → leerer String, blockiert keine Generierung
-    _q.get_skill = _aw(lambda k: None)
+    db_skills.get_skill = _aw(lambda k: None)
     assert await cp.skill_kontext_block(["Pegging"]) == ""
 
     async def boom(k):
         raise RuntimeError("db down")
-    _q.get_skill = boom
+    db_skills.get_skill = boom
     assert await cp.skill_kontext_block(["Pegging"]) == ""
 
 
@@ -823,7 +825,7 @@ async def test_kategorien_pool():
 
     # klassifiziere: Grok nennt die eigene Kategorie → wird gegen den Pool validiert
     import bot.services.qdrant as _q
-    _q.get_user_profile = _aw(lambda uid: profil)
+    db_profile.get_user_profile = _aw(lambda uid: profil)
     kl.grok.simple = _aw(lambda *a, **k: "Cuckold")
     kat = await kl.klassifiziere("ein ganz spezielles Szenario zu zweit")
     assert kat == "Cuckold"
@@ -857,8 +859,8 @@ async def test_followup_callback_ja():
     _st.set_mode("222", "chat")
     _st.get("222")["followup_task_id"] = None
     cap = {}
-    _fur.qdrant.get_task = _aw(lambda tid: {"qdrant_point_id": tid, "aufgabe": "Plug tragen", "status": "gefragt"})
-    _fur.qdrant.update_task = _aw(lambda tid, fields: cap.update(fields))
+    db_tasks.get_task = _aw(lambda tid: {"qdrant_point_id": tid, "aufgabe": "Plug tragen", "status": "gefragt"})
+    db_tasks.update_task = _aw(lambda tid, fields: cap.update(fields))
     _fur.grok.simple = AsyncMock(return_value="Wie war's?")
     gesendet = {}
 
@@ -886,8 +888,8 @@ async def test_followup_callback_status_guard():
     _st.set_mode("222", "chat")
     _st.get("222")["followup_task_id"] = None
     cap = {}
-    _fur.qdrant.get_task = _aw(lambda tid: {"qdrant_point_id": tid, "aufgabe": "X", "status": "erledigt"})
-    _fur.qdrant.update_task = _aw(lambda tid, fields: cap.update(fields))
+    db_tasks.get_task = _aw(lambda tid: {"qdrant_point_id": tid, "aufgabe": "X", "status": "erledigt"})
+    db_tasks.update_task = _aw(lambda tid, fields: cap.update(fields))
     gesendet = {}
     msg = MagicMock()
     msg.chat_id = "222"
@@ -938,16 +940,17 @@ async def test_schwierigkeit_effektiv_reihenfolge():
     Basis – vorher fing der hoch→normal-Zweig Basis 'hoch' zuerst ab und der
     niedrigste Score führte bei der höchsten Basis zur höheren Schwierigkeit."""
     from bot.scheduler import followup as _sched
+    from bot.scheduler import basis, schablonen, tiny_task  # noqa: E402
     from bot import config as _cfg
     alt = _sched.privileg_effekte.aktiver_easy_mode
     _sched.privileg_effekte.aktiver_easy_mode = _aw(lambda: False)
     try:
         tief = _cfg.VERTRAUEN_SCHWELLE_NIEDRIG - 1
         mittel = _cfg.VERTRAUEN_SCHWELLE_SENKEN - 1
-        assert await _sched._schwierigkeit_effektiv({"aufgaben_schwierigkeit": "hoch"}, tief) == "niedrig"
-        assert await _sched._schwierigkeit_effektiv({"aufgaben_schwierigkeit": "normal"}, tief) == "niedrig"
-        assert await _sched._schwierigkeit_effektiv({"aufgaben_schwierigkeit": "hoch"}, mittel) == "normal"
-        assert await _sched._schwierigkeit_effektiv({"aufgaben_schwierigkeit": "normal"}, mittel) == "normal"
+        assert await tiny_task._schwierigkeit_effektiv({"aufgaben_schwierigkeit": "hoch"}, tief) == "niedrig"
+        assert await tiny_task._schwierigkeit_effektiv({"aufgaben_schwierigkeit": "normal"}, tief) == "niedrig"
+        assert await tiny_task._schwierigkeit_effektiv({"aufgaben_schwierigkeit": "hoch"}, mittel) == "normal"
+        assert await tiny_task._schwierigkeit_effektiv({"aufgaben_schwierigkeit": "normal"}, mittel) == "normal"
     finally:
         _sched.privileg_effekte.aktiver_easy_mode = alt
 
@@ -1004,8 +1007,8 @@ async def test_pause_guard_blockt_callbacks_und_commands():
     class _Stop(Exception):
         pass
 
-    alt_stop = _main.ApplicationHandlerStop
-    _main.ApplicationHandlerStop = _Stop
+    alt_stop = app_gates.ApplicationHandlerStop
+    app_gates.ApplicationHandlerStop = _Stop
     _st.set_paused(True)
     try:
         # 1) Callback während Pause → Alert + Stop
@@ -1016,7 +1019,7 @@ async def test_pause_guard_blockt_callbacks_und_commands():
         upd.effective_message = None
         upd.effective_chat.id = _cfg.DOMINA_CHAT_ID
         try:
-            await _main.pause_guard(upd, MagicMock())
+            await app_gates.pause_guard(upd, MagicMock())
             raise AssertionError("Callback hätte gestoppt werden müssen")
         except _Stop:
             pass
@@ -1031,7 +1034,7 @@ async def test_pause_guard_blockt_callbacks_und_commands():
         upd2.effective_message = msg
         upd2.effective_chat.id = _cfg.SKLAVE_CHAT_ID
         try:
-            await _main.pause_guard(upd2, MagicMock())
+            await app_gates.pause_guard(upd2, MagicMock())
             raise AssertionError("Command hätte gestoppt werden müssen")
         except _Stop:
             pass
@@ -1044,14 +1047,14 @@ async def test_pause_guard_blockt_callbacks_und_commands():
         upd3.callback_query = None
         upd3.effective_message = msg3
         upd3.effective_chat.id = _cfg.SKLAVE_CHAT_ID
-        await _main.pause_guard(upd3, MagicMock())  # darf NICHT raisen
+        await app_gates.pause_guard(upd3, MagicMock())  # darf NICHT raisen
 
         # 4) Ohne Pause: alles läuft durch
         _st.set_paused(False)
-        await _main.pause_guard(upd, MagicMock())
+        await app_gates.pause_guard(upd, MagicMock())
     finally:
         _st.set_paused(False)
-        _main.ApplicationHandlerStop = alt_stop
+        app_gates.ApplicationHandlerStop = alt_stop
 
 
 def test_messages_konsistenz():
@@ -1169,6 +1172,7 @@ def test_safeword_pause_schuetzt_und_blockt():
     is_paused() greift, _flow_aktiv blockt während der Pause."""
     from bot import state as _state
     from bot.scheduler import followup as _sched
+    from bot.scheduler import basis, schablonen, tiny_task  # noqa: E402
     import time as _time
     _state._state.clear()
     cid = "999"
@@ -1181,7 +1185,7 @@ def test_safeword_pause_schuetzt_und_blockt():
     _state.set_paused(True)
     try:
         assert _state.is_paused() is True
-        assert _sched._flow_aktiv("12345", "Test-Job") is True, "während Pause muss _flow_aktiv blocken"
+        assert basis._flow_aktiv("12345", "Test-Job") is True, "während Pause muss _flow_aktiv blocken"
     finally:
         _state.set_paused(False)
     assert _state.is_paused() is False
@@ -1280,7 +1284,8 @@ def test_formel_verstoesse_profil_abgleich():
     """06.09.: Detektor erkennt die Nachfolger-Schablonen der Live-Messung –
     Profil-Treffer-Meldungen und den Absetz-Meta-Kommentar."""
     from bot.scheduler import followup as _sched
-    f = _sched._formel_verstoesse
+    from bot.scheduler import basis, schablonen, tiny_task  # noqa: E402
+    f = schablonen._formel_verstoesse
     # Muster der Live-Messung 06.09. NACHGESTELLT (Audit-Regel: nie reale Texte)
     assert f("Das holt genau seine verspielte Seite raus.")
     assert f("Das drängt ihn genau in seine devote Rolle.")
@@ -1307,27 +1312,28 @@ def test_zutaten_und_kombi_helfer():
     """06.09.: Zutaten-Scan über Volltexte + Kombi-Wahl (situativer Anker,
     Partner aus anderem Cluster, Dislike-Zeilen ausgeschlossen)."""
     from bot.scheduler import followup as _sched
+    from bot.scheduler import basis, schablonen, tiny_task  # noqa: E402
     texte = ["Setz dich auf sein Gesicht, lass ihn dich lecken und spuck ihm in den Mund."]
-    labels = " | ".join(_sched._verbrauchte_zutaten(texte, ["Dienst"]))
+    labels = " | ".join(schablonen._verbrauchte_zutaten(texte, ["Dienst"]))
     assert "Facesitting" in labels and "Spucken" in labels and "Lecken" in labels, labels
     # Heute gewählte Kategorie legitimiert ihre Zutat (kein Widerspruch)
-    labels2 = " | ".join(_sched._verbrauchte_zutaten(texte, ["Facesitting"]))
+    labels2 = " | ".join(schablonen._verbrauchte_zutaten(texte, ["Facesitting"]))
     assert "Facesitting" not in labels2 and "Lecken" not in labels2, labels2
     # Kombi-Zeile legitimiert die Zutat ebenfalls
-    labels3 = " | ".join(_sched._verbrauchte_zutaten(
+    labels3 = " | ".join(schablonen._verbrauchte_zutaten(
         texte, ["Dienst"], ["Facesitting als Belohnung", "Wachs"]))
     assert "Facesitting" not in labels3, labels3
     # Kombi-Wahl: situative Zeile wird Anker, Partner kommt aus fremdem Cluster
     vorlieben = ["Wachs (nur die Domina gießt)",
                  "Spanking morgens nach dem Frühstück", "Verbale Demütigung"]
-    kombi = _sched._kombi_vorlieben_wahl(vorlieben, dislikes=[])
+    kombi = schablonen._kombi_vorlieben_wahl(vorlieben, dislikes=[])
     assert kombi and kombi[0] == "Spanking morgens nach dem Frühstück", kombi
     # Wachs teilt den Impact/Schmerz-Cluster mit Spanking → einziger Fremd-Partner
     assert kombi[1] == "Verbale Demütigung", kombi
     # Dislike-Kategorie schließt die Zeile aus
-    kombi2 = _sched._kombi_vorlieben_wahl(vorlieben, dislikes=["Spanking"])
+    kombi2 = schablonen._kombi_vorlieben_wahl(vorlieben, dislikes=["Spanking"])
     assert kombi2 and set(kombi2) == {"Wachs (nur die Domina gießt)", "Verbale Demütigung"}, kombi2
-    assert _sched._kombi_vorlieben_wahl(["nur eine Zeile"], dislikes=[]) is None
+    assert schablonen._kombi_vorlieben_wahl(["nur eine Zeile"], dislikes=[]) is None
 
 
 def test_dossier_gekuerzt_satzgrenze():
@@ -1360,10 +1366,11 @@ def test_eintrag_alter_tage():
     """B6: Altersfilter-Helper – ISO-Datum wird korrekt gealtert, Müll → 0."""
     from datetime import datetime, timedelta, timezone
     from bot.scheduler import followup as _sched
+    from bot.scheduler import basis, schablonen, tiny_task  # noqa: E402
     alt = (datetime.now(timezone.utc) - timedelta(days=9)).isoformat()
-    assert _sched._eintrag_alter_tage(alt) >= 8
-    assert _sched._eintrag_alter_tage("kaputt") == 0
-    assert _sched._eintrag_alter_tage("") == 0
+    assert tiny_task._eintrag_alter_tage(alt) >= 8
+    assert tiny_task._eintrag_alter_tage("kaputt") == 0
+    assert tiny_task._eintrag_alter_tage("") == 0
 
 
 async def test_tinyfb_klassifikation():
@@ -1374,12 +1381,12 @@ async def test_tinyfb_klassifikation():
     from bot.handlers import domina as _dom
     from bot.services import telegram_helper as _th
     cid = _config.DOMINA_CHAT_ID
-    orig = (tfb.qdrant.get_tiny_task_by_id, tfb.qdrant.mark_tiny_task_status,
+    orig = (db_vorschlaege.get_tiny_task_by_id, db_vorschlaege.mark_tiny_task_status,
             tfb.grok.simple, _dom.handle, tfb.kategorie_logik.record_domina_praeferenz,
             tfb._vorschlag_aus_ablehnung, _th.reply_markdown_safe)
     markiert, praef, chat_calls = {}, [], []
-    tfb.qdrant.get_tiny_task_by_id = _aw(lambda pid: {"inhalt": "Vorschlag X", "kategorien": ["Dienst"]})
-    tfb.qdrant.mark_tiny_task_status = _aw(lambda pid, s, grund="": markiert.update({pid: (s, grund)}))
+    db_vorschlaege.get_tiny_task_by_id = _aw(lambda pid: {"inhalt": "Vorschlag X", "kategorien": ["Dienst"]})
+    db_vorschlaege.mark_tiny_task_status = _aw(lambda pid, s, grund="": markiert.update({pid: (s, grund)}))
     tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig: praef.append((tuple(kats), sig)))
     tfb._vorschlag_aus_ablehnung = _aw(lambda *a, **k: None)
     _th.reply_markdown_safe = AsyncMock()
@@ -1427,7 +1434,7 @@ async def test_tinyfb_klassifikation():
         assert _state_mod.get_mode(cid) == "tiny_task_feedback", "Feedback muss offen bleiben"
         tfb.grok.simple.assert_not_called()
     finally:
-        (tfb.qdrant.get_tiny_task_by_id, tfb.qdrant.mark_tiny_task_status,
+        (db_vorschlaege.get_tiny_task_by_id, db_vorschlaege.mark_tiny_task_status,
          tfb.grok.simple, _dom.handle, tfb.kategorie_logik.record_domina_praeferenz,
          tfb._vorschlag_aus_ablehnung, _th.reply_markdown_safe) = orig
 
@@ -1440,7 +1447,7 @@ async def test_tinyfb_ein_tipp_ohne_mode():
     from bot.handlers import tiny_task_feedback as tfb
     from bot.services import telegram_helper as _th
     cid = _config.DOMINA_CHAT_ID
-    orig = (tfb.qdrant.get_tiny_task_by_id, tfb.qdrant.mark_tiny_task_status,
+    orig = (db_vorschlaege.get_tiny_task_by_id, db_vorschlaege.mark_tiny_task_status,
             tfb.kategorie_logik.record_domina_praeferenz, tfb._vorschlag_aus_ablehnung,
             _th.send_domina, tfb.InlineKeyboardButton, tfb.InlineKeyboardMarkup)
 
@@ -1462,8 +1469,8 @@ async def test_tinyfb_ein_tipp_ohne_mode():
     def _mark(pid, status, grund=""):
         markiert[pid] = (status, grund)
         eintraege[pid]["status"] = status
-    tfb.qdrant.get_tiny_task_by_id = _aw(lambda pid: eintraege.get(pid))
-    tfb.qdrant.mark_tiny_task_status = _aw(_mark)
+    db_vorschlaege.get_tiny_task_by_id = _aw(lambda pid: eintraege.get(pid))
+    db_vorschlaege.mark_tiny_task_status = _aw(_mark)
     tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig: praef.append((tuple(kats), sig)))
     tfb._vorschlag_aus_ablehnung = _aw(lambda *a, **k: regel.append(a))
     _th.send_domina = AsyncMock()
@@ -1543,7 +1550,7 @@ async def test_tinyfb_ein_tipp_ohne_mode():
         assert _state_mod.get_mode(cid) == "wette" and markiert["p3"][0] == "abgelehnt"
     finally:
         _state_mod._state.clear()
-        (tfb.qdrant.get_tiny_task_by_id, tfb.qdrant.mark_tiny_task_status,
+        (db_vorschlaege.get_tiny_task_by_id, db_vorschlaege.mark_tiny_task_status,
          tfb.kategorie_logik.record_domina_praeferenz, tfb._vorschlag_aus_ablehnung,
          _th.send_domina, tfb.InlineKeyboardButton, tfb.InlineKeyboardMarkup) = orig
 

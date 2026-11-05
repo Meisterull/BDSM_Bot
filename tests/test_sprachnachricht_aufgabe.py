@@ -49,6 +49,7 @@ except ImportError:
 from unittest.mock import AsyncMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.services.db import profile as db_profile, tasks as db_tasks  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -207,8 +208,8 @@ class _Welt:
     def install(self):
         domina.onboarding.start_if_needed = AsyncMock(return_value=False)
         domina.embeddings.get_embedding = AsyncMock(return_value=None)
-        domina.qdrant.get_user_profile = AsyncMock(return_value={"aktuelles_level": 2})
-        domina.qdrant.erstelle_task = self._erstelle_task
+        db_profile.get_user_profile = AsyncMock(return_value={"aktuelles_level": 2})
+        db_tasks.erstelle_task = self._erstelle_task
         domina._baue_system_prompt = AsyncMock(return_value="SYSTEM")
         domina._chat_antwort = self._chat
         domina._sende_sprachnachricht_an_sklaven = self._sn

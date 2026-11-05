@@ -64,6 +64,8 @@ except ImportError:
 from unittest.mock import AsyncMock, MagicMock  # noqa: E402
 
 from bot import config as _config  # noqa: E402
+from bot.app import gates as app_gates, logging_setup as app_logging_setup  # noqa: E402
+from bot.services.db import auswertung as db_auswertung, conversations as db_conversations, kern as db_kern, profile as db_profile, progress as db_progress, tasks as db_tasks, vorschlaege as db_vorschlaege, wuensche as db_wuensche  # noqa: E402
 
 _config.DOMINA_CHAT_ID = "111"
 _config.SKLAVE_CHAT_ID = "222"
@@ -149,11 +151,11 @@ async def test_kette_adaptiv_send_zuerst():
     _state.set_mode("222", "chat")
     _state.get("222")["followup_task_id"] = None
     _ka.paare.sub_chat_id = lambda: "222"
-    _ka.qdrant.get_task = AsyncMock(return_value={
+    db_tasks.get_task = AsyncMock(return_value={
         "status": "kette_wartend", "aufgabe": "X", "kette_position": 2,
         "kette_gesamt": 3, "kette_id": "k1", "qdrant_point_id": "tid",
     })
-    _ka.qdrant.update_task = AsyncMock()
+    db_tasks.update_task = AsyncMock()
     _ka.grok.simple = AsyncMock(return_value="Anweisung")
     _ka.telegram_helper.send_sklave = AsyncMock(side_effect=Exception("netz"))
 
@@ -214,16 +216,16 @@ async def test_reaktion_ja_bitte_bestaetigt():
 async def test_wunschkategorien_abbrechen():
     chat = "222"
     _state.set_mode(chat, "wunschkategorien_wahl")
-    orig = _wk.qdrant.get_user_profile
+    orig = db_profile.get_user_profile
     try:
-        _wk.qdrant.get_user_profile = AsyncMock()
+        db_profile.get_user_profile = AsyncMock()
         u = _fake_update(chat, "abbrechen")
         await _wk.handle(u, MagicMock())
-        assert _wk.qdrant.get_user_profile.await_count == 0
+        assert db_profile.get_user_profile.await_count == 0
         assert _state.get_mode(chat) == "chat"
         assert u.message.reply_text.await_count == 1
     finally:
-        _wk.qdrant.get_user_profile = orig
+        db_profile.get_user_profile = orig
 
 
 # --------------------------------------------------------------------------
@@ -232,11 +234,11 @@ async def test_wunschkategorien_abbrechen():
 
 async def test_resurface_limits_block():
     _rs.paare.dom_chat_id = lambda: "111"
-    _rs.qdrant.get_task = AsyncMock(return_value={
+    db_tasks.get_task = AsyncMock(return_value={
         "aufgabe": "Alte Aufgabe", "kategorie": "Anal", "level": 3,
     })
-    _rs.qdrant.get_user_profile = AsyncMock(return_value={})
-    _rs.qdrant.erstelle_task = AsyncMock()
+    db_profile.get_user_profile = AsyncMock(return_value={})
+    db_tasks.erstelle_task = AsyncMock()
     orig_verl, orig_fmt = _rs.limits_check.verletzungen, _rs.limits_check.format_verletzungen
     try:
         _rs.limits_check.verletzungen = AsyncMock(
@@ -244,7 +246,7 @@ async def test_resurface_limits_block():
         _rs.limits_check.format_verletzungen = lambda t: "x"
         u = _fake_query("resurface:erteilen:tid")
         await _rs.callback(u, MagicMock())
-        assert _rs.qdrant.erstelle_task.await_count == 0
+        assert db_tasks.erstelle_task.await_count == 0
         assert u.callback_query.message.reply_text.await_count == 1
     finally:
         _rs.limits_check.verletzungen = orig_verl
@@ -256,16 +258,16 @@ async def test_resurface_limits_block():
 # --------------------------------------------------------------------------
 
 async def test_streak_status_filter():
-    orig_aio, orig_mk = _q._aio, _q.mandanten_key
+    orig_aio, orig_mk = db_kern._aio, db_kern.mandanten_key
     try:
-        _q.mandanten_key = lambda u: u
+        db_kern.mandanten_key = lambda u: u
         punkte = [SimpleNamespace(payload={"status": s})
                   for s in ("nicht_erledigt", "nicht_erledigt", "erledigt", "nicht_erledigt")]
-        _q._aio = AsyncMock(return_value=(punkte, None))
-        streak = await _q.get_nicht_erledigt_streak("sklave")
+        db_kern._aio = AsyncMock(return_value=(punkte, None))
+        streak = await db_auswertung.get_nicht_erledigt_streak("sklave")
         assert streak == 2
 
-        f = _q._aio.call_args.kwargs["scroll_filter"]
+        f = db_kern._aio.call_args.kwargs["scroll_filter"]
         if isinstance(_q.qm.Filter, MagicMock):
             # Stub-Modus: der MatchAny-Aufruf mit beiden Status muss gefallen sein
             assert any(c.kwargs.get("any") == ["erledigt", "nicht_erledigt"]
@@ -274,7 +276,7 @@ async def test_streak_status_filter():
             status_conds = [c for c in f.must if getattr(c, "key", "") == "status"]
             assert status_conds and set(status_conds[0].match.any) == {"erledigt", "nicht_erledigt"}
     finally:
-        _q._aio, _q.mandanten_key = orig_aio, orig_mk
+        db_kern._aio, db_kern.mandanten_key = orig_aio, orig_mk
 
 
 # --------------------------------------------------------------------------
@@ -283,15 +285,15 @@ async def test_streak_status_filter():
 
 async def test_blitz_toctou_pause():
     _bl.paare.sub_chat_id = lambda: "222"
-    _bl.qdrant.get_user_profile = AsyncMock(return_value={})
+    db_profile.get_user_profile = AsyncMock(return_value={})
     _bl._generiere_blitz = AsyncMock(return_value=("Text", "Anal"))
     _bl.grok.simple = AsyncMock(return_value="Anweisung")
-    _bl.qdrant.erstelle_task = AsyncMock()
+    db_tasks.erstelle_task = AsyncMock()
     _state.set_paused(True)
     try:
         ok = await _bl.sende_blitz(MagicMock())
         assert ok is False
-        assert _bl.qdrant.erstelle_task.await_count == 0
+        assert db_tasks.erstelle_task.await_count == 0
     finally:
         _state.set_paused(False)
 
@@ -301,17 +303,17 @@ async def test_blitz_toctou_pause():
 # --------------------------------------------------------------------------
 
 async def test_advent_pause_skip():
-    orig_akt, orig_heute, orig_profil = _ad._aktueller, _ad._heute, _ad.qdrant.get_user_profile
+    orig_akt, orig_heute, orig_profil = _ad._aktueller, _ad._heute, db_profile.get_user_profile
     try:
         _ad._aktueller = AsyncMock(return_value={"jahr": 2026, "letzte_tuer": 0, "thema": "Test"})
         _ad._heute = lambda: date(2026, 12, 12)
-        _ad.qdrant.get_user_profile = AsyncMock(return_value={})
+        db_profile.get_user_profile = AsyncMock(return_value={})
         _state.set_paused(True)
         await _ad.oeffne_tuerchen(MagicMock())
-        assert _ad.qdrant.get_user_profile.await_count == 0
+        assert db_profile.get_user_profile.await_count == 0
     finally:
         _state.set_paused(False)
-        _ad._aktueller, _ad._heute, _ad.qdrant.get_user_profile = orig_akt, orig_heute, orig_profil
+        _ad._aktueller, _ad._heute, db_profile.get_user_profile = orig_akt, orig_heute, orig_profil
 
 
 # --------------------------------------------------------------------------
@@ -325,9 +327,9 @@ async def test_training_send_fehler_kein_geister_mode():
         _config.TRAINING_ENABLED = True
         _tr.paare.dom_chat_id = lambda: "111"
         _state.set_mode("111", "chat")
-        _tr.qdrant.get_user_profile = AsyncMock(return_value={"erfahrungsstand": "x"})
-        _tr.qdrant.get_tasks_by_status = AsyncMock(return_value=[])
-        _tr.qdrant.get_training_entries = AsyncMock(return_value=[])
+        db_profile.get_user_profile = AsyncMock(return_value={"erfahrungsstand": "x"})
+        db_tasks.get_tasks_by_status = AsyncMock(return_value=[])
+        db_progress.get_training_entries = AsyncMock(return_value=[])
         _tr._generiere_uebung = AsyncMock(return_value="Übung")
         bot = MagicMock()
         bot.send_message = AsyncMock(side_effect=Exception("netz"))
@@ -358,19 +360,19 @@ def test_vorlieben_zeilenweise():
 # --------------------------------------------------------------------------
 
 async def test_hybrid_ohne_vektor():
-    orig_aio, orig_mk, orig_sem = _q._aio, _q.mandanten_key, _q.get_conversation_context
+    orig_aio, orig_mk, orig_sem = db_kern._aio, db_kern.mandanten_key, db_conversations.get_conversation_context
     try:
-        _q.mandanten_key = lambda u: u
-        _q.get_conversation_context = AsyncMock(
+        db_kern.mandanten_key = lambda u: u
+        db_conversations.get_conversation_context = AsyncMock(
             side_effect=AssertionError("Semantik-Arm darf ohne Vektor nicht laufen"))
         punkte = [SimpleNamespace(payload={"session_id": f"s{i}", "datum": f"2026-08-{10+i:02d}",
                                            "thema": "allgemein"}) for i in range(5)]
-        _q._aio = AsyncMock(return_value=(punkte, None))
-        res = await _q.get_hybrid_conversation_context("domina", None, limit=3)
+        db_kern._aio = AsyncMock(return_value=(punkte, None))
+        res = await db_conversations.get_hybrid_conversation_context("domina", None, limit=3)
         assert len(res) == 3
-        assert _q.get_conversation_context.await_count == 0
+        assert db_conversations.get_conversation_context.await_count == 0
     finally:
-        _q._aio, _q.mandanten_key, _q.get_conversation_context = orig_aio, orig_mk, orig_sem
+        db_kern._aio, db_kern.mandanten_key, db_conversations.get_conversation_context = orig_aio, orig_mk, orig_sem
 
 
 # --------------------------------------------------------------------------
@@ -383,8 +385,8 @@ async def test_callback_gate():
     class _Stop(Exception):
         pass
 
-    orig_stop, orig_resolve = _main.ApplicationHandlerStop, _main.paare.resolve
-    _main.ApplicationHandlerStop = _Stop
+    orig_stop, orig_resolve = app_gates.ApplicationHandlerStop, _main.paare.resolve
+    app_gates.ApplicationHandlerStop = _Stop
     try:
         def gate_update(data, chat="999"):
             u = MagicMock()
@@ -396,25 +398,25 @@ async def test_callback_gate():
         # Fremder Chat → Stop
         _main.paare.resolve = lambda cid: None
         try:
-            await _main._callback_gate(gate_update("privileg:einloesen:pause_tag"))
+            await app_gates._callback_gate(gate_update("privileg:einloesen:pause_tag"))
             raise AssertionError("fremder Chat nicht gestoppt")
         except _Stop:
             pass
         # Falsche Rolle (Dom drückt Sub-Button) → Stop
         _main.paare.resolve = lambda cid: (MagicMock(), _main.paare.ROLLE_DOM)
         try:
-            await _main._callback_gate(gate_update("privileg:einloesen:pause_tag"))
+            await app_gates._callback_gate(gate_update("privileg:einloesen:pause_tag"))
             raise AssertionError("falsche Rolle nicht gestoppt")
         except _Stop:
             pass
         # Richtige Rollen laufen durch
         _main.paare.resolve = lambda cid: (MagicMock(), _main.paare.ROLLE_SUB)
-        await _main._callback_gate(gate_update("privileg:einloesen:pause_tag"))
-        await _main._callback_gate(gate_update("followup:ja:t1"))
+        await app_gates._callback_gate(gate_update("privileg:einloesen:pause_tag"))
+        await app_gates._callback_gate(gate_update("followup:ja:t1"))
         _main.paare.resolve = lambda cid: (MagicMock(), _main.paare.ROLLE_DOM)
-        await _main._callback_gate(gate_update("wochenplan:x:y"))
+        await app_gates._callback_gate(gate_update("wochenplan:x:y"))
     finally:
-        _main.ApplicationHandlerStop = orig_stop
+        app_gates.ApplicationHandlerStop = orig_stop
         _main.paare.resolve = orig_resolve
 
 
@@ -438,7 +440,7 @@ def test_log_rotation_0600():
     from bot import main as _main
     d = tempfile.mkdtemp()
     pfad = os.path.join(d, "log.txt")
-    h = _main._Private0600FileHandler(pfad, maxBytes=50, backupCount=1, encoding="utf-8")
+    h = app_logging_setup._Private0600FileHandler(pfad, maxBytes=50, backupCount=1, encoding="utf-8")
     rec = _logging.makeLogRecord({"msg": "x" * 80, "levelno": 20, "levelname": "INFO", "name": "t"})
     h.emit(rec)
     h.doRollover()
@@ -465,78 +467,82 @@ def test_stimmung_delimiter():
 
 def test_formel_verstoesse():
     from bot.scheduler import followup as _f
+    from bot.scheduler import schablonen, tiny_task  # noqa: E402
     # Reale Muster aus der Diversitäts-Messung 15.08.
-    assert _f._formel_verstoesse("Das passt zu ihm, weil er bei Schmerz sofort reagiert.")
-    assert _f._formel_verstoesse("Das passt, weil er dir Gründe liefert.")
-    assert _f._formel_verstoesse("Wie wär’s, wenn du ihn heute an den Stuhl fesselst?")
-    assert _f._formel_verstoesse("Lass ihn knien. Wie lange willst du ihn so hinhalten?")
-    assert _f._formel_verstoesse("Gib ihm das Paddle. Wie lange lässt du das laufen?")
+    assert schablonen._formel_verstoesse("Das passt zu ihm, weil er bei Schmerz sofort reagiert.")
+    assert schablonen._formel_verstoesse("Das passt, weil er dir Gründe liefert.")
+    assert schablonen._formel_verstoesse("Wie wär’s, wenn du ihn heute an den Stuhl fesselst?")
+    assert schablonen._formel_verstoesse("Lass ihn knien. Wie lange willst du ihn so hinhalten?")
+    assert schablonen._formel_verstoesse("Gib ihm das Paddle. Wie lange lässt du das laufen?")
     # Langvariante jenseits eines 80-Zeichen-Fensters (Nachtest 15.08.)
-    assert _f._formel_verstoesse(
+    assert schablonen._formel_verstoesse(
         "Wie lange willst du den Task laufen lassen, bevor du entscheidest, "
         "ob’s reicht oder noch eine Runde drauf?")
     # Sauberer Text ohne Schablonen
-    assert not _f._formel_verstoesse(
+    assert not schablonen._formel_verstoesse(
         "Er kommt mal wieder mit Ausreden. Lass ihn acht Minuten stehen und "
         "kneif bei jedem Ausweichen zu. Das zwingt ihn raus aus der Routine.")
     # 'weil' in anderem Satz als 'passt' ist kein Treffer
-    assert not _f._formel_verstoesse("Das passt gut. Er zögert, weil er müde ist.")
+    assert not schablonen._formel_verstoesse("Das passt gut. Er zögert, weil er müde ist.")
 
 
 def test_begruendungs_formel_notbremse():
     """17.09.2026: Retry schlechter als das Original → Original mit
     „Das passt jetzt gut, weil …" ging raus. Der Satz fällt jetzt deterministisch weg."""
     from bot.scheduler import followup as _f
+    from bot.scheduler import schablonen, tiny_task  # noqa: E402
     text = ("Du, heute mal ganz simpel.\n\n"
             "Lass ihn zehn Minuten die Schürze tragen, während er dir Tee bringt. Kein Jammern.\n\n"
             "Das passt jetzt gut, weil er zuletzt so brav „ja“ gesagt hat – Zeit, dass er es spürt.\n\n"
             "Gib ihm danach einen kleinen Klaps.")
-    neu = _f._begruendungs_formel_entfernen(text)
-    assert "passt" not in neu and not _f._formel_verstoesse(neu)
+    neu = schablonen._begruendungs_formel_entfernen(text)
+    assert "passt" not in neu and not schablonen._formel_verstoesse(neu)
     assert neu == ("Du, heute mal ganz simpel.\n\n"
                    "Lass ihn zehn Minuten die Schürze tragen, während er dir Tee bringt. Kein Jammern.\n\n"
                    "Gib ihm danach einen kleinen Klaps.")
     # Satz mitten im Absatz
-    assert _f._begruendungs_formel_entfernen(
+    assert schablonen._begruendungs_formel_entfernen(
         "Lass ihn heute knien, bis der Tee fertig ist. Passt perfekt zu ihm. Danach darf er aufstehen."
     ) == "Lass ihn heute knien, bis der Tee fertig ist. Danach darf er aufstehen."
     # Bliebe zu wenig übrig → Text unverändert; ohne Formel → unverändert
     kurz = "Das passt, weil er müde ist."
-    assert _f._begruendungs_formel_entfernen(kurz) == kurz
+    assert schablonen._begruendungs_formel_entfernen(kurz) == kurz
     sauber = "Das passt gut. Er zögert, weil er müde ist."
-    assert _f._begruendungs_formel_entfernen(sauber) == sauber
+    assert schablonen._begruendungs_formel_entfernen(sauber) == sauber
 
 
 def test_ausweich_formel_und_hey_einstieg():
     """18.09.2026: nach dem „passt …, weil"-Retry wich das Modell auf „Das kommt
     jetzt genau richtig, weil …" aus; „Hey, wie wär's" rutschte am \\W-Fenster vorbei."""
     from bot.scheduler import followup as _f
-    assert _f._formel_verstoesse("Das kommt jetzt genau richtig, weil er zuletzt so schnell reagiert hat.")
-    assert _f._formel_verstoesse("Das ist heute dran, weil er gestern gemault hat.")
-    assert _f._formel_verstoesse("Hey, wie wär’s, wenn du heute eine Inspektion machst?")
-    assert not _f._formel_verstoesse("Er kommt zu spät, weil er müde ist. Lass ihn dafür den Tisch decken.")
-    assert not _f._formel_verstoesse("Das ist richtig fies. Er zögert, weil er müde ist.")
+    from bot.scheduler import schablonen, tiny_task  # noqa: E402
+    assert schablonen._formel_verstoesse("Das kommt jetzt genau richtig, weil er zuletzt so schnell reagiert hat.")
+    assert schablonen._formel_verstoesse("Das ist heute dran, weil er gestern gemault hat.")
+    assert schablonen._formel_verstoesse("Hey, wie wär’s, wenn du heute eine Inspektion machst?")
+    assert not schablonen._formel_verstoesse("Er kommt zu spät, weil er müde ist. Lass ihn dafür den Tisch decken.")
+    assert not schablonen._formel_verstoesse("Das ist richtig fies. Er zögert, weil er müde ist.")
     text = ("Lass ihn heute den Tee servieren, ohne ein Wort zu sagen. "
             "Das kommt jetzt genau richtig, weil er zuletzt so vorlaut war. Danach räumt er ab.")
-    assert _f._begruendungs_formel_entfernen(text) == (
+    assert schablonen._begruendungs_formel_entfernen(text) == (
         "Lass ihn heute den Tee servieren, ohne ein Wort zu sagen. Danach räumt er ab.")
 
 
 def test_meta_rueckfrage_entfernen():
     from bot.scheduler import followup as _f
+    from bot.scheduler import schablonen, tiny_task  # noqa: E402
     basis = "Lass ihn heute den Tee servieren, ohne ein Wort zu sagen. Danach räumt er ab."
-    assert _f._meta_rueckfrage_entfernen(
+    assert schablonen._meta_rueckfrage_entfernen(
         basis + "\n\nWie fühlst du dich bei der Vorstellung, ihm das so direkt zu schreiben?") == basis
-    assert _f._meta_rueckfrage_entfernen(basis + " Klingt das machbar?") == basis
+    assert schablonen._meta_rueckfrage_entfernen(basis + " Klingt das machbar?") == basis
     # Rückfrage mitten im letzten Absatz fällt, der Hinweis danach bleibt
-    assert _f._meta_rueckfrage_entfernen(
+    assert schablonen._meta_rueckfrage_entfernen(
         basis + "\n\nKlingt genau nach deinem Ton, oder? Starten kannst du es mit /rollenspiel."
     ) == basis + "\n\nStarten kannst du es mit /rollenspiel."
     # Echte Anschlussfrage bleibt
     echt = basis + " Wie hat er beim letzten Mal eigentlich reagiert?"
-    assert _f._meta_rueckfrage_entfernen(echt) == echt
+    assert schablonen._meta_rueckfrage_entfernen(echt) == echt
     # Bliebe zu wenig übrig → unverändert
-    assert _f._meta_rueckfrage_entfernen("Klingt das machbar?") == "Klingt das machbar?"
+    assert schablonen._meta_rueckfrage_entfernen("Klingt das machbar?") == "Klingt das machbar?"
     from bot.prompts import followup as _fp
     assert "kommt/ist jetzt genau richtig" in _fp._formel_verbot()
     assert "Rückfrage über den Vorschlag selbst" in _fp._formel_verbot()
@@ -546,6 +552,7 @@ def test_machbarkeits_pruefung():
     """18.09.2026: zweiter Durchlauf – Mängel → genau ein neuer Entwurf mit
     Mängelliste; Prüfung fail-open; der bessere Entwurf gewinnt."""
     from bot.scheduler import followup as _f
+    from bot.scheduler import schablonen, tiny_task  # noqa: E402
     from bot.prompts import followup as _fp
     from bot.services import inventar as _inv
     system, user = _fp.machbarkeits_pruefung("Er deckt den Tisch.", ["Schürze (trägt er beim Servieren)"])
@@ -573,27 +580,27 @@ def test_machbarkeits_pruefung():
         _inv.vorhanden = lambda: ["Schürze"]
         run = lambda c: asyncio.new_event_loop().run_until_complete(c)
         antworten[:] = ['{"ok": true}']
-        assert run(_f._machbarkeits_maengel("x")) == []
+        assert run(tiny_task._machbarkeits_maengel("x")) == []
         antworten[:] = ['{"ok": false, "maengel": ["A kollidiert mit B", "C", "D", "E"]}']
-        assert run(_f._machbarkeits_maengel("x")) == ["A kollidiert mit B", "C", "D"]
+        assert run(tiny_task._machbarkeits_maengel("x")) == ["A kollidiert mit B", "C", "D"]
         antworten[:] = ["kein json"]
-        assert run(_f._machbarkeits_maengel("x")) == []
+        assert run(tiny_task._machbarkeits_maengel("x")) == []
         antworten[:] = [RuntimeError("LLM down")]
-        assert run(_f._machbarkeits_maengel("x")) == []
+        assert run(tiny_task._machbarkeits_maengel("x")) == []
         # stimmig → kein Retry
         antworten[:] = ['{"ok": true}']
-        assert run(_f._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt" and retry_prompts == []
+        assert run(tiny_task._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt" and retry_prompts == []
         # Mängel → Retry mit Mängelliste + Entwurf, neuer Entwurf stimmig → gewinnt
         antworten[:] = ['{"ok": false, "maengel": ["Mund doppelt belegt"]}', '{"ok": true}']
-        assert run(_f._machbarkeit_sichern("alt", "P", "S", [], [])) == neu_entwurf[0]
+        assert run(tiny_task._machbarkeit_sichern("alt", "P", "S", [], [])) == neu_entwurf[0]
         assert "Mund doppelt belegt" in retry_prompts[-1] and "alt" in retry_prompts[-1]
         # Retry mit MEHR Mängeln → Original bleibt
         antworten[:] = ['{"ok": false, "maengel": ["eins"]}', '{"ok": false, "maengel": ["a", "b"]}']
-        assert run(_f._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt"
+        assert run(tiny_task._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt"
         # Retry leer → Original bleibt
         neu_entwurf[0] = None
         antworten[:] = ['{"ok": false, "maengel": ["eins"]}']
-        assert run(_f._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt"
+        assert run(tiny_task._machbarkeit_sichern("alt", "P", "S", [], [])) == "alt"
     finally:
         _f.grok.simple, _f.limits_check.generate_mit_limit_retry, _inv.vorhanden = alt
 
@@ -605,10 +612,11 @@ def test_rollenspiel_zeit_versetzt():
 
 def test_vorschlag_abschluss():
     from bot.scheduler import followup as _f
-    assert _f._vorschlag_abschluss(
+    from bot.scheduler import schablonen, tiny_task  # noqa: E402
+    assert schablonen._vorschlag_abschluss(
         "Lass ihn knien. Dann entscheidest du. Wie lange willst du ihn so hinhalten?"
     ) == "Wie lange willst du ihn so hinhalten?"
-    assert _f._vorschlag_abschluss("") == ""
+    assert schablonen._vorschlag_abschluss("") == ""
 
 
 # --------------------------------------------------------------------------
@@ -658,32 +666,32 @@ def test_wochenend_prompt_widersprueche():
 async def test_wunsch_guards():
     from bot.handlers import wunsch as _w
     # N1: bereits entschiedener Wunsch wird nicht erneut entschieden
-    orig_get, orig_save = _w.qdrant.get_wunsch, _w._entscheidung_speichern
+    orig_get, orig_save = db_wuensche.get_wunsch, _w._entscheidung_speichern
     try:
-        _w.qdrant.get_wunsch = AsyncMock(return_value={"status": "angenommen"})
+        db_wuensche.get_wunsch = AsyncMock(return_value={"status": "angenommen"})
         _w._entscheidung_speichern = AsyncMock()
         u = _fake_query("wunsch:ablehnen:w1")
         await _w.callback_entscheidung(u, MagicMock())
         assert _w._entscheidung_speichern.await_count == 0
     finally:
-        _w.qdrant.get_wunsch, _w._entscheidung_speichern = orig_get, orig_save
+        db_wuensche.get_wunsch, _w._entscheidung_speichern = orig_get, orig_save
 
     # N2: Hash-Mismatch löscht nichts, sondern aktualisiert die Liste
-    orig_prof, orig_patch = _w.qdrant.get_user_profile, _w.qdrant.patch_profile_fields
+    orig_prof, orig_patch = db_profile.get_user_profile, db_profile.patch_profile_fields
     orig_sub = _w.paare.sub_chat_id
     try:
         _w.paare.sub_chat_id = lambda: "222"
-        _w.qdrant.get_user_profile = AsyncMock(
+        db_profile.get_user_profile = AsyncMock(
             return_value={"entdeckte_wuensche": ["Wunsch A", "Wunsch B"]})
-        _w.qdrant.patch_profile_fields = AsyncMock()
+        db_profile.patch_profile_fields = AsyncMock()
         u = _fake_query(f"wunschdel:0:{_w._wunsch_hash('ETWAS ANDERES')}", chat_id="222")
         u.callback_query.message.chat_id = "222"
         u.callback_query.edit_message_text = AsyncMock()
         await _w.callback_loeschen(u, MagicMock())
-        assert _w.qdrant.patch_profile_fields.await_count == 0
+        assert db_profile.patch_profile_fields.await_count == 0
         assert u.callback_query.edit_message_text.await_count == 1
     finally:
-        _w.qdrant.get_user_profile, _w.qdrant.patch_profile_fields = orig_prof, orig_patch
+        db_profile.get_user_profile, db_profile.patch_profile_fields = orig_prof, orig_patch
         _w.paare.sub_chat_id = orig_sub
 
 
@@ -693,16 +701,16 @@ async def test_wunsch_guards():
 
 async def test_stimmung_frische():
     from datetime import datetime, timedelta, timezone as _tz
-    orig_aio, orig_mk = _q._aio, _q.mandanten_key
+    orig_aio, orig_mk = db_kern._aio, db_kern.mandanten_key
     try:
-        _q.mandanten_key = lambda u: u
+        db_kern.mandanten_key = lambda u: u
         alt = (datetime.now(_tz.utc) - timedelta(days=5)).isoformat()
-        _q._aio = AsyncMock(return_value=(
+        db_kern._aio = AsyncMock(return_value=(
             [SimpleNamespace(payload={"datum": alt, "zusammenfassung": "alt"})], None))
-        assert await _q.get_latest_stimmung("sklave", max_stunden=48) is None
-        assert (await _q.get_latest_stimmung("sklave"))["zusammenfassung"] == "alt"
+        assert await db_vorschlaege.get_latest_stimmung("sklave", max_stunden=48) is None
+        assert (await db_vorschlaege.get_latest_stimmung("sklave"))["zusammenfassung"] == "alt"
     finally:
-        _q._aio, _q.mandanten_key = orig_aio, orig_mk
+        db_kern._aio, db_kern.mandanten_key = orig_aio, orig_mk
 
 
 # --------------------------------------------------------------------------
@@ -710,9 +718,9 @@ async def test_stimmung_frische():
 # --------------------------------------------------------------------------
 
 async def test_limit_dedup():
-    orig_aio, orig_mk = _q._aio, _q.mandanten_key
+    orig_aio, orig_mk = db_kern._aio, db_kern.mandanten_key
     try:
-        _q.mandanten_key = lambda u: u
+        db_kern.mandanten_key = lambda u: u
         punkt = SimpleNamespace(id="p1", payload={"user_id": "sklave", "hard_limits": ["Nadeln"]})
         aufrufe = []
 
@@ -720,19 +728,19 @@ async def test_limit_dedup():
             aufrufe.append(kw)
             return ([punkt], None) if "scroll_filter" in kw else None
 
-        _q._aio = _fake_aio
-        orig_reembed = _q._reembed_profile_vector
-        _q._reembed_profile_vector = AsyncMock()
+        db_kern._aio = _fake_aio
+        orig_reembed = db_profile._reembed_profile_vector
+        db_profile._reembed_profile_vector = AsyncMock()
         try:
-            neue = await _q.append_profile_limits("sklave", "hard_limits",
+            neue = await db_profile.append_profile_limits("sklave", "hard_limits",
                                                   ["Nadeln", "nadeln", "Blut", "Blut"])
         finally:
-            _q._reembed_profile_vector = orig_reembed
+            db_profile._reembed_profile_vector = orig_reembed
         assert neue == ["Blut"], neue
         set_calls = [a for a in aufrufe if "payload" in a and "hard_limits" in (a.get("payload") or {})]
         assert set_calls and set_calls[0]["payload"]["hard_limits"] == ["Nadeln", "Blut"]
     finally:
-        _q._aio, _q.mandanten_key = orig_aio, orig_mk
+        db_kern._aio, db_kern.mandanten_key = orig_aio, orig_mk
 
 
 # --------------------------------------------------------------------------
@@ -741,9 +749,9 @@ async def test_limit_dedup():
 
 async def test_persona_cache_nach_persist():
     from bot.services import persona_config as _pc
-    orig = _pc.qdrant.patch_profile_fields
+    orig = db_profile.patch_profile_fields
     try:
-        _pc.qdrant.patch_profile_fields = AsyncMock(side_effect=RuntimeError("qdrant down"))
+        db_profile.patch_profile_fields = AsyncMock(side_effect=RuntimeError("qdrant down"))
         cache_vorher = dict(_pc._aktueller_cache())
         fehler = None
         try:
@@ -754,7 +762,7 @@ async def test_persona_cache_nach_persist():
         assert _pc._aktueller_cache().get("safeword") == cache_vorher.get("safeword")
         assert _pc._aktueller_cache().get("safeword") != "neuwort"
     finally:
-        _pc.qdrant.patch_profile_fields = orig
+        db_profile.patch_profile_fields = orig
 
 
 # --------------------------------------------------------------------------
@@ -762,9 +770,9 @@ async def test_persona_cache_nach_persist():
 # --------------------------------------------------------------------------
 
 async def test_upsert_profile_merge():
-    orig_aio, orig_mk, orig_emb = _q._aio, _q.mandanten_key, _q.emb.get_embedding
+    orig_aio, orig_mk, orig_emb = db_kern._aio, db_kern.mandanten_key, _q.emb.get_embedding
     try:
-        _q.mandanten_key = lambda u: u
+        db_kern.mandanten_key = lambda u: u
         punkt = SimpleNamespace(id="p1", payload={"user_id": "sklave",
                                                   "entdeckte_wuensche": ["W1"], "punkte": 42})
         gespeichert = {}
@@ -777,15 +785,15 @@ async def test_upsert_profile_merge():
                 gespeichert.update(getattr(p, "payload", None) or {})
             return None
 
-        _q._aio = _fake_aio
+        db_kern._aio = _fake_aio
         _q.emb.get_embedding = AsyncMock(return_value=[0.0] * 4)
-        await _q.upsert_user_profile("sklave", {"vorlieben": ["Neu"]})
+        await db_profile.upsert_user_profile("sklave", {"vorlieben": ["Neu"]})
         if gespeichert:  # Stub-Modus: PointStruct ist MagicMock ohne echtes payload
             assert gespeichert.get("entdeckte_wuensche") == ["W1"]
             assert gespeichert.get("punkte") == 42
             assert gespeichert.get("vorlieben") == ["Neu"]
     finally:
-        _q._aio, _q.mandanten_key, _q.emb.get_embedding = orig_aio, orig_mk, orig_emb
+        db_kern._aio, db_kern.mandanten_key, _q.emb.get_embedding = orig_aio, orig_mk, orig_emb
 
 
 # --------------------------------------------------------------------------

@@ -2,30 +2,9 @@
 .PHONY: test build up down deploy logs backup
 
 # Lokaler Test-Lauf (läuft mit MagicMock-Stubs auch ohne Docker/Deps).
+# tests/run_alle.py findet ALLE tests/test_*.py selbst – nichts nachtragen.
 test:
-	python3 tests/test_lern_system.py
-	python3 tests/test_rollen.py
-	python3 tests/test_locales.py
-	python3 tests/test_presets.py
-	python3 tests/test_spass.py
-	python3 tests/test_paare.py
-	python3 tests/test_review_d8.py
-	python3 tests/test_review_d9.py
-	python3 tests/test_sticker.py
-	python3 tests/test_abwesenheit.py
-	python3 tests/test_datum_erkennung.py
-	python3 tests/test_lokal_llm.py
-	python3 tests/test_stimmung.py
-	python3 tests/test_coach_quiz.py
-	python3 tests/test_stille_checkin.py
-	python3 tests/test_readme_commands.py
-	python3 tests/test_inventar.py
-	python3 tests/test_herrin_versaeumnis.py
-	python3 tests/test_sprachnachricht_aufgabe.py
-	python3 tests/test_wett_idee.py
-	python3 tests/test_wette_annahme.py
-	python3 tests/test_waehrung.py
-	python3 tests/test_followup_nachholen.py
+	python3 tests/run_alle.py
 
 # Image bauen – nur wenn die Tests grün sind.
 build: test
