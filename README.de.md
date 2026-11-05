@@ -84,7 +84,7 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 
 - **Personas** – die dominante Stimme und die Coach-Stimme sind konfigurierbare Stil-Presets (Markdown-Dateien, eigene möglich), mit optionalem Bot-Namen, Anrede und einem realen Setup-Kontext, damit generierte Szenen anatomisch und logistisch konsistent bleiben.
 - **Rollen-Konstellationen** – F/M, M/F, F/F, M/M. Bezeichnungen, Pronomen und die Anatomie-Regeln werden aus der eingestellten Konstellation erzeugt.
-- **Paar-Modus** – pro Paar wählbar: **BDSM** (Herrin/Herr & Sklave/Sklavin, voller Katalog) oder **Kink** (eine Person führt, Partnerin/Partner-Wortwahl, milder Katalog ohne harte BDSM-Themen, eigene Stil-Presets). Ein gleichberechtigter **Vanilla**-Modus ist in Arbeit. Der Modus steuert Wortwahl, Aufgaben-Katalog und Stil-Auswahl; Profil, Punkte und Verlauf bleiben beim Wechsel erhalten.
+- **Paar-Modus** – pro Paar wählbar: **BDSM** (Herrin/Herr & Sklave/Sklavin, voller Katalog), **Kink** (eine Person führt, Partnerin/Partner-Wortwahl, milder Katalog ohne harte BDSM-Themen, eigene Stil-Presets) oder **Vanilla** (gleichberechtigt: keine Herrin, kein Coach – eine neutrale dritte Stimme spricht mit beiden Partnern in getrennten Chats, Persona wählbar als Freundin / Freund / neutral; tägliche Stimmungsfrage an beide mit kurzem Hinweis an die andere Seite, täglicher Impuls an beide, keine Strafen; Spiele, Planung und Mini-App folgen). Der Modus steuert Wortwahl, Aufgaben-Katalog und Stil-Auswahl; Profil, Punkte und Verlauf bleiben beim Wechsel erhalten.
 - **Sprachen** – UI-Texte, Menüs und Befehls-Aliase auf Deutsch und Englisch, die Antwortsprache des LLM frei wählbar – alles **pro Paar**, zur Laufzeit umschaltbar.
 - **Stimme** – optionale Sprachnachrichten: Piper-TTS (komplett lokal) oder Grok-TTS (Cloud; ausdrucksstarke mehrsprachige Stimmen pro Rolle mit Sprech-Tags wie `[laugh]` und `<whisper>`), dazu Whisper-STT für Spracheingabe inklusive Safeword-Prüfung. Wer dem Bot spricht, bekommt eine gesprochene Antwort; der Coach kann auf Wunsch eine geflüsterte Sprachnachricht an den Sub weiterreichen.
 - **Mini-App** – optionale Web-App im Chat (`/app`): ein Statistik-Cockpit für beide Partner und ein Sprachnachrichten-Studio für die dominante Seite (Tag-Buttons, TTS-Vorschau, Zustellung mit einem Tipp). Läuft auf Wunsch nur im LAN; siehe [MINIAPP.md](MINIAPP.md) (englisch).
@@ -227,6 +227,34 @@ Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Pun
 
 </details>
 
+<details>
+<summary><b>Vanilla-Modus (beide Seiten, gleicher Satz)</b> – 8 Befehle</summary>
+
+**💬 Mitteilen**
+
+| Befehl | Was er tut |
+|---|---|
+| `/stimmung` | Stimmung mitteilen – die andere Seite bekommt einen kurzen Hinweis |
+| `/inventar` | Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Impulse ein) + Wunschliste |
+
+**📊 Profil**
+
+| Befehl | Was er tut |
+|---|---|
+| `/profil` | Profil anzeigen und bearbeiten |
+
+**⚙️ System**
+
+| Befehl | Was er tut |
+|---|---|
+| `/einstellungen` | Sprache, Stimme des Bots, Anreden, Setup, Zeiten, Safeword und Paar-Modus einstellen |
+| `/abwesend` | Abwesenheit eintragen: /abwesend 20.07.-02.08. Grund – Impulse berücksichtigen den Zeitraum; /abwesend ende hebt auf |
+| `/app` | Mini-App im Chat öffnen (LAN) |
+| `/abbrechen` | Aktuelle Aktion abbrechen |
+| `/hilfe` | Diese Übersicht |
+
+</details>
+
 Die deutschen Befehlsnamen sind die Originale; die englischen Aliase (z. B. `/tasks` für `/aufgaben`) sind in jeder Installation ebenfalls registriert.
 
 <!-- commands:end -->
@@ -283,7 +311,7 @@ make deploy      # test → build → up (kein Deploy mit roten Tests)
 Alle Einstellungen liegen in der `.env` (siehe [`.env.example`](.env.example) für die vollständige, kommentierte Liste). Die vier Pflichtwerte sind der Bot-Token, beide Chat-IDs und der LLM-API-Key.
 
 Zur Laufzeit stellt die dominante Seite den Rest über `/einstellungen` ein:
-Antwortsprache, Stil-Preset, Rollen-Konstellation, Bot-Name, Anrede, den realen Setup-Kontext, die Tageszeiten, das Safeword-Paar, Coach-Ruhe / Zuschauer-Modus sowie den Paar-Modus (BDSM / Kink).
+Antwortsprache, Stil-Preset, Rollen-Konstellation, Bot-Name, Anrede, den realen Setup-Kontext, die Tageszeiten, das Safeword-Paar, Coach-Ruhe / Zuschauer-Modus sowie den Paar-Modus (BDSM / Kink / Vanilla).
 
 ### Eigene Personas & Regel-Vorlagen
 

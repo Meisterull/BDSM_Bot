@@ -48,10 +48,11 @@ def test_eingabe_und_hinweis():
     assert modi.fuer_eingabe("1") == "bdsm"
     assert modi.fuer_eingabe("2") == "kink"
     assert modi.fuer_eingabe("kink") == "kink"
-    assert modi.fuer_eingabe("3") is None        # Vanilla erst ab Etappe 2 wählbar
-    assert modi.fuer_eingabe("vanilla") is None
+    assert modi.fuer_eingabe("3") == "vanilla"   # seit Etappe 2 wählbar
+    assert modi.fuer_eingabe("vanilla") == "vanilla"
+    assert modi.fuer_eingabe("4") is None
     assert modi.fuer_eingabe("x") is None
-    assert "1️⃣" in modi.hinweis() and "Kink" in modi.hinweis() and "Vanilla" not in modi.hinweis()
+    assert "1️⃣" in modi.hinweis() and "Kink" in modi.hinweis() and "Vanilla" in modi.hinweis()
 
 
 # ---------------------------------------------------------------- Kataloge

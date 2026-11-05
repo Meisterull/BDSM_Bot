@@ -115,8 +115,8 @@ async def _setze_menues(context: ContextTypes.DEFAULT_TYPE, paar: "paare.Paar") 
     Auch von /einstellungen nach einem Sprachwechsel aufgerufen."""
     try:
         with paare.kontext(paar.paar_id):
-            dom_menue = [BotCommand(c, b) for c, b in commands_katalog.domina_menue()]
-            sub_menue = [BotCommand(c, b) for c, b in commands_katalog.sklave_menue()]
+            dom_menue = [BotCommand(c, b) for c, b in commands_katalog.menue_fuer(paare.ROLLE_DOM)]
+            sub_menue = [BotCommand(c, b) for c, b in commands_katalog.menue_fuer(paare.ROLLE_SUB)]
         await context.bot.set_my_commands(
             dom_menue, scope=BotCommandScopeChat(chat_id=int(paar.dom_chat_id)))
         await context.bot.set_my_commands(

@@ -194,6 +194,119 @@ MESSAGES = {
         "The bot is now fully operational. 🖤"
     ),
 
+    # --- Vanilla mode (stage 2, 05.11.2026): variants for t_modus() ------------
+    "ONBOARDING_DOMINA_SCHRITT_ROLLEN_VANILLA": (
+        "🎭 *Step 3/10 – Who is who?*\n\n"
+        "First you (you are setting up the bot), then the invited person:\n\n"
+        "{liste}\n\n"
+        "Type the number\n"
+        "_(sets forms of address and pronouns in generated texts – can be changed later in /settings)_"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_STIL_VANILLA": (
+        "💞 *Step 4/10 – Voice*\n\n"
+        "Who should the bot be for you? The same voice talks to both of you – in separate chats.\n\n"
+        "{liste}\n\n"
+        "Type the number _(can be changed later in /settings)_"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_ERFAHRUNG_VANILLA": (
+        "📊 *Step 5/10 – Where are you?*\n\n"
+        "How alive is your love life right now?\n\n"
+        "1️⃣ Rather dormant – we want to get going again\n"
+        "2️⃣ So-so – there could be more\n"
+        "3️⃣ Alive – we want to try new things\n\n"
+        "Type 1, 2 or 3 – or describe it briefly"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_INTERESSEN_VANILLA": (
+        "✨ *Step 6/10 – What you like*\n\n"
+        "What do you like, what are you in the mood for? _(comma-separated)_\n\n"
+        "Examples: massages, date nights, cuddling, dirty talk, new positions, surprises"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_GRENZEN_VANILLA": (
+        "🚫 *Step 7/10 – No-gos*\n\n"
+        "What is completely off the table for you?\n"
+        "_(comma-separated, e.g. photos, third parties, pain)_\n\n"
+        "Or write *none*"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_ZIELE_VANILLA": (
+        "🎯 *Step 8/10 – What you want from the bot*\n\n"
+        "What do you both want from this bot?\n"
+        "_(e.g. more closeness in everyday life, new ideas, talking about wishes more easily)_"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_TEMPO_VANILLA": (
+        "⏱ *Step 9/10 – Pace*\n\n"
+        "How much should come from me?\n\n"
+        "1️⃣ Slow – ease in gently\n"
+        "2️⃣ Normal – balanced\n"
+        "3️⃣ Fast – feel free to be bold\n\n"
+        "Type 1, 2 or 3"
+    ),
+    "ONBOARDING_DOMINA_ZUSAMMENFASSUNG_VANILLA": (
+        "✅ *Profile saved! Here is your summary:*\n\n"
+        "🌍 Language: {sprache}\n"
+        "🧭 Mode: {modus}\n"
+        "🎭 You two: {rollen}\n"
+        "💞 Voice: {stil}\n"
+        "📊 Where you are: {erfahrungsstand}\n"
+        "✨ What you like: {interessen}\n"
+        "🚫 No-gos: {grenzen}\n"
+        "🎯 What you want from the bot: {ziele}\n"
+        "⏱ Pace: {tempo}\n"
+        "👨‍👩‍👧 Child-free times: {zeiten}\n\n"
+        "──────────────────────\n\n"
+        "How it works: you both chat with the same voice, each in your own chat. "
+        "Once a day it asks both of you about your mood – the other side gets a short hint – "
+        "and sends each of you a small impulse for the evening.\n\n"
+        "📋 *Commands:* /mood, /inventory, /profile, /settings, /help\n\n"
+        "All set! Just start writing. 💞"
+    ),
+    "ONBOARDING_SKLAVE_INFO_AKTIV_VANILLA": "Here we go – you will both hear from me. 💞",
+    "ONBOARDING_SKLAVE_BEGRUESSUNG_VANILLA": (
+        "Hi! I am the voice you both chat with here – each in your own chat.\n\n"
+        "Before we start, tell me three quick things about you.\n\n"
+        "──────────────────────\n\n"
+        "🚫 *Step 1/3 – No-gos*\n\n"
+        "What is completely off the table for you?\n"
+        "This will *NEVER* be suggested.\n"
+        "_(comma-separated, e.g. photos, third parties, pain)_\n\n"
+        "Or write *none*"
+    ),
+    "ONBOARDING_SKLAVE_SCHRITT_2_VANILLA": (
+        "💚 *Step 2/3 – What you like*\n\n"
+        "What do you like, what are you in the mood for?\n"
+        "_(comma-separated, e.g. massages, cuddling, dirty talk, surprises)_"
+    ),
+    "ONBOARDING_SKLAVE_SCHRITT_3_VANILLA": (
+        "📖 *Step 3/3 – Where are you?*\n\n"
+        "How would you describe your love life right now?\n"
+        "A sentence or two is enough."
+    ),
+    "ONBOARDING_SKLAVE_GESPEICHERT_VANILLA": (
+        "Good, now I know what I need to know.\n\n"
+        "Once a day I ask both of you about your mood – the other side gets a short hint – "
+        "and send each of you a small impulse for the evening. And you can write to me any time. 💞"
+    ),
+    "ONBOARDING_DOMINA_INFO_SKLAVE_FERTIG_VANILLA": (
+        "ℹ️ *The other side has set up their profile.*\n\n"
+        "No-gos: {limits}\n"
+        "Likes: {vorlieben}\n"
+        "Where you are: {erfahrungsstand}\n\n"
+        "The bot is now ready for both of you. 💞"
+    ),
+    "ONBOARDING_WARTE_AUF_EINRICHTER": (
+        "Your partner is setting up the bot right now. "
+        "As soon as that is done I will get back to you here – then we set up your profile."
+    ),
+    "ONBOARDING_PARTNER_EINLADUNG": (
+        "Setup is done. Just write me anything and we will set up your profile."
+    ),
+    "STIMMUNG_FRAGE_VANILLA": "How are you doing right now? What's your mood? 💞",
+    "STIMMUNG_HINWEIS_AN_PARTNER": "💭 {name}'s mood: _{antwort}_\n\n{hinweis}",
+    "FALLBACK_VANILLA_CHAT": "I'm briefly unavailable right now. Write to me again in a moment.",
+    "VANILLA_IMPULS_PREFIX": "💡 ",
+    "COMMON_NICHT_IM_VANILLA": "This command does not exist in vanilla mode. /help shows what is available.",
+    "MEDIEN_VON_PARTNER": "📎 From the other side:",
+    "MEDIEN_AN_PARTNER_WEITERGELEITET": "📎 Forwarded.",
+
     # --- Vorlagen (Markdown) --------------------------------------------------
     "VORLAGEN_TITEL": "📁 *Task templates*\n",
     "VORLAGEN_KEINE": "_No templates saved yet._\n",
@@ -1313,8 +1426,8 @@ MESSAGES = {
     "PAIRING_START_MENUE": (
         "👋 Welcome! This bot accompanies the two of you as a couple.\n\n"
         "Which role do you take?\n"
-        "1 – the dominant part\n"
-        "2 – the submissive part\n\n"
+        "1 – the dominant part (or, for vanilla: I am setting up the bot)\n"
+        "2 – the submissive part (or, for vanilla: I was invited)\n\n"
         "You'll then get an invite code for your partner.\n"
         "Already have a code? Just send it to me."
     ),

@@ -166,4 +166,5 @@ GRUPPEN = {
     "💬 Mitteilen": "💬 Share",
     "🎁 Belohnungen": "🎁 Rewards",
     "📋 Aufgaben": "📋 Tasks",
+    "📊 Profil": "📊 Profile",
 }

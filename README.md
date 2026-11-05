@@ -84,7 +84,7 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 
 - **Personas** — the dominant voice and the coach voice are configurable style presets (Markdown files, bring your own), with optional bot name, form of address, and a real-world setup context so generated scenes stay anatomically and logistically consistent.
 - **Role constellations** — F/M, M/F, F/F, M/M. Labels, pronouns and the anatomy-consistency rules are generated from the configured constellation.
-- **Couple mode** — per couple: **BDSM** (mistress/master & slave, full catalogue) or **Kink** (one partner leads, partner wording, milder catalogue without hard BDSM themes, own style presets). An equal **Vanilla** mode is in the works. The mode drives wording, task catalogue and style options; profile, points and history survive a switch.
+- **Couple mode** — per couple: **BDSM** (mistress/master & slave, full catalogue), **Kink** (one partner leads, partner wording, milder catalogue without hard BDSM themes, own style presets) or **Vanilla** (equal partners: no mistress, no coach — one neutral third voice talks to both partners in separate chats, persona selectable as female friend / male friend / neutral; daily mood question to both with a short hint to the other side, daily impulse to both, no punishments; games, planning and the mini app follow). The mode drives wording, task catalogue and style options; profile, points and history survive a switch.
 - **Languages** — UI texts, menus and command aliases in German and English, and the LLM reply language free-form — all **per couple**, switchable at runtime.
 - **Voice** — optional voice messages: Piper TTS (fully local) or Grok TTS (cloud; expressive multilingual voices per role with speech tags like `[laugh]` and `<whisper>`), plus Whisper STT for voice input including the safeword check. Speaking to the bot gets you a spoken reply; the coach can relay a whispered voice message to the sub on request.
 - **Mini App** — optional in-chat web app (`/app`): a stats cockpit for both partners and a voice-message studio for the dominant (tag buttons, TTS preview, one-tap delivery). Runs LAN-only if you want; see [MINIAPP.md](MINIAPP.md).
@@ -227,6 +227,34 @@ Afterwards the sub reports back and shares how it felt, points and streaks updat
 
 </details>
 
+<details>
+<summary><b>Vanilla mode (both partners, same set)</b> – 8 commands</summary>
+
+**💬 Share**
+
+| Command | What it does |
+|---|---|
+| `/mood` | Share your mood |
+| `/inventory` | Maintain the inventory: which toys/tools are really at home (feeds into tasks) + wish list |
+
+**📊 Profile**
+
+| Command | What it does |
+|---|---|
+| `/profile` | Show and edit profile |
+
+**⚙️ System**
+
+| Command | What it does |
+|---|---|
+| `/settings` | Set language, personality style, names, setup and couple mode |
+| `/away` | Record an absence: /away 20.07.-02.08. reason – tasks & suggestions take the period into account; /away end clears it |
+| `/app` | Mini-App im Chat öffnen (LAN) |
+| `/cancel` | Cancel current action |
+| `/help` | This overview |
+
+</details>
+
 German command names are the originals; the English aliases shown here are registered in every deployment, and so are the German ones – `/tasks` and `/aufgaben` both work.
 
 <!-- commands:end -->
@@ -283,7 +311,7 @@ make deploy      # test → build → up (never deploys with red tests)
 All settings live in `.env` (see [`.env.example`](.env.example) for the full annotated list). The four required values are the bot token, both chat IDs and the LLM API key.
 
 At runtime the dominant configures the rest via `/einstellungen`:
-reply language, style preset, role constellation, bot name, form of address, the real-world setup context, the daily schedule, the safeword pair, coach quiet / spectator mode, and the couple mode (BDSM / Kink).
+reply language, style preset, role constellation, bot name, form of address, the real-world setup context, the daily schedule, the safeword pair, coach quiet / spectator mode, and the couple mode (BDSM / Kink / Vanilla).
 
 ### Custom personas & rule templates
 

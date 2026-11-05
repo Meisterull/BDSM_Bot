@@ -11,8 +11,11 @@ Dom-Profil wie Sprache/Stil/Rollen) und steuert drei Schichten:
 
 Leer/unbekannt = BDSM = Bestandsverhalten (byte-identische Prompts, siehe
 tests/render_baseline.py). Kink bleibt asymmetrisch (eine Person führt), nur
-milder in Wortwahl und Katalog. Vanilla (gleichberechtigt, neutrale dritte
-Stimme) ist hier schon definiert, aber erst ab Etappe 2 wählbar.
+milder in Wortwahl und Katalog. Vanilla (Etappe 2) ist GLEICHBERECHTIGT: eine
+neutrale dritte Stimme (prompts/vanilla.py) spricht mit beiden, beide bekommen
+Stimmungsfrage und Impulse, Strafen sind aus (strafen_aktiv()). Intern bleiben
+die zwei Slots dom/sub (Qdrant-Keys unverändert) – der Dom-Slot ist die Person,
+die den Bot eingerichtet hat.
 """
 
 BDSM = "bdsm"
@@ -20,10 +23,9 @@ KINK = "kink"
 VANILLA = "vanilla"
 
 ALLE = (BDSM, KINK, VANILLA)
-# Im Menü anbietbar – Vanilla kommt mit dem gleichberechtigten Rollenmodell
-# (Etappe 2) dazu; bis dahin würde ein gesetzter Vanilla-Modus nur Katalog und
-# Wortwahl umstellen, nicht die Chat-Rollen.
-WAEHLBAR = (BDSM, KINK)
+# Im Menü anbietbar. Vanilla seit Etappe 2 (gleichberechtigtes Rollenmodell:
+# beide Chats sprechen mit derselben neutralen Stimme, s. handlers/vanilla.py).
+WAEHLBAR = (BDSM, KINK, VANILLA)
 
 LABELS = {
     BDSM: "BDSM – Herrin/Herr & Sklave/Sklavin, voller Katalog",
@@ -83,3 +85,16 @@ def fuer_eingabe(text: str) -> str | None:
     except ValueError:
         pass
     return None
+
+
+def gleichberechtigt() -> bool:
+    """True, wenn es keine führende Rolle gibt (Vanilla): beide Chats laufen über
+    dieselbe neutrale Stimme, Rollen-Gates gelten für beide Seiten gleich."""
+    return ist_vanilla()
+
+
+def strafen_aktiv() -> bool:
+    """Strafen, Abzüge, Strafen-Roulette und Versäumnis-Mechanik gibt es nur mit
+    Machtgefälle (BDSM/Kink). Im Vanilla-Modus bleiben Währung, Shop, Sparziel
+    und Wetten als reines Belohnungssystem (Entscheidung 05.11.2026)."""
+    return not ist_vanilla()

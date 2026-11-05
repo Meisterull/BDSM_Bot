@@ -163,6 +163,33 @@ SKLAVE_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
 ]
 
 
+# Vanilla-Modus (Etappe 2): EIN Befehlssatz für beide Seiten – es gibt keine
+# führende Rolle, also keine Aufgaben-, Strafen- und Coach-Befehle. Alles, was
+# hier nicht steht, fängt gates.pause_guard im Vanilla-Modus zentral ab.
+# Etappe 3 (Spaß + Planung) erweitert die Liste.
+VANILLA_GRUPPEN: list[tuple[str, list[Eintrag]]] = [
+    ("💬 Mitteilen", [
+        Eintrag("stimmung",  "Stimmung mitteilen",
+                lang="Stimmung mitteilen – die andere Seite bekommt einen kurzen Hinweis"),
+        Eintrag("inventar",  "🧰 Inventar: Spielsachen zu Hause + Wunschliste",
+                lang="Inventar pflegen: was an Spielsachen/Hilfsmitteln wirklich da ist (fließt in Impulse ein) + Wunschliste"),
+    ]),
+    ("📊 Profil", [
+        Eintrag("profil",    "Profil anzeigen und bearbeiten"),
+    ]),
+    ("⚙️ System", [
+        Eintrag("einstellungen", "⚙️ Sprache, Stimme & Modus einstellen",
+                lang="Sprache, Stimme des Bots, Anreden, Setup, Zeiten, Safeword und Paar-Modus einstellen"),
+        Eintrag("abwesend",  "📆 Abwesenheit eintragen (fließt in Impulse ein)",
+                lang="Abwesenheit eintragen: /abwesend 20.07.-02.08. Grund – Impulse berücksichtigen den Zeitraum; /abwesend ende hebt auf"),
+        Eintrag("app",       "📱 Mini-App öffnen",
+                lang="Mini-App im Chat öffnen (LAN)"),
+        Eintrag("abbrechen", "Aktuelle Aktion abbrechen"),
+        Eintrag("hilfe",     "Alle Befehle anzeigen",
+                lang="Diese Übersicht"),
+    ]),
+]
+
 # Reihenfolge im Telegram-Command-Menü (set_my_commands).
 _DOMINA_MENUE_REIHENFOLGE = [
     "aufgaben", "inspiration", "tinytask", "wuerfel", "roulette", "dauer",
@@ -182,6 +209,10 @@ _SKLAVE_MENUE_REIHENFOLGE = [
     "stimmung", "wunsch", "meinewuensche", "wunschkategorien", "inventar",
     "privileg", "wette", "quiz", "profil",
     "abwesend", "app", "hilfe", "abbrechen",
+]
+
+_VANILLA_MENUE_REIHENFOLGE = [
+    "stimmung", "inventar", "profil", "einstellungen", "abwesend", "app", "hilfe", "abbrechen",
 ]
 
 # Fallback-Menü für unbekannte Chats: nur /hilfe.
@@ -306,9 +337,27 @@ def alle_sklave_commands() -> set[str]:
     return _mit_aliasen({e.command for _, grp in SKLAVE_GRUPPEN for e in grp})
 
 
+def alle_vanilla_commands() -> set[str]:
+    """Alle Vanilla-Commands inkl. Aliase – für das Modus-Gate (gates.pause_guard)."""
+    return _mit_aliasen({e.command for _, grp in VANILLA_GRUPPEN for e in grp})
+
+
 def domina_menue() -> list[tuple[str, str]]:
     """(command, beschreibung)-Paare für das Domina-Command-Menü."""
     return _menue_liste(DOMINA_GRUPPEN, _DOMINA_MENUE_REIHENFOLGE)
+
+
+def vanilla_menue() -> list[tuple[str, str]]:
+    """(command, beschreibung)-Paare für das gemeinsame Vanilla-Menü (beide Seiten)."""
+    return _menue_liste(VANILLA_GRUPPEN, _VANILLA_MENUE_REIHENFOLGE)
+
+
+def menue_fuer(rolle: str) -> list[tuple[str, str]]:
+    """Menü einer Rolle im Modus des Kontext-Paares (paare.ROLLE_DOM/ROLLE_SUB)."""
+    from bot.services import modi, paare
+    if modi.ist_vanilla():
+        return vanilla_menue()
+    return domina_menue() if rolle == paare.ROLLE_DOM else sklave_menue()
 
 
 def sklave_menue() -> list[tuple[str, str]]:

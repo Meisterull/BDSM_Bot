@@ -12,7 +12,7 @@ from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, telegram_helper, synonyme, zeiten, persona_config, modi
 from bot.prompts import persona_presets, rollen
-from bot.messages import t
+from bot.messages import t, t_modus
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,14 @@ _DOMINA_ERFAHRUNG_MAP = {
     "1": "Anfänger",
     "2": "etwas Erfahrung",
     "3": "erfahren",
+}
+
+# Vanilla (Etappe 2): Schritt 5 fragt statt des Erfahrungsstands, wie lebendig
+# das Liebesleben gerade ist – gespeichert im selben Feld `erfahrungsstand`.
+_VANILLA_ERFAHRUNG_MAP = {
+    "1": "eher eingeschlafen",
+    "2": "geht so",
+    "3": "lebendig",
 }
 
 _DOMINA_TEMPO_MAP = {
@@ -69,6 +77,16 @@ async def start_if_needed(
     chat_id = str(update.effective_chat.id)
     s = state.get(chat_id)
 
+    # Die Person im Sub-Slot wartet, bis die Einrichter-Seite (Dom-Slot) den
+    # Paar-Modus gewählt hat – sonst liefe ihr Onboarding in der falschen
+    # Wortwahl (Vanilla kennt keine „Herrin“). Bestandspaare mit fertigen
+    # Profilen betrifft das nicht.
+    if user_id == "sklave" and s.get("mode") != "onboarding":
+        dom = await qdrant.get_user_profile("domina")
+        if not (dom and dom.get("onboarding_abgeschlossen")):
+            await update.message.reply_text(t("ONBOARDING_WARTE_AUF_EINRICHTER"))
+            return False
+
     if s.get("mode") != "onboarding":
         # Onboarding starten
         state.set_mode(chat_id, "onboarding")
@@ -81,7 +99,7 @@ async def start_if_needed(
         else:
             # Sklave: Begrüßung + erste Frage zusammen
             s["onboarding_schritt"] = 1
-            await update.message.reply_text(t("ONBOARDING_SKLAVE_BEGRUESSUNG"), parse_mode="Markdown")
+            await update.message.reply_text(t_modus("ONBOARDING_SKLAVE_BEGRUESSUNG"), parse_mode="Markdown")
 
         return False  # Noch keine Eingabe zu verarbeiten
 
@@ -170,7 +188,7 @@ async def _handle_domina(
         persona_config._aktueller_cache()["modus"] = wert
         s["onboarding_schritt"] = 3
         await update.message.reply_text(
-            t("ONBOARDING_DOMINA_SCHRITT_ROLLEN", liste=rollen.kombi_hinweis()),
+            t_modus("ONBOARDING_DOMINA_SCHRITT_ROLLEN", liste=rollen.kombi_hinweis()),
             parse_mode="Markdown",
         )
         return
@@ -191,7 +209,7 @@ async def _handle_domina(
         s["onboarding_daten"]["sub_geschlecht"] = sub
         s["onboarding_schritt"] = 4
         await update.message.reply_text(
-            t("ONBOARDING_DOMINA_SCHRITT_STIL", liste=persona_presets.stil_hinweis()),
+            t_modus("ONBOARDING_DOMINA_SCHRITT_STIL", liste=persona_presets.stil_hinweis()),
             parse_mode="Markdown",
         )
         return
@@ -206,12 +224,12 @@ async def _handle_domina(
             return
         s["onboarding_daten"]["persona_stil"] = "" if key == persona_presets.default_key() else key
         s["onboarding_schritt"] = 5
-        await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_ERFAHRUNG"), parse_mode="Markdown")
+        await update.message.reply_text(t_modus("ONBOARDING_DOMINA_SCHRITT_ERFAHRUNG"), parse_mode="Markdown")
         return
 
-    # Schritt 5: Erfahrungsstand
+    # Schritt 5: Erfahrungsstand (Vanilla: wie lebendig ist das Liebesleben)
     if schritt == 5:
-        mapped = _DOMINA_ERFAHRUNG_MAP.get(text)
+        mapped = (_VANILLA_ERFAHRUNG_MAP if modi.ist_vanilla() else _DOMINA_ERFAHRUNG_MAP).get(text)
         if not mapped:
             # Nur sinnvolle Freitext-Eingaben erlauben
             if len(text.strip()) < 2:
@@ -225,7 +243,7 @@ async def _handle_domina(
             mapped = text.strip()
         s["onboarding_daten"]["erfahrungsstand"] = mapped
         s["onboarding_schritt"] = 6
-        await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_INTERESSEN"), parse_mode="Markdown")
+        await update.message.reply_text(t_modus("ONBOARDING_DOMINA_SCHRITT_INTERESSEN"), parse_mode="Markdown")
         return
 
     # Schritt 6: Interessen
@@ -233,7 +251,7 @@ async def _handle_domina(
         interessen = [x.strip() for x in text.split(",") if x.strip()]
         s["onboarding_daten"]["interessen"] = interessen
         s["onboarding_schritt"] = 7
-        await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_GRENZEN"), parse_mode="Markdown")
+        await update.message.reply_text(t_modus("ONBOARDING_DOMINA_SCHRITT_GRENZEN"), parse_mode="Markdown")
         return
 
     # Schritt 7: Grenzen
@@ -244,14 +262,14 @@ async def _handle_domina(
             grenzen = [x.strip() for x in text.split(",") if x.strip()]
         s["onboarding_daten"]["grenzen"] = grenzen
         s["onboarding_schritt"] = 8
-        await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_ZIELE"), parse_mode="Markdown")
+        await update.message.reply_text(t_modus("ONBOARDING_DOMINA_SCHRITT_ZIELE"), parse_mode="Markdown")
         return
 
     # Schritt 8: Ziele
     if schritt == 8:
         s["onboarding_daten"]["ziele"] = text
         s["onboarding_schritt"] = 9
-        await update.message.reply_text(t("ONBOARDING_DOMINA_SCHRITT_TEMPO"), parse_mode="Markdown")
+        await update.message.reply_text(t_modus("ONBOARDING_DOMINA_SCHRITT_TEMPO"), parse_mode="Markdown")
         return
 
     # Schritt 9: Tempo
@@ -328,7 +346,7 @@ async def _abschluss_domina(update: Update, context, s: dict, chat_id: str) -> N
     s.pop("onboarding_daten", None)
 
     stil_label = persona_presets.aktuelles_label()
-    zusammenfassung = t(
+    zusammenfassung = t_modus(
         "ONBOARDING_DOMINA_ZUSAMMENFASSUNG",
         sprache=d.get("sprache") or "Deutsch",
         modus=modi.label(),
@@ -353,11 +371,14 @@ async def _abschluss_domina(update: Update, context, s: dict, chat_id: str) -> N
             parse_mode="Markdown",
         )
 
-    # Sklaven informieren falls Profil vorhanden
+    # Sklaven informieren falls Profil vorhanden – sonst einladen, jetzt das
+    # eigene Profil anzulegen (die Sub-Seite wartete auf die Modus-Wahl).
     try:
         sklave_profil = await qdrant.get_user_profile("sklave")
         if sklave_profil and sklave_profil.get("onboarding_abgeschlossen"):
-            await telegram_helper.send_sklave(context.bot, t("ONBOARDING_SKLAVE_INFO_AKTIV"))
+            await telegram_helper.send_sklave(context.bot, t_modus("ONBOARDING_SKLAVE_INFO_AKTIV"))
+        else:
+            await telegram_helper.send_sklave(context.bot, t_modus("ONBOARDING_PARTNER_EINLADUNG"))
     except Exception as e:
         logger.error("Fehler bei Sklave-Benachrichtigung: %s", e)
 
@@ -383,7 +404,7 @@ async def _handle_sklave(
             hard_limits = [x.strip() for x in text.split(",") if x.strip()]
         s["onboarding_daten"]["hard_limits"] = hard_limits
         s["onboarding_schritt"] = 2
-        await update.message.reply_text(t("ONBOARDING_SKLAVE_SCHRITT_2"), parse_mode="Markdown")
+        await update.message.reply_text(t_modus("ONBOARDING_SKLAVE_SCHRITT_2"), parse_mode="Markdown")
         return
 
     # Schritt 2: Vorlieben
@@ -391,7 +412,7 @@ async def _handle_sklave(
         vorlieben = [x.strip() for x in text.split(",") if x.strip()]
         s["onboarding_daten"]["vorlieben"] = vorlieben
         s["onboarding_schritt"] = 3
-        await update.message.reply_text(t("ONBOARDING_SKLAVE_SCHRITT_3"), parse_mode="Markdown")
+        await update.message.reply_text(t_modus("ONBOARDING_SKLAVE_SCHRITT_3"), parse_mode="Markdown")
         return
 
     # Schritt 3: Erfahrungsstand → Abschluss
@@ -433,7 +454,7 @@ async def _abschluss_sklave(update: Update, context, s: dict, chat_id: str) -> N
     s.pop("onboarding_rolle", None)
     s.pop("onboarding_daten", None)
 
-    await update.message.reply_text(t("ONBOARDING_SKLAVE_GESPEICHERT"), parse_mode="Markdown")
+    await update.message.reply_text(t_modus("ONBOARDING_SKLAVE_GESPEICHERT"), parse_mode="Markdown")
 
     # Domina informieren
     try:
@@ -441,7 +462,7 @@ async def _abschluss_sklave(update: Update, context, s: dict, chat_id: str) -> N
         if domina_profil and domina_profil.get("onboarding_abgeschlossen"):
             await telegram_helper.send_domina(
                 context.bot,
-                t(
+                t_modus(
                     "ONBOARDING_DOMINA_INFO_SKLAVE_FERTIG",
                     limits=", ".join(hard_limits) if hard_limits else "keine",
                     vorlieben=", ".join(vorlieben) if vorlieben else "–",

@@ -8,11 +8,12 @@ from telegram import Update
 from telegram.ext import ContextTypes, Application
 from bot import commands_katalog as ck
 from bot import config, state
-from bot.services import paare, qdrant, telegram_helper
+from bot.services import paare, qdrant, telegram_helper, modi
 from bot.handlers import (
     safeword,
     domina,
     sklave,
+    vanilla,
     followup_response,
     reaktion,
     gefuehl,
@@ -207,6 +208,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
     # 3. Normaler Chat
+    # Vanilla (Etappe 2): beide Seiten sprechen mit der neutralen Stimme; eine
+    # offene Stimmungsfrage (Merkmarke) gilt für beide Chats.
+    if modi.ist_vanilla():
+        if mode == "chat" and stimmung.wartet_auf_antwort(chat_id):
+            await stimmung.handle_antwort(update, context)
+            return
+        await vanilla.handle(update, context, rolle)
+        return
     if rolle == paare.ROLLE_DOM:
         await domina.handle(update, context)
     else:  # ROLLE_SUB (resolve() lässt nur die zwei Rollen durch)
@@ -252,6 +261,8 @@ async def falsche_rolle_hinweis(update: Update, context: ContextTypes.DEFAULT_TY
         return
     _, rolle = ctx
     cmd = msg.text.split()[0].lstrip("/").split("@")[0].lower()
+    if modi.ist_vanilla():
+        return  # Vanilla: Command-Gate in gates.pause_guard (gleiche Befehle für beide)
     nur_domina = ck.alle_domina_commands() - ck.alle_sklave_commands()
     nur_sklave = ck.alle_sklave_commands() - ck.alle_domina_commands()
     if rolle == paare.ROLLE_SUB and (cmd in nur_domina or cmd.startswith("aufgaben_")):
@@ -318,7 +329,10 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     paar, rolle = ctx
 
     ziel = paar.partner_chat_id(chat_id)
-    if rolle == paare.ROLLE_SUB:
+    if modi.ist_vanilla():
+        kopf = t("MEDIEN_VON_PARTNER")
+        bestaetigung = t("MEDIEN_AN_PARTNER_WEITERGELEITET")
+    elif rolle == paare.ROLLE_SUB:
         kopf = t("MEDIEN_VON_SKLAVE")
         bestaetigung = t("MEDIEN_AN_HERRIN_WEITERGELEITET")
     else:

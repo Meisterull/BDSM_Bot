@@ -18,11 +18,15 @@ import time
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from bot import config, state
-from bot.services import paare
+from bot.services import paare, modi
 from bot.services import qdrant, grok, telegram_helper
 from bot.handlers.sklave import _normalisiere
 from bot.prompts import followup as fp
 from bot.messages import t
+
+# Vanilla (Etappe 2): die Stimmungsfrage geht an BEIDE Personen, Reaktion und
+# Hinweis kommen von der neutralen Stimme (prompts/vanilla.py). `rolle` ist
+# überall der Slot (paare.ROLLE_*), im BDSM/Kink-Modus immer der Sub.
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +101,20 @@ def _richtungs_kandidaten(verbrauchte: set[str]) -> list[str]:
     return (frisch + rest)[:_VERSUCHE]
 
 
-async def _frage_text() -> tuple[str, str]:
+def _rolle_von(chat_id: str) -> str:
+    return paare.ROLLE_DOM if chat_id == paare.dom_chat_id() else paare.ROLLE_SUB
+
+
+def _darf(chat_id: str) -> bool:
+    """Sub immer; die Dom-Seite nur im gleichberechtigten Modus."""
+    return chat_id == paare.sub_chat_id() or (modi.gleichberechtigt() and chat_id == paare.dom_chat_id())
+
+
+def _fallback_frage() -> str:
+    return t("STIMMUNG_FRAGE_VANILLA") if modi.ist_vanilla() else t("STIMMUNG_FRAGE")
+
+
+async def _frage_text(rolle: str = paare.ROLLE_SUB) -> tuple[str, str]:
     """Jedes Mal frisch per LLM formulierte Stimmungs-Frage (Nutzer-Feedback:
     der immergleiche statische Text wirkt mechanisch). Die letzten Fragen gehen
     als Sperr-Liste in den Prompt; wird es trotzdem die gleiche Formulierung,
@@ -106,7 +123,7 @@ async def _frage_text() -> tuple[str, str]:
     Gibt (Frage, benutzte Richtung) zurück; die Richtung landet in der
     Sperr-Liste, damit sie morgen nicht sofort wieder dran ist."""
     try:
-        letzte = await qdrant.get_recent_stimmung_eintraege(limit=5)
+        letzte = await qdrant.get_recent_stimmung_eintraege(limit=5, user_id=rolle)
     except Exception as e:
         logger.warning("Letzte Stimmungs-Fragen nicht ladbar (Sperr-Liste leer): %s", e)
         letzte = []
@@ -120,10 +137,12 @@ async def _frage_text() -> tuple[str, str]:
     sperre = list(vorherige)
     try:
         for versuch, richtung in enumerate(kandidaten, start=1):
-            text = (await grok.simple(
-                fp.stimmung_abfragen(vermeiden=sperre, richtung=richtung),
-                max_tokens=120,
-            )).strip()
+            if modi.ist_vanilla():
+                from bot.prompts import vanilla as vp
+                prompt = vp.stimmung_frage(rolle, vermeiden=sperre, richtung=richtung)
+            else:
+                prompt = fp.stimmung_abfragen(vermeiden=sperre, richtung=richtung)
+            text = (await grok.simple(prompt, max_tokens=120)).strip()
             if text and not _zu_aehnlich(text, vorherige):
                 return text, richtung
             logger.info("Stimmungs-Frage zu ähnlich zu den letzten (Versuch %d, Richtung '%s') – Retry.",
@@ -138,17 +157,17 @@ async def _frage_text() -> tuple[str, str]:
         # zeichengleich an zwei Tagen hintereinander.
         logger.warning("Alle %d Stimmungs-Versuche zu ähnlich – statischer Standardtext "
                        "statt Wiederholung.", len(kandidaten))
-    return t("STIMMUNG_FRAGE"), ""
+    return _fallback_frage(), ""
 
 
-async def _merke_frage(frage: str, richtung: str = "") -> None:
+async def _merke_frage(frage: str, richtung: str = "", rolle: str = paare.ROLLE_SUB) -> None:
     """Gesendete Frage in die Sperr-Liste (typ=stimmung_frage) – NACH dem
     erfolgreichen Senden aufrufen, sonst blockt eine nie zugestellte
     Formulierung künftige Fragen (Trace 06.07., Lücke 6)."""
-    if frage == t("STIMMUNG_FRAGE"):
+    if frage == _fallback_frage():
         return  # statischer Fallback gehört nicht in die Sperr-Liste
     try:
-        await qdrant.save_training("sklave", {"typ": "stimmung_frage",
+        await qdrant.save_training(rolle, {"typ": "stimmung_frage",
                                               "zusammenfassung": frage,
                                               "richtung": richtung})
     except Exception as e:
@@ -156,10 +175,11 @@ async def _merke_frage(frage: str, richtung: str = "") -> None:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/stimmung – Sklave initiiert selbst eine Stimmungsmeldung."""
+    """/stimmung – Sklave (Vanilla: beide) initiiert selbst eine Stimmungsmeldung."""
     chat_id = str(update.effective_chat.id)
-    if chat_id != paare.sub_chat_id():
+    if not _darf(chat_id):
         return
+    rolle = _rolle_von(chat_id)
 
     s = state.get(chat_id)
     if s.get("mode", "chat") != "chat":
@@ -167,7 +187,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     async with telegram_helper.typing_action(context.bot, chat_id):
-        frage, richtung = await _frage_text()
+        frage, richtung = await _frage_text(rolle)
     await update.message.reply_text(frage, reply_markup=_tasten())
     # Merkmarke erst NACH erfolgreichem Senden – ein Sendefehler darf keine
     # offene Frage hinterlassen, die es nie gab (Trace 06.07., Lücke 6).
@@ -176,36 +196,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # ihre eigene Frage nicht und deutet seine Folge-Nachricht gegen den Kontext
     # des VORTAGES (Befund 02.07.).
     state.add_message(chat_id, "assistant", frage)
-    await _merke_frage(frage, richtung)
+    await _merke_frage(frage, richtung, rolle)
 
 
 async def frage_stellen(bot: Bot) -> None:
-    """Vom Scheduler aufgerufen – nur wenn STIMMUNG_ENABLED=true."""
+    """Vom Scheduler aufgerufen – nur wenn STIMMUNG_ENABLED=true. Vanilla:
+    an beide Personen (nacheinander, je mit eigener Sperr-Liste)."""
     if not config.STIMMUNG_ENABLED:
         return
+    rollen = (paare.ROLLE_DOM, paare.ROLLE_SUB) if modi.ist_vanilla() else (paare.ROLLE_SUB,)
+    for rolle in rollen:
+        try:
+            await _frage_an(bot, rolle)
+        except Exception:
+            logger.exception("Stimmungsfrage (%s) fehlgeschlagen", rolle)
 
-    sklave_chat = paare.sub_chat_id()
-    state.clear_if_stale(sklave_chat)  # liegengebliebenen UI-Flow nicht ewig blockieren lassen
-    s = state.get(sklave_chat)
+
+async def _frage_an(bot: Bot, rolle: str) -> None:
+    chat = paare.paar_im_kontext().chat_id(rolle)
+    state.clear_if_stale(chat)  # liegengebliebenen UI-Flow nicht ewig blockieren lassen
+    s = state.get(chat)
 
     if s.get("mode", "chat") != "chat":
-        logger.info("Stimmungsfrage übersprungen – aktiver State: %s", s.get("mode"))
+        logger.info("Stimmungsfrage (%s) übersprungen – aktiver State: %s", rolle, s.get("mode"))
         return
 
-    frage, richtung = await _frage_text()
-    # Re-Check NACH dem LLM-Await (TOCTOU): im Fenster kann der Sklave einen
+    frage, richtung = await _frage_text(rolle)
+    # Re-Check NACH dem LLM-Await (TOCTOU): im Fenster kann die Person einen
     # Flow begonnen oder ein Safeword gesendet haben.
     if state.is_paused() or s.get("mode", "chat") != "chat":
         logger.info("Stimmungsfrage nach Generierung verworfen – Pause/Mode geändert.")
         return
-    await bot.send_message(chat_id=sklave_chat, text=frage, reply_markup=_tasten())
+    await bot.send_message(chat_id=chat, text=frage, reply_markup=_tasten())
     # Merkmarke/Sperr-Liste erst NACH erfolgreichem Senden (Trace 06.07.,
     # Lücke 6). BEWUSST kein set_mode: Der Chat bleibt frei, Spiel-Impuls und
     # Follow-up laufen weiter (s. Modulkopf).
-    _merke_offen(sklave_chat)
-    state.add_message(sklave_chat, "assistant", frage)  # s. Kommentar in start()
-    await _merke_frage(frage, richtung)
-    logger.info("Stimmungsfrage gesendet.")
+    _merke_offen(chat)
+    state.add_message(chat, "assistant", frage)  # s. Kommentar in start()
+    await _merke_frage(frage, richtung, rolle)
+    logger.info("Stimmungsfrage gesendet (%s).", rolle)
 
 
 async def callback_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -213,7 +242,7 @@ async def callback_button(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
     chat_id = str(update.effective_chat.id)
-    if chat_id != paare.sub_chat_id():
+    if not _darf(chat_id):
         return
     stufe = query.data.split(":", 1)[1]
     if stufe not in _STUFEN:
@@ -242,12 +271,17 @@ async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten) -> No
     if state.get_mode(chat_id) == "stimmung":      # Altbestand aus der Zeit mit Mode
         state.set_mode(chat_id, "chat")
     state.add_message(chat_id, "user", antwort)
+    rolle = _rolle_von(chat_id)
 
     # Stimmung dauerhaft speichern, damit sie in Prompts/Dossier einfließt
     try:
-        await qdrant.save_training("sklave", {"typ": "stimmung", "zusammenfassung": antwort})
+        await qdrant.save_training(rolle, {"typ": "stimmung", "zusammenfassung": antwort})
     except Exception as e:
         logger.error("Fehler beim Speichern der Stimmung: %s", e)
+
+    if modi.ist_vanilla():
+        await _vanilla_reaktion_und_hinweis(bot, chat_id, rolle, antwort, antworten)
+        return
 
     # In-Persona-Reaktion an den Sklaven (statt Textkonserve)
     from bot.prompts import followup as fp
@@ -278,3 +312,33 @@ async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten) -> No
         logger.info("Stimmungs-Hinweis an Domina gesendet.")
     except Exception as e:
         logger.error("Fehler beim Stimmungs-Hinweis: %s", e)
+
+async def _vanilla_reaktion_und_hinweis(bot, chat_id: str, rolle: str, antwort: str, antworten) -> None:
+    """Vanilla: Reaktion der neutralen Stimme an die Person, kurzer Hinweis an
+    die andere Person (beide sehen den Stand des anderen – Entscheidung 05.11.2026,
+    im Onboarding angekündigt)."""
+    from bot.prompts import vanilla as vp
+    try:
+        system, user = vp.stimmung_reaktion(rolle, antwort)
+        reaktion = await grok.simple(user, system=system, max_tokens=250)
+    except Exception as e:
+        logger.error("Fehler bei Stimmungs-Reaktion (Vanilla): %s", e)
+        reaktion = t("FALLBACK_STIMMUNG_REAKTION")
+    await antworten(reaktion)
+    state.add_message(chat_id, "assistant", reaktion)
+
+    andere = vp.andere_rolle(rolle)
+    try:
+        system, user = vp.stimmung_hinweis(rolle, antwort)
+        hinweis = await grok.simple(user, system=system)
+        ich = vp.person(rolle)
+        von = ich["anrede"] or ("deine Partnerin" if ich["fem"] else "dein Partner")
+        await telegram_helper.send_an(
+            bot, paare.paar_im_kontext(), andere,
+            t("STIMMUNG_HINWEIS_AN_PARTNER", name=telegram_helper.escape_md(von),
+              antwort=telegram_helper.md_einbett_sicher(antwort), hinweis=hinweis),
+            parse_mode="Markdown",
+        )
+        logger.info("Stimmungs-Hinweis (Vanilla) an %s gesendet.", andere)
+    except Exception as e:
+        logger.error("Fehler beim Stimmungs-Hinweis (Vanilla): %s", e)

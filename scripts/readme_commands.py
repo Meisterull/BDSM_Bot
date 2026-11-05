@@ -30,6 +30,7 @@ TEXTE = {
     "en": {
         "dom": "Dominant partner",
         "sub": "Submissive partner",
+        "van": "Vanilla mode (both partners, same set)",
         "cmd": "Command",
         "was": "What it does",
         "n": "{n} commands",
@@ -40,6 +41,7 @@ TEXTE = {
     "de": {
         "dom": "Dominante Seite",
         "sub": "Devote Seite",
+        "van": "Vanilla-Modus (beide Seiten, gleicher Satz)",
         "cmd": "Befehl",
         "was": "Was er tut",
         "n": "{n} Befehle",
@@ -92,6 +94,7 @@ def render(sprache: str) -> str:
     zeilen = [START, ""]
     zeilen += _rolle(ck.DOMINA_GRUPPEN, t["dom"], sprache)
     zeilen += _rolle(ck.SKLAVE_GRUPPEN, t["sub"], sprache)
+    zeilen += _rolle(ck.VANILLA_GRUPPEN, t["van"], sprache)
     zeilen += [t["hinweis"], "", END]
     return "\n".join(zeilen)
 

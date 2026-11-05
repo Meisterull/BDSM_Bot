@@ -40,6 +40,9 @@ ZEIT_FELDER = {
 
 _DEFAULTS = {"bot_name": "", "sklave_anrede": "", "setup_kontext": "", "persona_stil": "", "sprache": "",
              "modus": "",
+             # Vanilla (Etappe 2): Anrede für die Person im Dom-Slot – dort spricht die
+             # neutrale Stimme beide Partner an, "sklave_anrede" deckt nur den Sub-Slot.
+             "dom_anrede": "",
              "bot_locale": "", "safeword": "", "resume_wort": "",
              "dom_geschlecht": "", "sub_geschlecht": "",
              "abwesend_von": "", "abwesend_bis": "", "abwesend_grund": "",
@@ -98,6 +101,18 @@ def sklave_anrede() -> str:
     return _aktueller_cache().get("sklave_anrede", "")
 
 
+def dom_anrede() -> str:
+    """Anrede der Person im Dom-Slot (nur Vanilla: die neutrale Stimme spricht
+    beide Partner direkt an; in BDSM/Kink ist der Dom-Chat der Coach-Chat)."""
+    return _aktueller_cache().get("dom_anrede", "")
+
+
+def anrede_fuer(rolle: str) -> str:
+    """Anrede je Slot (paare.ROLLE_DOM / ROLLE_SUB) – leer = keine."""
+    from bot.services import paare
+    return dom_anrede() if rolle == paare.ROLLE_DOM else sklave_anrede()
+
+
 def setup_kontext() -> str:
     return _aktueller_cache().get("setup_kontext", "")
 
@@ -115,6 +130,13 @@ async def set_sklave_anrede(name: str) -> str:
     name = (name or "").strip()
     await qdrant.patch_profile_fields(_profil_user_id(), {"sklave_anrede": name})  # erst persistieren (D9/N18)
     _aktueller_cache()["sklave_anrede"] = name
+    return name
+
+
+async def set_dom_anrede(name: str) -> str:
+    name = (name or "").strip()
+    await qdrant.patch_profile_fields(_profil_user_id(), {"dom_anrede": name})
+    _aktueller_cache()["dom_anrede"] = name
     return name
 
 

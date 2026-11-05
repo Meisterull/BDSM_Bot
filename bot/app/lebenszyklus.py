@@ -97,8 +97,8 @@ async def post_init(application: Application) -> None:
     try:
         for paar in paare.alle_paare():
             with paare.kontext(paar.paar_id):
-                domina_commands = [BotCommand(c, b) for c, b in commands_katalog.domina_menue()]
-                sklave_commands = [BotCommand(c, b) for c, b in commands_katalog.sklave_menue()]
+                domina_commands = [BotCommand(c, b) for c, b in commands_katalog.menue_fuer(paare.ROLLE_DOM)]
+                sklave_commands = [BotCommand(c, b) for c, b in commands_katalog.menue_fuer(paare.ROLLE_SUB)]
             await application.bot.set_my_commands(
                 domina_commands,
                 scope=BotCommandScopeChat(chat_id=int(paar.dom_chat_id)),

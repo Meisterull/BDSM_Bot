@@ -43,14 +43,14 @@ async def get_latest_stimmung(user_id: str, max_stunden: int | None = None) -> O
     return eintrag
 
 
-async def get_recent_stimmung_eintraege(limit: int = 5) -> list[dict]:
+async def get_recent_stimmung_eintraege(limit: int = 5, user_id: str = "sklave") -> list[dict]:
     """Die zuletzt an den Sub gestellten Stimmungs-Fragen als volle Payloads –
     Sperr-Liste (`zusammenfassung`) UND zuletzt benutzte Richtungs-Stichworte
     (`richtung`, seit 27.08.2026; Alt-Bestand hat das Feld nicht)."""
     results, _ = await kern._aio(kern.client.scroll,
         collection_name="training",
         scroll_filter=qm.Filter(must=[
-            qm.FieldCondition(key="user_id", match=qm.MatchValue(value=kern.mandanten_key("sklave"))),
+            qm.FieldCondition(key="user_id", match=qm.MatchValue(value=kern.mandanten_key(user_id))),
             qm.FieldCondition(key="typ", match=qm.MatchValue(value="stimmung_frage")),
         ]),
         limit=limit, order_by=qm.OrderBy(key="datum", direction="desc"),

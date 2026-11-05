@@ -95,7 +95,10 @@ _CALLBACK_ROLLEN = (
     ("roulette:",           paare.ROLLE_DOM),
     ("luecke:",             paare.ROLLE_DOM),
     ("resurface:",          paare.ROLLE_DOM),
-    ("coachregel:",         paare.ROLLE_DOM),
+    # coachregel: bewusst NICHT hier – Präferenz-Vorschläge gehen auch an den
+    # Sub (und in Vanilla an beide); die Rolle prüft coach_regeln.callback_bestaetigen
+    # gegen den Ziel-Empfänger des Eintrags (Befund 05.11.2026: das Gate hatte
+    # jeden Sub-Tap still verworfen).
     ("ketteanpass:",        paare.ROLLE_DOM),
     ("kettefail:",          paare.ROLLE_DOM),
     ("wochenplan:",         paare.ROLLE_DOM),
@@ -149,6 +152,10 @@ async def _callback_gate(update: Update) -> None:
             break
 
 
+# Befehle, die in jedem Modus durchgehen (Pairing, Betreiber-Kommandos).
+_IMMER_ERLAUBT = frozenset({"start", "paare", "paar_loeschen"})
+
+
 async def pause_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Zentraler Guard (group=-1, VOR allen Handlern): erst die
     Callback-Autorisierung (D9/S1, läuft IMMER), dann der Safeword-Pause-Teil.
@@ -160,9 +167,25 @@ async def pause_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     Pausen-Hinweis senden kann."""
     if update.callback_query is not None:
         await _callback_gate(update)
+    msg = update.effective_message
+    # Vanilla (Etappe 2): EIN Befehlssatz für beide Seiten – alles, was eine
+    # führende Rolle voraussetzt (Aufgaben, Würfel, Strafen, Training …), gibt
+    # es in diesem Modus nicht und wird zentral hier abgefangen.
+    if msg is not None and msg.text and msg.text.startswith("/") and update.effective_chat:
+        chat_id = str(update.effective_chat.id)
+        if paare.ist_autorisiert(chat_id):
+            from bot.services import modi
+            from bot import commands_katalog as ck
+            if modi.ist_vanilla():
+                cmd = msg.text.split()[0].lstrip("/").split("@")[0].lower()
+                if cmd not in ck.alle_vanilla_commands() | _IMMER_ERLAUBT:
+                    try:
+                        await msg.reply_text(t("COMMON_NICHT_IM_VANILLA"))
+                    except Exception:
+                        logger.exception("Vanilla-Command-Hinweis nicht sendbar")
+                    raise ApplicationHandlerStop
     if not state.is_paused():
         return
-    msg = update.effective_message
     # Normale Texte (kein Command) durchlassen → Resume-/Hinweis-Pfad in safeword.py
     if msg is not None and msg.text and not msg.text.startswith("/"):
         return

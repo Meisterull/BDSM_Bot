@@ -19,6 +19,7 @@ from bot.scheduler.tagesjobs import (
     wochenplanung_job,
 )
 from bot.scheduler.tiny_task import tiny_task_feedback_job, tiny_task_vorschlag_job
+from bot.scheduler.vanilla import vanilla_impuls_job
 from bot.scheduler.wartung import training_erinnerung_job
 
 logger = logging.getLogger(__name__)
@@ -77,10 +78,11 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
     leer = globale Env-Defaults). Aufgerufen beim Start für alle Paare, nach
     erfolgreichem Pairing und nach Zeit-Änderung in /einstellungen –
     replace_existing macht den Aufruf idempotent."""
-    from bot.services import persona_config
+    from bot.services import persona_config, modi
     pid = paar.paar_id
     with paare.kontext(pid):
         z = {feld: persona_config.zeit(feld) for feld in persona_config.ZEIT_FELDER}
+        vanilla = modi.ist_vanilla()
 
     hour, minute = config.hm(z["followup_time"])
     # Training Zeit = Follow-up + TRAINING_OFFSET_MINUTEN
@@ -91,6 +93,11 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
         scheduler.add_job(_fuer_paar(fn, pid), "cron", hour=h, minute=m, args=[bot],
                           id=f"{name}_p{pid}", replace_existing=True, **cron)
 
+    # Vanilla (Etappe 2): nur Stimmungsfrage + Impuls an beide; die übrigen
+    # Crons bleiben registriert (ein späterer Moduswechsel braucht sie wieder),
+    # der _job_guard überspringt sie im Vanilla-Modus. Der Impuls-Job ist für
+    # alle Paare registriert und prüft selbst den Modus.
+    _job("vanilla_impuls", vanilla_impuls_job, "tiny_task_time")
     scheduler.add_job(_fuer_paar(followup_job, pid), "cron", hour=hour, minute=minute,
                       args=[bot], id=f"daily_followup_p{pid}", replace_existing=True)
     if config.TRAINING_ENABLED:
@@ -108,7 +115,8 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
     _job("wochenplanung", wochenplanung_job, "wochenplanung_time", day_of_week="sun")
     _job("tiny_task_feedback", tiny_task_feedback_job, "tiny_task_feedback_time")
     _job("luecken_check", luecken_check_job, "luecken_check_time")
-    logger.info("Zeit-Jobs für Paar %s geplant (Follow-up %s)", pid, z["followup_time"])
+    logger.info("Zeit-Jobs für Paar %s geplant (Follow-up %s%s)", pid, z["followup_time"],
+                ", Vanilla: nur Stimmung + Impuls aktiv" if vanilla else "")
 
 
 def entferne_zeit_jobs(paar_id: str) -> None:

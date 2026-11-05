@@ -192,6 +192,122 @@ MESSAGES = {
         "Der Bot ist jetzt vollständig einsatzbereit. 🖤"
     ),
 
+    # --- Vanilla-Modus (Etappe 2, 05.11.2026): Varianten für t_modus() ---------
+    # Gleichberechtigt: Dom-Slot = Person, die den Bot einrichtet; Sub-Slot =
+    # eingeladene Person. Keine Herrin, kein Coach – eine neutrale Stimme.
+    "ONBOARDING_DOMINA_SCHRITT_ROLLEN_VANILLA": (
+        "🎭 *Schritt 3/10 – Wer ist wer?*\n\n"
+        "Zuerst du (du richtest den Bot ein), dann die eingeladene Person:\n\n"
+        "{liste}\n\n"
+        "Schreibe die Nummer\n"
+        "_(bestimmt Anrede und Pronomen der generierten Texte – später änderbar in /einstellungen)_"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_STIL_VANILLA": (
+        "💞 *Schritt 4/10 – Stimme*\n\n"
+        "Wer soll der Bot für euch sein? Dieselbe Stimme spricht mit euch beiden – in getrennten Chats.\n\n"
+        "{liste}\n\n"
+        "Schreibe die Nummer _(später änderbar in /einstellungen)_"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_ERFAHRUNG_VANILLA": (
+        "📊 *Schritt 5/10 – Wo steht ihr?*\n\n"
+        "Wie lebendig ist euer Liebesleben gerade?\n\n"
+        "1️⃣ Eher eingeschlafen – wir wollen wieder in Schwung kommen\n"
+        "2️⃣ Geht so – es könnte mehr sein\n"
+        "3️⃣ Lebendig – wir wollen Neues ausprobieren\n\n"
+        "Schreibe 1, 2 oder 3 – oder beschreib es kurz"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_INTERESSEN_VANILLA": (
+        "✨ *Schritt 6/10 – Was du magst*\n\n"
+        "Was magst du, worauf hast du Lust? _(kommagetrennt)_\n\n"
+        "Beispiele: Massagen, Date Nights, Kuscheln, Dirty Talk, neue Stellungen, Überraschungen"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_GRENZEN_VANILLA": (
+        "🚫 *Schritt 7/10 – No-Gos*\n\n"
+        "Was geht für dich gar nicht?\n"
+        "_(kommagetrennt, z.B. Fotos, Dritte, Schmerz)_\n\n"
+        "Oder schreibe *keine*"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_ZIELE_VANILLA": (
+        "🎯 *Schritt 8/10 – Wunsch an den Bot*\n\n"
+        "Was wünscht ihr euch von diesem Bot?\n"
+        "_(z.B. mehr Nähe im Alltag, neue Ideen, leichter über Wünsche reden)_"
+    ),
+    "ONBOARDING_DOMINA_SCHRITT_TEMPO_VANILLA": (
+        "⏱ *Schritt 9/10 – Tempo*\n\n"
+        "Wie viel darf von mir kommen?\n\n"
+        "1️⃣ Langsam – sanft rantasten\n"
+        "2️⃣ Normal – ausgewogen\n"
+        "3️⃣ Schnell – ruhig mutig\n\n"
+        "Schreibe 1, 2 oder 3"
+    ),
+    "ONBOARDING_DOMINA_ZUSAMMENFASSUNG_VANILLA": (
+        "✅ *Profil gespeichert! Hier deine Zusammenfassung:*\n\n"
+        "🌍 Sprache: {sprache}\n"
+        "🧭 Modus: {modus}\n"
+        "🎭 Ihr: {rollen}\n"
+        "💞 Stimme: {stil}\n"
+        "📊 Wo ihr steht: {erfahrungsstand}\n"
+        "✨ Was du magst: {interessen}\n"
+        "🚫 No-Gos: {grenzen}\n"
+        "🎯 Wunsch an den Bot: {ziele}\n"
+        "⏱ Tempo: {tempo}\n"
+        "👨‍👩‍👧 Kinderfreie Zeiten: {zeiten}\n\n"
+        "──────────────────────\n\n"
+        "So läuft es: Ihr schreibt beide mit derselben Stimme, jeder in seinem Chat. "
+        "Einmal am Tag fragt sie euch beide nach der Stimmung – die Antwort bekommt die andere Seite "
+        "als kurzen Hinweis – und schickt jedem von euch einen kleinen Impuls für den Abend.\n\n"
+        "📋 *Befehle:* /stimmung, /inventar, /profil, /einstellungen, /hilfe\n\n"
+        "Alles bereit! Schreib einfach los. 💞"
+    ),
+    "ONBOARDING_SKLAVE_INFO_AKTIV_VANILLA": "Es geht los – ihr hört beide von mir. 💞",
+    "ONBOARDING_SKLAVE_BEGRUESSUNG_VANILLA": (
+        "Hi! Ich bin die Stimme, mit der ihr hier beide schreibt – jeder in seinem Chat.\n\n"
+        "Bevor es losgeht, sag mir kurz drei Dinge über dich.\n\n"
+        "──────────────────────\n\n"
+        "🚫 *Schritt 1/3 – No-Gos*\n\n"
+        "Was geht für dich gar nicht?\n"
+        "Das wird *NIEMALS* vorgeschlagen.\n"
+        "_(kommagetrennt, z.B. Fotos, Dritte, Schmerz)_\n\n"
+        "Oder schreibe *keine*"
+    ),
+    "ONBOARDING_SKLAVE_SCHRITT_2_VANILLA": (
+        "💚 *Schritt 2/3 – Was du magst*\n\n"
+        "Was magst du, worauf hast du Lust?\n"
+        "_(kommagetrennt, z.B. Massagen, Kuscheln, Dirty Talk, Überraschungen)_"
+    ),
+    "ONBOARDING_SKLAVE_SCHRITT_3_VANILLA": (
+        "📖 *Schritt 3/3 – Wo steht ihr?*\n\n"
+        "Wie würdest du euer Liebesleben gerade beschreiben?\n"
+        "Ein, zwei Sätze reichen."
+    ),
+    "ONBOARDING_SKLAVE_GESPEICHERT_VANILLA": (
+        "Gut, jetzt weiß ich, was ich wissen muss.\n\n"
+        "Einmal am Tag frage ich euch beide nach der Stimmung – die Antwort bekommt die andere Seite "
+        "als kurzen Hinweis – und schicke jedem von euch einen kleinen Impuls für den Abend. "
+        "Und du kannst mir jederzeit schreiben. 💞"
+    ),
+    "ONBOARDING_DOMINA_INFO_SKLAVE_FERTIG_VANILLA": (
+        "ℹ️ *Die andere Seite hat ihr Profil eingerichtet.*\n\n"
+        "No-Gos: {limits}\n"
+        "Mag: {vorlieben}\n"
+        "Wo ihr steht: {erfahrungsstand}\n\n"
+        "Der Bot ist jetzt für euch beide bereit. 💞"
+    ),
+    "ONBOARDING_WARTE_AUF_EINRICHTER": (
+        "Deine Partnerin bzw. dein Partner richtet den Bot gerade ein. "
+        "Sobald das fertig ist, melde ich mich hier – dann legen wir dein Profil an."
+    ),
+    "ONBOARDING_PARTNER_EINLADUNG": (
+        "Die Einrichtung ist fertig. Schreib mir einfach irgendetwas, dann legen wir dein Profil an."
+    ),
+    "STIMMUNG_FRAGE_VANILLA": "Wie geht es dir gerade? Wie ist deine Stimmung? 💞",
+    "STIMMUNG_HINWEIS_AN_PARTNER": "💭 Stimmung von {name}: _{antwort}_\n\n{hinweis}",
+    "FALLBACK_VANILLA_CHAT": "Ich bin gerade kurz nicht erreichbar. Schreib mir gleich nochmal.",
+    "VANILLA_IMPULS_PREFIX": "💡 ",
+    "COMMON_NICHT_IM_VANILLA": "Diesen Befehl gibt es im Vanilla-Modus nicht. /hilfe zeigt, was geht.",
+    "MEDIEN_VON_PARTNER": "📎 Von der anderen Seite:",
+    "MEDIEN_AN_PARTNER_WEITERGELEITET": "📎 Weitergeleitet.",
+
     # --- Vorlagen (Markdown) --------------------------------------------------
     "VORLAGEN_TITEL": "📁 *Aufgaben-Vorlagen*\n",
     "VORLAGEN_KEINE": "_Noch keine Vorlagen gespeichert._\n",
@@ -1317,8 +1433,8 @@ MESSAGES = {
     "PAIRING_START_MENUE": (
         "👋 Willkommen! Dieser Bot begleitet euch als Paar.\n\n"
         "Welche Rolle übernimmst du?\n"
-        "1 – der dominante Part\n"
-        "2 – der devote Part\n\n"
+        "1 – der dominante Part (bzw. bei Vanilla: ich richte den Bot ein)\n"
+        "2 – der devote Part (bzw. bei Vanilla: ich wurde eingeladen)\n\n"
         "Du bekommst dann einen Einladungs-Code für deinen Partner.\n"
         "Hast du schon einen Code? Schick ihn mir einfach."
     ),

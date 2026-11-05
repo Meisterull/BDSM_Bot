@@ -167,6 +167,15 @@ async def callback_bestaetigen(update: Update, context: ContextTypes.DEFAULT_TYP
     # Eintrag entscheiden – ein zweiter Tap wendete den Profil-Patch sonst
     # erneut an (limit_refine!) und stapelte Erfolgs-Meldungen.
     eintrag = await qdrant.get_coach_regel(point_id) or {}
+    # Rollen-Gate (ersetzt den pauschalen DOM-Eintrag in gates._CALLBACK_ROLLEN):
+    # Profil-Vorschläge entscheidet die Person, deren Profil es ist; alles
+    # andere (Coach-Regeln) die Dom-Seite.
+    chat_id = str(update.effective_chat.id)
+    rolle = paare.resolve(chat_id)[1] if paare.resolve(chat_id) else None
+    ziel = paare.rolle_von_user_id(eintrag.get("profile_user", "")) if eintrag.get("typ") == "profil_update" else paare.ROLLE_DOM
+    if rolle != (ziel or paare.ROLLE_DOM):
+        logger.warning("coachregel-Callback von falscher Rolle (%s, Ziel %s) verworfen.", rolle, ziel)
+        return
     if eintrag.get("status", "pending") != "pending":
         try:
             await query.edit_message_reply_markup(reply_markup=None)

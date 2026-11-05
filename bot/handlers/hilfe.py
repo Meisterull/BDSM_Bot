@@ -9,8 +9,9 @@ from telegram.ext import ContextTypes
 
 from bot import config
 from bot.services import paare
+from bot.services import modi
 from bot.commands_katalog import (
-    DOMINA_GRUPPEN, SKLAVE_GRUPPEN, Eintrag,
+    DOMINA_GRUPPEN, SKLAVE_GRUPPEN, VANILLA_GRUPPEN, Eintrag,
     anzeige_command, anzeige_gruppe, anzeige_hilfe_text,
 )
 from bot.messages import t
@@ -37,7 +38,10 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/hilfe – zeigt Commands je nach Rolle."""
     chat_id = str(update.effective_chat.id)
 
-    if chat_id == paare.dom_chat_id():
+    if modi.ist_vanilla() and paare.ist_autorisiert(chat_id):
+        titel = "💞 Help for both of you" if config.BOT_LOCALE == "en" else "💞 Hilfe für euch beide"
+        text = _format_gruppen(VANILLA_GRUPPEN, titel)
+    elif chat_id == paare.dom_chat_id():
         titel = "👑 Help for the Mistress" if config.BOT_LOCALE == "en" else "👑 Hilfe für die Herrin"
         text = _format_gruppen(DOMINA_GRUPPEN, titel)
     elif chat_id == paare.sub_chat_id():

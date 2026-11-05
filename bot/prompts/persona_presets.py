@@ -24,6 +24,8 @@ Dateiformat Preset:
   ## stil_kopf   – Kern-Stilbeschreibung der Herrin (Pflicht)
   ## stil_fuss   – verbotenes Vokabular/Muster + Variations-Anweisung
   ## coach_stil  – Stimme des Coachs gegenüber der Domina
+  ## stimme_ich  – nur Vanilla: wie sich die Stimme selbst beschreibt
+                   ("eine gute Freundin von euch beiden" …), Ich-Perspektive
 Fehlende Sektionen erben vom Standard-Preset (so bleibt der Coach die vertraute
 Freundin, auch wenn ein Preset nur die Herrin-Stimme ändert).
 
@@ -43,16 +45,18 @@ import re
 logger = logging.getLogger(__name__)
 
 _BUILTIN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets")
-_SECTIONS = ("stil_kopf", "stil_fuss", "coach_stil")
+_SECTIONS = ("stil_kopf", "stil_fuss", "coach_stil", "stimme_ich")
 # Mitgelieferte Presets in fester Menü-Reihenfolge (Nummern in /einstellungen
 # bleiben stabil); Custom-Presets hängen alphabetisch hinten dran.
-_BUILTIN_KEYS = ("standard", "streng", "verspielt", "kink_standard", "kink_frech")
-_TEMPLATE_NAMEN = ("regeln_gespraech", "grundierung_zusatz")
+_BUILTIN_KEYS = ("standard", "streng", "verspielt", "kink_standard", "kink_frech",
+                 "vanilla_freundin", "vanilla_freund", "vanilla_neutral")
+_TEMPLATE_NAMEN = ("regeln_gespraech", "grundierung_zusatz", "regeln_vanilla")
 
 DEFAULT = "standard"
-# Standard-Preset je Paar-Modus (Vanilla folgt mit Etappe 2 – bis dahin Kink-Standard,
-# damit ein gesetzter Vanilla-Modus nie auf die Herrin-Stimme zurückfällt).
-DEFAULT_JE_MODUS = {"bdsm": "standard", "kink": "kink_standard", "vanilla": "kink_standard"}
+# Standard-Preset je Paar-Modus. Vanilla: die drei Presets sind die wählbare
+# PERSONA der neutralen dritten Stimme (Freundin / Freund / neutral), nicht nur
+# ein Tonfall – gewählt im Onboarding-Schritt "Stimme" bzw. /einstellungen 2.
+DEFAULT_JE_MODUS = {"bdsm": "standard", "kink": "kink_standard", "vanilla": "vanilla_freundin"}
 
 
 def _parse_preset(text: str) -> dict:
@@ -100,7 +104,8 @@ def _lade_presets() -> dict[str, dict]:
         pfad = os.path.join(_BUILTIN_DIR, f"{key}.md")
         with open(pfad, encoding="utf-8") as f:
             preset = _parse_preset(f.read())
-        if key in DEFAULT_JE_MODUS.values() and not all(preset.get(s) for s in _SECTIONS):
+        pflicht = _SECTIONS if preset.get("modus") == "vanilla" else _SECTIONS[:3]
+        if key in DEFAULT_JE_MODUS.values() and not all(preset.get(s) for s in pflicht):
             raise RuntimeError(f"Preset-Datei {pfad} unvollständig – Modus-Standard braucht alle Sektionen")
         presets[key] = preset
 
@@ -131,7 +136,7 @@ def _lade_presets() -> dict[str, dict]:
     for key, preset in presets.items():
         standard = presets[DEFAULT_JE_MODUS.get(preset.get("modus", "bdsm"), DEFAULT)]
         for s in _SECTIONS:
-            preset.setdefault(s, standard[s])
+            preset.setdefault(s, standard.get(s, ""))
         if not preset.get("label"):
             preset["label"] = key.capitalize()
     return presets

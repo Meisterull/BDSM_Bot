@@ -84,9 +84,17 @@ def _zweiwochen_takt() -> bool:
     return datetime.now(ZoneInfo(config.TIMEZONE)).isocalendar().week % 2 == 0
 
 
+# Vanilla-Modus (Etappe 2): nur diese Jobs laufen für ein gleichberechtigtes
+# Paar – alles andere (Follow-up, Tiny-Task-Freigabe, Training, Wochenplan,
+# Coach-/Spiel-Impuls, Blitz, Lücken, Reflexionen …) setzt eine führende Seite
+# voraus und wird zentral im _job_guard übersprungen. Etappe 3 erweitert die Liste.
+VANILLA_JOBS = frozenset({"stimmung_job", "vanilla_impuls_job", "nachhol_tick_job"})
+
+
 def _job_guard(fn):
     """Scheduler-Job absichern: (1) bei aktiver Safeword-Pause gar nicht laufen
-    (kein automatischer Versand, solange pausiert), (2) Qdrant-/LLM-Fehler dürfen
+    (kein automatischer Versand, solange pausiert), (1b) im Vanilla-Modus nur
+    die Jobs aus VANILLA_JOBS, (2) Qdrant-/LLM-Fehler dürfen
     den Job nicht ungebremst durchschlagen lassen (Traceback-Log).
     Eine Abwesenheit (/abwesend) pausiert BEWUSST nichts – alle Jobs laufen
     weiter, der Zeitraum fließt nur als Fakt in die Generier-Prompts ein
@@ -95,6 +103,10 @@ def _job_guard(fn):
     async def wrapper(*args, **kwargs):
         if state.is_paused():
             logger.info("Scheduler-Job '%s' übersprungen – System per Safeword pausiert", fn.__name__)
+            return
+        from bot.services import modi
+        if modi.ist_vanilla() and fn.__name__ not in VANILLA_JOBS:
+            logger.debug("Scheduler-Job '%s' übersprungen – Vanilla-Modus", fn.__name__)
             return
         try:
             return await fn(*args, **kwargs)

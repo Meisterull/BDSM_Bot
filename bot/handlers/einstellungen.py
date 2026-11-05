@@ -60,18 +60,31 @@ _ZEIT_RE = re.compile(r"(?:[01]?\d|2[0-3]):[0-5]\d")
 
 
 def _stil_hinweis() -> str:
+    if modi.ist_vanilla():
+        return "Wer soll der Bot für euch sein? Schreibe die Nummer:\n" + persona_presets.stil_hinweis()
     return "Welchen Stil soll die Bot-Stimme haben? Schreibe die Nummer:\n" + persona_presets.stil_hinweis()
 
 
 def _bot_name_hinweis() -> str:
+    if modi.ist_vanilla():
+        return "Wie soll die Stimme des Bots heißen?\nName eingeben – oder `-` für keinen Namen."
     d = rollen.dom()
     return (f"Wie soll die Bot-{d['label']} heißen?\nName eingeben – oder `-` für keinen Namen "
             f"(„{d['anrede']}“).")
 
 
 def _anrede_hinweis() -> str:
+    if modi.ist_vanilla():
+        return ("Wie soll der Bot euch ansprechen? Schreibe *beide Anreden durch Komma getrennt* – "
+                "zuerst die Person, die den Bot eingerichtet hat, dann die eingeladene Person, "
+                "z.B. `Anna, Jonas`. `-` = keine Anreden.")
     s = rollen.sub()
     return f"Wie soll {s['label_nom']} angesprochen werden?\nAnrede eingeben – oder `-` für neutral."
+
+
+def _anreden_anzeige() -> str:
+    """Menü-Zeile 5 im Vanilla-Modus: beide Anreden."""
+    return (f"{persona_config.dom_anrede() or '—'} / {persona_config.sklave_anrede() or '—'}")
 
 
 def _modus_hinweis() -> str:
@@ -113,10 +126,13 @@ def _menu_text() -> str:
         "⚙️ *Einstellungen*",
         "",
         f"1️⃣ Sprache: {esc(persona_config.sprache() or 'Deutsch (Standard)')}",
-        f"2️⃣ Persönlichkeits\\-Stil: {esc(stil_label)}",
+        (f"2️⃣ Stimme: {esc(stil_label)}" if modi.ist_vanilla()
+         else f"2️⃣ Persönlichkeits\\-Stil: {esc(stil_label)}"),
         f"3️⃣ Rollen\\-Konstellation: {esc(rollen.aktuelle_kombi_label())}",
-        f"4️⃣ Bot\\-Name: {esc(persona_config.bot_name() or '— („' + rollen.dom()['anrede'] + '“)')}",
-        f"5️⃣ Anrede \\({esc(rollen.sub()['label'])}\\): {esc(persona_config.sklave_anrede() or '— (neutral)')}",
+        (f"4️⃣ Bot\\-Name: {esc(persona_config.bot_name() or '—')}" if modi.ist_vanilla()
+         else f"4️⃣ Bot\\-Name: {esc(persona_config.bot_name() or '— („' + rollen.dom()['anrede'] + '“)')}"),
+        (f"5️⃣ Anreden: {esc(_anreden_anzeige())}" if modi.ist_vanilla()
+         else f"5️⃣ Anrede \\({esc(rollen.sub()['label'])}\\): {esc(persona_config.sklave_anrede() or '— (neutral)')}"),
         f"6️⃣ Setup\\-Kontext: {esc(setup_kurz or '—')}",
         f"7️⃣ Tages\\-Zeiten: Follow\\-up {esc(persona_config.zeit('followup_time'))} u\\.a\\.",
         f"8️⃣ Safeword: {esc(persona_config.safeword())} / {esc(persona_config.resume_wort())}",
@@ -131,7 +147,8 @@ def _menu_text() -> str:
 
 async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = str(update.effective_chat.id)
-    if chat_id != paare.dom_chat_id():
+    # Vanilla: beide Seiten dürfen einstellen (gleichberechtigt); sonst Dom-only.
+    if chat_id != paare.dom_chat_id() and not (modi.gleichberechtigt() and chat_id == paare.sub_chat_id()):
         return
     state.set_mode(chat_id, "einstellungen_wahl")
     await update.message.reply_text(_menu_text(), parse_mode="MarkdownV2")
@@ -226,7 +243,16 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         elif feld_key == "bot_name":
             await persona_config.set_bot_name(wert[:40])
         elif feld_key == "sklave_anrede":
-            await persona_config.set_sklave_anrede(wert[:40])
+            if modi.ist_vanilla():
+                teile = [x.strip() for x in wert.split(",")] if wert else ["", ""]
+                if len(teile) != 2:
+                    await update.message.reply_text(
+                        t("EINSTELLUNGEN_STIL_UNBEKANNT", hinweis=_anrede_hinweis()), parse_mode="Markdown")
+                    return
+                await persona_config.set_dom_anrede(teile[0][:40])
+                await persona_config.set_sklave_anrede(teile[1][:40])
+            else:
+                await persona_config.set_sklave_anrede(wert[:40])
         elif feld_key == "setup_kontext":
             await persona_config.set_setup_kontext(wert[:600])
         elif feld_key == "safeword":
@@ -261,6 +287,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await pairing._setze_menues(context, paare.paar_im_kontext())
             except Exception:
                 logger.exception("Menüs nach Moduswechsel nicht neu setzbar (greift beim Neustart)")
+            # Vanilla hat einen eigenen Job-Satz (Stimmung an beide + Impuls) –
+            # Crons sofort neu planen, der _job_guard gatet den Rest.
+            try:
+                from bot import main as main_mod
+                main_mod.plane_zeit_jobs(context.bot, paare.paar_im_kontext())
+            except Exception:
+                logger.exception("Zeit-Jobs nach Moduswechsel nicht umplanbar (greift beim Neustart)")
         elif feld_key == "coach_ruhe":
             if not stille_checkin.einstellung_anwenden(text):
                 await update.message.reply_text(

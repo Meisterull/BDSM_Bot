@@ -49,3 +49,17 @@ def t(key: str, **fmt) -> str:
     bei unbekanntem Key (Tippfehler sollen laut knallen, nicht still leer senden)."""
     text = _katalog()[key]
     return text.format(**fmt) if fmt else text
+
+
+def t_modus(key: str, **fmt) -> str:
+    """Wie t(), aber mit Modus-Variante: im Vanilla-Modus gewinnt `<key>_VANILLA`,
+    im Kink-Modus `<key>_KINK`, falls der Katalog sie kennt – sonst der
+    Basis-Text. So bleiben BDSM-Texte byte-identisch und die Flows (Onboarding,
+    Hinweise) bekommen ihre Wortwahl ohne if-Kaskaden in den Handlern."""
+    from bot.services import modi
+    m = modi.aktuell()
+    if m != modi.BDSM:
+        variante = f"{key}_{m.upper()}"
+        if variante in _katalog():
+            return t(variante, **fmt)
+    return t(key, **fmt)
