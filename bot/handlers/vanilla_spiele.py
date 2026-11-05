@@ -133,19 +133,19 @@ async def _callback_task(query, rolle: str, point_id: str) -> None:
     await nachfrage_senden(None, rolle, task, reply=query.message.reply_text)
 
 
-async def _callback_follow(query, bot, rolle: str, action: str, point_id: str) -> None:
+async def aufgabe_abschliessen(bot, rolle: str, point_id: str, ja: bool) -> dict:
+    """Kern für Knopf UND Mini-App: Aufgabe der Person abschließen, Punkte/Wette
+    buchen, Reaktion der Stimme in den Chat. Rückgabe {fehler} oder
+    {ok, reaktion, zeile, verloren, rang_neu, punkte, streak}."""
     task = await qdrant.get_task(point_id)
     if not task or task.get("user_id") != qdrant.mandanten_key(rolle):
-        await query.edit_message_reply_markup(reply_markup=None)
-        return
+        return {"fehler": t("COMMON_TASK_NICHT_GEFUNDEN")}
     if task.get("status") not in _OFFENE_STATUS:
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(t("MEINEAUFGABEN_NICHT_OFFEN"))
-        return
-    await query.edit_message_reply_markup(reply_markup=None)
+        return {"fehler": t("MEINEAUFGABEN_NICHT_OFFEN")}
     aufgabe = task.get("aufgabe", "")
-    chat_id = str(query.message.chat_id)
-    if action == "ja":
+    paar = paare.paar_im_kontext()
+    chat_id = paar.chat_id(rolle)
+    if ja:
         await qdrant.update_task(point_id, {"status": "erledigt", "erledigt_am": datetime.now(timezone.utc).isoformat()})
         ergebnis = await vpkt.erledigt(rolle, task)
         system, user = vp.reaktion_erledigt(rolle, aufgabe)
@@ -153,20 +153,30 @@ async def _callback_follow(query, bot, rolle: str, action: str, point_id: str) -
         boni = " + ".join(f"{n} {p}" for n, p in ergebnis["boni"])
         zeile = t("VANILLA_ERLEDIGT_PUNKTE", plus=ergebnis["punkte"] - ergebnis["alt"], boni=boni,
                   stand=ergebnis["punkte"], streak=ergebnis["streak"])
-        await query.message.reply_text(reaktion + "\n\n" + zeile)
+        await telegram_helper.send_an(bot, paar, rolle, reaktion + "\n\n" + zeile)
         state.add_message(chat_id, "assistant", reaktion)
         alt_rang, neu_rang = vpkt.rang(ergebnis["alt"]), vpkt.rang(ergebnis["punkte"])
         if neu_rang != alt_rang:
-            await query.message.reply_text(t("VANILLA_RANG_AUF", rang=neu_rang), parse_mode="Markdown")
-    else:
-        await qdrant.update_task(point_id, {"status": "nicht_erledigt"})
-        verloren = await vpkt.nicht_erledigt(rolle)
-        system, user = vp.reaktion_nicht_erledigt(rolle, aufgabe)
-        reaktion = await _llm(system, user, t("VANILLA_NICHT_ERLEDIGT_FALLBACK"))
-        if verloren:
-            reaktion += "\n\n" + t("VANILLA_WETTE_VERLOREN", einsatz=verloren)
-        await query.message.reply_text(reaktion)
-        state.add_message(chat_id, "assistant", reaktion)
+            await telegram_helper.send_an(bot, paar, rolle, t("VANILLA_RANG_AUF", rang=neu_rang), parse_mode="Markdown")
+        return {"ok": True, "reaktion": reaktion, "zeile": zeile, "verloren": 0,
+                "rang_neu": neu_rang if neu_rang != alt_rang else "",
+                "punkte": ergebnis["punkte"], "streak": ergebnis["streak"]}
+    await qdrant.update_task(point_id, {"status": "nicht_erledigt"})
+    verloren = await vpkt.nicht_erledigt(rolle)
+    system, user = vp.reaktion_nicht_erledigt(rolle, aufgabe)
+    reaktion = await _llm(system, user, t("VANILLA_NICHT_ERLEDIGT_FALLBACK"))
+    if verloren:
+        reaktion += "\n\n" + t("VANILLA_WETTE_VERLOREN", einsatz=verloren)
+    await telegram_helper.send_an(bot, paar, rolle, reaktion)
+    state.add_message(chat_id, "assistant", reaktion)
+    return {"ok": True, "reaktion": reaktion, "zeile": "", "verloren": verloren, "rang_neu": ""}
+
+
+async def _callback_follow(query, bot, rolle: str, action: str, point_id: str) -> None:
+    await query.edit_message_reply_markup(reply_markup=None)
+    ergebnis = await aufgabe_abschliessen(bot, rolle, point_id, action == "ja")
+    if ergebnis.get("fehler") and ergebnis["fehler"] == t("MEINEAUFGABEN_NICHT_OFFEN"):
+        await query.message.reply_text(ergebnis["fehler"])
 
 
 # ---------------------------------------------------------------- /wuerfel
@@ -193,6 +203,19 @@ async def wuerfel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         logger.warning("reply_dice fehlgeschlagen, Zufall ohne Animation: %s", e)
         kategorie = random.choice(pool)
+    ergebnis = await wuerfel_idee(context.bot, rolle, kategorie)
+    if ergebnis.get("fehler"):
+        await update.message.reply_text(t("WUERFEL_FEHLER"))
+
+
+async def wuerfel_idee(bot, rolle: str, kategorie: str | None = None) -> dict:
+    """Kern für /wuerfel und Mini-App: Überraschungs-Idee aus `kategorie` (sonst
+    Zufall), als Aufgabe angelegt und in den Chat der Person geschickt."""
+    andere = vp.andere_rolle(rolle)
+    profil = await qdrant.get_user_profile(rolle) or {}
+    partner = await qdrant.get_user_profile(andere) or {}
+    if not kategorie:
+        kategorie = random.choice(kategorie_logik.katalog_kategorien())
     from bot.scheduler import vanilla as sv
     letzte = await sv.letzte_impulse(rolle)
     system, prompt = vp.impuls(rolle, [kategorie], profil, partner, letzte_impulse=letzte)
@@ -200,13 +223,14 @@ async def wuerfel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = await limits_check.generate_mit_limit_retry(
         prompt, vp.no_gos(profil, rolle), vp.no_gos(partner, andere), system=system)
     if not text:
-        await update.message.reply_text(t("WUERFEL_FEHLER"))
-        return
+        return {"fehler": t("WUERFEL_FEHLER")}
     await qdrant.erstelle_task(text, kategorie, 1, quelle="vanilla_wuerfel", user_id=rolle,
                                extra={"erteilt_von": "stimme"})
-    await update.message.reply_text(t("VANILLA_WUERFEL_PREFIX") + text)
-    state.add_message(str(update.effective_chat.id), "assistant", text)
+    paar = paare.paar_im_kontext()
+    await telegram_helper.send_an(bot, paar, rolle, t("VANILLA_WUERFEL_PREFIX") + text)
+    state.add_message(paar.chat_id(rolle), "assistant", text)
     logger.info("Vanilla-Würfel (%s): Kategorie %s", rolle, kategorie)
+    return {"ok": True, "kategorie": kategorie_logik.anzeige_name(kategorie), "text": text}
 
 
 # ---------------------------------------------------------------- /quiz
@@ -313,7 +337,7 @@ async def wette(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                                     reply_markup=InlineKeyboardMarkup(buttons))
 
 
-async def _callback_wette(query, rolle: str, einsatz_s: str, nonce: str) -> None:
+async def _callback_wette(query, bot, rolle: str, einsatz_s: str, nonce: str) -> None:
     chat_id = str(query.message.chat_id)
     s = state.get(chat_id)
     await query.edit_message_reply_markup(reply_markup=None)
@@ -321,16 +345,27 @@ async def _callback_wette(query, rolle: str, einsatz_s: str, nonce: str) -> None
         await query.message.reply_text(t("WETTE_STATE_WEG"))
         return
     s.pop("vwette_nonce", None)
-    ergebnis = await vpkt.wette_setzen(rolle, int(einsatz_s))
+    ergebnis = await wette_platzieren(bot, rolle, int(einsatz_s))
+    if ergebnis.get("fehler"):
+        await query.message.reply_text(ergebnis["fehler"])
+
+
+async def wette_platzieren(bot, rolle: str, einsatz: int) -> dict:
+    """Kern für Knopf und Mini-App: Wette setzen, Bestätigung + Reaktion in den Chat."""
+    if not await _offene_aufgaben(rolle):
+        return {"fehler": t("VANILLA_WETTE_KEINE_AUFGABE")}
+    ergebnis = await vpkt.wette_setzen(rolle, int(einsatz))
     if not ergebnis:
-        await query.message.reply_text(t("WETTE_STATE_WEG"))
-        return
-    await query.message.reply_text(
-        t("WETTE_PLATZIERT", einsatz=ergebnis["einsatz"], rest=ergebnis["rest"]), parse_mode="Markdown")
+        return {"fehler": t("WETTE_STATE_WEG")}
+    paar = paare.paar_im_kontext()
+    await telegram_helper.send_an(bot, paar, rolle,
+                                  t("WETTE_PLATZIERT", einsatz=ergebnis["einsatz"], rest=ergebnis["rest"]),
+                                  parse_mode="Markdown")
     system, user = vp.wette_reaktion(rolle, ergebnis["einsatz"])
     reaktion = await _llm(system, user, "", max_tokens=150)
     if reaktion:
-        await query.message.reply_text(reaktion)
+        await telegram_helper.send_an(bot, paar, rolle, reaktion)
+    return {"ok": True, "einsatz": ergebnis["einsatz"], "rest": ergebnis["rest"], "reaktion": reaktion}
 
 
 # ---------------------------------------------------------------- /wunsch
@@ -358,9 +393,16 @@ async def wunsch_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if text.lower() in ("/abbrechen", "abbrechen") or not rolle:
         await update.message.reply_text(t("COMMON_ABGEBROCHEN"))
         return
+    ergebnis = await wunsch_senden(context.bot, rolle, text)
+    await update.message.reply_text(ergebnis.get("fehler") or t("VANILLA_WUNSCH_GESENDET"))
+
+
+async def wunsch_senden(bot, rolle: str, text: str) -> dict:
+    """Kern für /wunsch und Mini-App: Wunsch speichern und mit Gern/Später-Knöpfen
+    an die andere Seite schicken."""
+    text = (text or "").strip()
     if len(text) < 3:
-        await update.message.reply_text(t("VANILLA_WUNSCH_ZU_KURZ"))
-        return
+        return {"fehler": t("VANILLA_WUNSCH_ZU_KURZ")}
     andere = vp.andere_rolle(rolle)
     point_id = await qdrant.save_wunsch(rolle, {
         "text": text[:1000], "status": "offen", "an": andere,
@@ -373,12 +415,12 @@ async def wunsch_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         InlineKeyboardButton(t("BUTTON_WUNSCH_SPAETER"), callback_data=f"vwunsch:spaeter:{point_id}"),
     ]])
     await telegram_helper.send_an(
-        context.bot, paare.paar_im_kontext(), andere,
+        bot, paare.paar_im_kontext(), andere,
         t("VANILLA_WUNSCH_AN_PARTNER", von=telegram_helper.escape_md(von),
           text=telegram_helper.md_einbett_sicher(text)),
         parse_mode="Markdown", reply_markup=buttons)
-    await update.message.reply_text(t("VANILLA_WUNSCH_GESENDET"))
     logger.info("Vanilla-Wunsch (%s → %s) gesendet.", rolle, andere)
+    return {"ok": True}
 
 
 async def _callback_wunsch(query, bot, rolle: str, entscheidung: str, point_id: str) -> None:
@@ -431,26 +473,39 @@ async def _callback_gutschein(query, bot, rolle: str, gid: str, nonce: str) -> N
         await query.message.reply_text(t("WETTE_STATE_WEG"))
         return
     s.pop("vgut_nonce", None)
+    ergebnis = await gutschein_einloesen(bot, rolle, gid)
+    if ergebnis.get("fehler"):
+        await query.message.reply_text(ergebnis["fehler"])
+
+
+async def gutschein_einloesen(bot, rolle: str, gid: str) -> dict:
+    """Kern für Knopf und Mini-App: Punkte abziehen, eigene Bestätigung in den
+    Chat, Hinweis in der Stimme an die andere Seite."""
+    g = vpkt.gutschein(gid)
+    if not g:
+        return {"fehler": t("WETTE_STATE_WEG")}
     profil = await qdrant.get_user_profile(rolle) or {}
     if int(profil.get("punkte", 0) or 0) < g["kosten"]:
-        await query.message.reply_text(t("VANILLA_GUTSCHEIN_ZU_WENIG"))
-        return
+        return {"fehler": t("VANILLA_GUTSCHEIN_ZU_WENIG")}
     ergebnis = await vpkt.buchen(rolle, -g["kosten"], f"Gutschein {gid}")
     await qdrant.patch_profile_fields(rolle, {
         "gutscheine_eingeloest": int(profil.get("gutscheine_eingeloest", 0) or 0) + 1})
-    await query.message.reply_text(
-        t("VANILLA_GUTSCHEIN_EINGELOEST", name=g["name"], stand=ergebnis["neu"]), parse_mode="Markdown")
+    paar = paare.paar_im_kontext()
+    await telegram_helper.send_an(bot, paar, rolle,
+                                  t("VANILLA_GUTSCHEIN_EINGELOEST", name=g["name"], stand=ergebnis["neu"]),
+                                  parse_mode="Markdown")
     andere = vp.andere_rolle(rolle)
     system, user = vp.gutschein_hinweis(rolle, g)
     hinweis = await _llm(system, user, "", max_tokens=200)
     ich = vp.person(rolle)
     von = ich["anrede"] or ("deine Partnerin" if ich["fem"] else "dein Partner")
     await telegram_helper.send_an(
-        bot, paare.paar_im_kontext(), andere,
+        bot, paar, andere,
         t("VANILLA_GUTSCHEIN_AN_PARTNER", von=telegram_helper.escape_md(von), name=g["name"],
           beschreibung=g["beschreibung"], hinweis=hinweis),
         parse_mode="Markdown")
     logger.info("Vanilla-Gutschein %s eingelöst (%s).", gid, rolle)
+    return {"ok": True, "name": g["name"], "stand": ergebnis["neu"]}
 
 
 # ---------------------------------------------------------------- /stats
@@ -505,12 +560,21 @@ async def termin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def _termin_anlegen(update: Update, context, rolle: str, text: str) -> None:
+    ergebnis = await termin_anlegen(context.bot, rolle, text)
+    if ergebnis.get("fehler"):
+        await update.message.reply_text(ergebnis["fehler"], parse_mode="Markdown")
+        return
+    await update.message.reply_text(t("VANILLA_TERMIN_GESPEICHERT", termin=ergebnis["termin"]), parse_mode="Markdown")
+
+
+async def termin_anlegen(bot, rolle: str, text: str) -> dict:
+    """Kern für /termin und Mini-App: Datum erkennen, als geplante Aufgabe des
+    Slots speichern (Erinnerung an beide via vanilla_termin_job), Partner informieren."""
     from bot.services import datum_erkennung, persona_config
     from zoneinfo import ZoneInfo
     treffer = datum_erkennung.finde_termin(text)
     if not treffer:
-        await update.message.reply_text(t("VANILLA_TERMIN_UNKLAR"), parse_mode="Markdown")
-        return
+        return {"fehler": t("VANILLA_TERMIN_UNKLAR")}
     datum, ausdruck = treffer
     beschreibung = text.replace(ausdruck, "").strip(" ,:–-") or text
     tz = ZoneInfo(config.TIMEZONE)
@@ -523,17 +587,17 @@ async def _termin_anlegen(update: Update, context, rolle: str, text: str) -> Non
         extra={"zustellung_ab": zustellung.astimezone(timezone.utc).isoformat(),
                "termin_datum": datum.isoformat(), "erteilt_von": rolle})
     wann = datum_erkennung.format_termin(datum)
-    await update.message.reply_text(t("VANILLA_TERMIN_GESPEICHERT", termin=wann), parse_mode="Markdown")
     ich = vp.person(rolle)
     von = ich["anrede"] or ("deine Partnerin" if ich["fem"] else "dein Partner")
     try:
         await telegram_helper.send_an(
-            context.bot, paare.paar_im_kontext(), vp.andere_rolle(rolle),
+            bot, paare.paar_im_kontext(), vp.andere_rolle(rolle),
             t("VANILLA_TERMIN_AN_PARTNER", von=telegram_helper.escape_md(von), termin=wann,
               text=telegram_helper.md_einbett_sicher(beschreibung[:300])),
             parse_mode="Markdown")
     except Exception:
         logger.exception("Termin-Hinweis an Partner nicht zustellbar")
+    return {"ok": True, "termin": wann, "datum": datum.isoformat(), "text": beschreibung[:300]}
 
 
 # ---------------------------------------------------------------- /wochenplanung
@@ -580,7 +644,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         elif parts[0] == "vfollow" and len(parts) == 3:
             await _callback_follow(query, context.bot, rolle, parts[1], parts[2])
         elif parts[0] == "vwette" and len(parts) == 3:
-            await _callback_wette(query, rolle, parts[1], parts[2])
+            await _callback_wette(query, context.bot, rolle, parts[1], parts[2])
         elif parts[0] == "vwunsch" and len(parts) == 3 and parts[1] in ("gern", "spaeter"):
             await _callback_wunsch(query, context.bot, rolle, parts[1], parts[2])
         elif parts[0] == "vgut" and len(parts) == 3:

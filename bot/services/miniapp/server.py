@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 from bot import config
 from bot.services.miniapp import aktionen, kern, training, uebersicht, werkstatt
+from bot.services.miniapp import vanilla as miniapp_vanilla
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(403, {"fehler": "nicht autorisiert"})
             return None
         return aufgeloest
+
+    @staticmethod
+    def _ist_vanilla(paar) -> bool:
+        from bot.services import modi, paare
+        with paare.kontext(paar.paar_id):
+            return modi.ist_vanilla()
 
     def _body_json(self) -> dict | None:
         try:
@@ -86,7 +93,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             paar, rolle = auth
             try:
-                daten = kern._await(uebersicht._uebersicht_daten(paar.paar_id, rolle))
+                if self._ist_vanilla(paar):
+                    daten = kern._await(miniapp_vanilla._uebersicht_vanilla(paar.paar_id, rolle))
+                else:
+                    daten = kern._await(uebersicht._uebersicht_daten(paar.paar_id, rolle))
             except Exception:
                 logger.exception("Mini-App: Übersicht fehlgeschlagen")
                 self._json(500, {"fehler": "Daten nicht ladbar"})
@@ -144,6 +154,29 @@ class _Handler(BaseHTTPRequestHandler):
             "/api/profil_liste": (None, False),
             "/api/abwesenheit": (None, False),
         }
+        # Vanilla (Etappe 4): /api/v/<aktion> für beide Seiten, nur im Vanilla-Modus
+        if pfad.startswith("/api/v/"):
+            name = pfad[len("/api/v/"):]
+            if name not in miniapp_vanilla.AKTIONEN:
+                self._antwort(404, b"nicht gefunden", "text/plain")
+                return
+            auth = self._auth()
+            if not auth:
+                return
+            paar, rolle = auth
+            if not self._ist_vanilla(paar):
+                self._json(409, {"fehler": "nur im Vanilla-Modus"})
+                return
+            body = self._body_json()
+            if body is None:
+                return
+            try:
+                ergebnis = kern._await(miniapp_vanilla._aktion(paar.paar_id, rolle, name, body), timeout=180)
+                self._json(409 if ergebnis.get("fehler") else 200, ergebnis)
+            except Exception:
+                logger.exception("Mini-App: /api/v/%s fehlgeschlagen", name)
+                self._json(500, {"fehler": "Aktion fehlgeschlagen"})
+            return
         if pfad not in routen:
             self._antwort(404, b"nicht gefunden", "text/plain")
             return
@@ -152,6 +185,11 @@ class _Handler(BaseHTTPRequestHandler):
             return
         paar, rolle = auth
         noetige_rolle, braucht_text = routen[pfad]
+        # Vanilla: die rollengebundenen BDSM-Routen (Werkstatt, Studio, Training,
+        # Sub-Wunsch an die Domina) gibt es nicht – nur die Paar-Routen laufen.
+        if pfad not in ("/api/profil_liste", "/api/abwesenheit") and self._ist_vanilla(paar):
+            self._json(409, {"fehler": "nicht im Vanilla-Modus"})
+            return
         if noetige_rolle and rolle != noetige_rolle:
             self._json(403, {"fehler": f"nur für die Rolle '{noetige_rolle}'"})
             return

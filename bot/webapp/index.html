@@ -80,14 +80,47 @@ window.onerror = function (msg, src, zeile) {
 <div id="app" style="display:none">
   <h1 id="titel">Cockpit</h1>
   <div class="kacheln" id="kacheln"></div>
+  <!-- Vanilla-Modus (Etappe 4): eigene Ansicht für beide Seiten, BDSM-Blöcke bleiben versteckt -->
+  <div id="vanilla" style="display:none">
+    <h2 id="v-partner-titel">Die andere Seite</h2>
+    <div class="karte" id="v-partner"></div>
+    <div id="v-stimmung-block" style="display:none"><h2>Stimmung</h2><div class="karte" id="v-stimmung"></div></div>
+    <h2>Deine offenen Ideen</h2><div id="v-offene"></div>
+    <div class="aktionen"><button id="v-wuerfel" class="primaer">🎲 Idee würfeln</button></div>
+    <div id="v-wuerfel-meldung" class="feld-meldung"></div>
+    <h2>Wunsch an die andere Seite</h2>
+    <div class="karte">
+      <textarea id="v-wunsch-text" placeholder="Was wünschst du dir? Geht mit „Gern / Später“-Knöpfen an die andere Seite."></textarea>
+      <div class="aktionen"><button id="v-wunsch-senden" class="primaer">Schicken 💌</button></div>
+      <div id="v-wunsch-meldung" class="feld-meldung"></div>
+    </div>
+    <h2>Gutscheine</h2>
+    <div class="karte" id="v-gutscheine"></div>
+    <div id="v-wette-block" style="display:none"><h2>Wette</h2><div class="karte" id="v-wette"></div></div>
+    <h2>Termine &amp; Dates</h2>
+    <div class="karte">
+      <div id="v-termine"></div>
+      <div class="zeile"><input type="text" id="v-termin-text" maxlength="200" placeholder="z.B. Samstag Kino zu zweit"></div>
+      <div class="aktionen"><button id="v-termin-setzen" class="primaer">📅 Eintragen</button></div>
+      <div id="v-termin-meldung" class="feld-meldung"></div>
+    </div>
+    <h2>Ideen-Plan für die Woche</h2>
+    <div class="karte">
+      <div id="v-wochenplan" class="anleitung" style="white-space:pre-wrap"></div>
+      <div class="zeile"><input type="text" id="v-wochenplan-thema" maxlength="100" placeholder="Schwerpunkt (optional)"></div>
+      <div class="aktionen"><button id="v-wochenplan-holen" class="primaer">🗓 Neuen Plan an uns beide</button></div>
+      <div id="v-wochenplan-meldung" class="feld-meldung"></div>
+    </div>
+    <h2>Zuletzt</h2><div id="v-letzte"></div>
+  </div>
   <div id="verlauf-block" style="display:none"><h2>Erledigt pro Woche</h2>
     <div class="karte" id="verlauf"></div></div>
   <div id="privilegien-block" style="display:none"><h2>Privilegien &amp; Wette</h2>
     <div class="karte" id="privilegien"></div></div>
   <div id="stimmung-block" style="display:none"><h2>Aktuelle Stimmung</h2>
     <div class="karte" id="stimmung"></div></div>
-  <h2>Offene Aufgaben</h2><div id="offene"></div>
-  <h2>Zuletzt</h2><div id="letzte"></div>
+  <div id="bdsm-listen"><h2>Offene Aufgaben</h2><div id="offene"></div>
+  <h2>Zuletzt</h2><div id="letzte"></div></div>
   <div id="studio" style="display:none">
     <h2>Sprachnachrichten-Studio</h2>
     <div class="karte">
@@ -258,6 +291,7 @@ async function laden() {
   }
   el("laden").style.display = "none";
   el("app").style.display = "";
+  if (d.modus === "vanilla") { vanillaRender(d); return; }
   el("titel").textContent = d.rolle === "domina" ? "Cockpit" : "Deine Übersicht";
   el("kacheln").innerHTML = [
     [d.punkte, "Punkte"], [d.streak, "Streak"], [d.streak_max, "Bester Streak"],
@@ -326,6 +360,87 @@ async function laden() {
     el("abw-grund").value = a.grund || "";
   }
 }
+
+// ---------------------------------------------------------------- Vanilla (Etappe 4)
+function vanillaRender(d) {
+  el("titel").textContent = d.ich ? `Hi ${d.ich} 💞` : "Eure Übersicht 💞";
+  el("bdsm-listen").style.display = "none";
+  el("vanilla").style.display = "";
+  el("kacheln").innerHTML = [
+    [d.punkte, "Punkte"], [d.rang?.titel || "–", "Rang"], [d.streak, "Streak"],
+    [d.streak_max, "Bester Streak"], [d.erledigt_gesamt, "Umgesetzt"], [d.gutscheine_eingeloest, "Gutscheine"],
+  ].map(([w, l]) => `<div class="kachel"><b>${esc(String(w))}</b><span>${l}</span></div>`).join("");
+  el("v-partner-titel").textContent = d.partner_name ? d.partner_name[0].toUpperCase() + d.partner_name.slice(1) : "Die andere Seite";
+  el("v-partner").innerHTML =
+    `⭐ ${esc(String(d.partner.punkte))} Punkte · 🏅 ${esc(d.partner.rang)} · 🔥 Streak ${esc(String(d.partner.streak))}` +
+    (d.partner.stimmung ? `<div class="datum">💭 ${esc(d.partner.stimmung)}</div>` : "") +
+    (d.rang?.naechster ? `<div class="datum">Dein nächster Rang: ${esc(d.rang.naechster)} ab ${esc(String(d.rang.naechster_ab))} P · Stimme: ${esc(d.stimme)}</div>` : "");
+  if (d.stimmung) { el("v-stimmung-block").style.display = ""; el("v-stimmung").textContent = d.stimmung; }
+  el("v-offene").innerHTML = d.offene_tasks.length
+    ? d.offene_tasks.map((t) => `<div class="karte"><div>${esc(t.aufgabe)}</div><div class="datum">${esc(t.erteilt_am)}${t.quelle === "vanilla_wuerfel" ? " · 🎲" : ""}</div>
+        <div class="aktionen"><button class="primaer" data-v-erledigt="${esc(t.id)}">✅ Umgesetzt</button><button data-v-nicht="${esc(t.id)}">❌ Nicht</button></div></div>`).join("")
+    : `<div class="leer">Gerade keine offene Idee – würfle dir eine.</div>`;
+  el("v-gutscheine").innerHTML = d.gutscheine.map((g) =>
+    `<div class="idee"><b>${g.moeglich ? "🎟" : "🔒"} ${esc(g.name)}</b> · ${esc(String(g.kosten))} P<div class="datum">${esc(g.beschreibung)}</div>` +
+    (g.moeglich ? `<button data-v-gutschein="${esc(g.id)}">Einlösen</button>` : "") + `</div>`).join("") +
+    `<div id="v-gutschein-meldung" class="feld-meldung"></div>`;
+  el("v-wette-block").style.display = "";
+  el("v-wette").innerHTML = d.wette_einsatz
+    ? `🎰 Laufende Wette: <b>${esc(String(d.wette_einsatz))} Punkte</b> – doppelt oder nichts`
+    : (d.offene_tasks.length && d.wett_einsaetze.length
+        ? `Doppelt oder nichts auf deine nächste Idee: <div class="aktionen">${d.wett_einsaetze.map((e) => `<button data-v-wette="${e}">🎰 ${e} P</button>`).join("")}</div>`
+        : `<span class="leer">Wetten geht mit einer offenen Idee und mindestens 10 Punkten.</span>`) +
+      `<div id="v-wette-meldung" class="feld-meldung"></div>`;
+  el("v-termine").innerHTML = d.termine.length
+    ? d.termine.map((t) => `<div>📅 <b>${esc(t.datum)}</b> ${esc(t.text)}${t.von === "partner" ? ` <span class="datum">(von ${esc(d.partner_name)})</span>` : ""}</div>`).join("")
+    : `<div class="leer">Noch kein Termin eingetragen.</div>`;
+  el("v-wochenplan").textContent = d.wochenplan || "Noch kein Plan – hol euch einen.";
+  el("v-letzte").innerHTML = d.letzte_tasks.length
+    ? d.letzte_tasks.map((t) => `<div class="karte"><span class="status-${t.status}">${t.status === "erledigt" ? "✅" : "❌"}</span> ${esc(t.aufgabe)}<div class="datum">${esc(t.erteilt_am)}</div></div>`).join("")
+    : `<div class="leer">Noch nichts.</div>`;
+  listen = d.profil_listen || {};
+  el("editor-titel").textContent = "Was du magst & deine No-Gos · Inventar";
+  editorRender();
+  const a = d.abwesenheit;
+  el("abwesenheit-status").textContent = a
+    ? `Eingetragen: ${a.von} bis ${a.bis}${a.grund ? " – " + a.grund : ""}` : "Aktuell keine Abwesenheit eingetragen.";
+  el("abw-ende").style.display = a ? "" : "none";
+  if (a) { el("abw-von").value = a.von; el("abw-bis").value = a.bis; el("abw-grund").value = a.grund || ""; }
+}
+async function vAktion(name, body, meldungId, erfolg) {
+  const m = el(meldungId);
+  if (m) m.textContent = "…";
+  try {
+    const r = await hole("/api/v/" + name, { method: "POST", body: JSON.stringify(body || {}) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler || r.status);
+    if (m) m.textContent = typeof erfolg === "function" ? erfolg(d) : (erfolg || "✅");
+    laden();
+  } catch (e) { if (m) m.textContent = "Fehler: " + e.message; }
+}
+el("vanilla").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  if (b.dataset.vErledigt) vAktion("erledigt", { task_id: b.dataset.vErledigt, ja: true }, "v-wuerfel-meldung", (d) => d.zeile || "✅ Umgesetzt – Reaktion kommt im Chat.");
+  else if (b.dataset.vNicht) vAktion("erledigt", { task_id: b.dataset.vNicht, ja: false }, "v-wuerfel-meldung", "Okay, kein Ding – Reaktion kommt im Chat.");
+  else if (b.dataset.vGutschein) {
+    if (await bestaetigen("Gutschein einlösen? Die Punkte werden abgezogen und die andere Seite informiert."))
+      vAktion("gutschein", { id: b.dataset.vGutschein }, "v-gutschein-meldung", (d) => `🎟 ${d.name} eingelöst · Stand ${d.stand} P`);
+  } else if (b.dataset.vWette) vAktion("wette", { einsatz: +b.dataset.vWette }, "v-wette-meldung", (d) => `🎰 ${d.einsatz} Punkte gesetzt · Rest ${d.rest}`);
+});
+el("v-wuerfel").addEventListener("click", () => vAktion("wuerfel", {}, "v-wuerfel-meldung", (d) => `🎲 ${d.kategorie}: ${d.text}`));
+el("v-wunsch-senden").addEventListener("click", () => {
+  const text = el("v-wunsch-text").value.trim();
+  if (!text) return;
+  vAktion("wunsch", { text }, "v-wunsch-meldung", "💌 Weitergeleitet.").then(() => { el("v-wunsch-text").value = ""; });
+});
+el("v-termin-setzen").addEventListener("click", () => {
+  const text = el("v-termin-text").value.trim();
+  if (!text) return;
+  vAktion("termin", { text }, "v-termin-meldung", (d) => `📅 Eingetragen für ${d.termin}.`).then(() => { el("v-termin-text").value = ""; });
+});
+el("v-wochenplan-holen").addEventListener("click", () =>
+  vAktion("wochenplan", { thema: el("v-wochenplan-thema").value.trim() }, "v-wochenplan-meldung", "🗓 Plan ist an euch beide raus."));
 
 const FELD_LABELS = {
   interessen: "Interessen", grenzen: "Grenzen",

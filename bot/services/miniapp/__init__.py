@@ -7,6 +7,7 @@ Der frühere Monolith (bot/services/miniapp.py) liegt jetzt in bot/services/mini
   werkstatt          – Werkstatt: Aufgabe, Wette, Inspiration, Serie, Kette.
   training           – Training und Psycho-Übungen.
   aktionen           – Anruf, Profil-Listen, Abwesenheit, Wunsch.
+  vanilla            – Vanilla-Modus: Cockpit + Aktionen beider Seiten (Etappe 4).
   server             – HTTP-Handler, TLS-Server, Start.
 
 Jeder Name wird bei JEDEM Zugriff im definierenden Teilmodul nachgeschlagen
@@ -39,6 +40,9 @@ _MODUL_VON = {
     "_MAX_BODY": "kern",
     "_PROFIL_LISTEN": "uebersicht",
     "_TLSServer": "server",
+    "AKTIONEN": "vanilla",
+    "_aktion": "vanilla",
+    "_uebersicht_vanilla": "vanilla",
     "_abwesenheit_setzen": "aktionen",
     "_anruf": "aktionen",
     "_await": "kern",

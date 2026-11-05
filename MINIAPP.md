@@ -56,6 +56,16 @@ What it shows:
   running, generators and both chat personas take the absence into account), and
   the partner is notified in chat.
 
+- **Vanilla mode** (couple mode "Vanilla", equal partners): the page switches to a
+  shared view for *both* sides – own points, rank and streak, the other side's
+  status and latest mood, open ideas with ✅/❌ check-off, a dice button for a
+  surprise idea, a wish box (delivered with "gladly / later" buttons), vouchers to
+  redeem with points (the other side is informed), the points bet, appointments
+  and dates (reminder to both on the day), the shared idea plan for the week,
+  plus the preference/no-go editor, inventory and absence calendar. The
+  dominant-side features above (studio, workshop, training, calling) are not
+  offered in this mode and their endpoints answer 409.
+
 The server is part of the bot process (`bot/services/miniapp/`, stdlib only): it
 serves the page over HTTPS and validates Telegram's `initData` signature
 (HMAC-SHA256 with the bot token) on every API call. The user id inside is resolved

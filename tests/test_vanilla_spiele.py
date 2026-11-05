@@ -145,18 +145,20 @@ async def test_follow_callback_ja_und_nein():
                     "aufgabe": "Koch ihm was", "quelle": "vanilla_impuls"},
              "t2": {"qdrant_point_id": "t2", "user_id": "sklave", "status": "offen",
                     "aufgabe": "Massage", "quelle": "vanilla_wuerfel"}}
-    orig = (db_tasks.get_task, db_tasks.update_task, vs.grok.simple)
+    orig = (db_tasks.get_task, db_tasks.update_task, vs.grok.simple, vs.telegram_helper.send_an)
     db_tasks.get_task = AsyncMock(side_effect=lambda pid: tasks.get(pid))
     db_tasks.update_task = AsyncMock(side_effect=lambda pid, upd: tasks[pid].update(upd))
     vs.grok.simple = AsyncMock(return_value="Schön!")
+    vs.telegram_helper.send_an = AsyncMock()
+    gesendet = vs.telegram_helper.send_an
     try:
         with _modus("vanilla"), _Profile(domina={"punkte": 0}, sklave={"punkte": 10, "vanilla_wette": {"einsatz": 10}}) as p:
             # Dom bestätigt eigene Aufgabe
             u = _query("111", "vfollow:ja:t1")
             await vs.callback(u, MagicMock())
             assert tasks["t1"]["status"] == "erledigt" and p.daten["domina"]["punkte"] == 10
-            antwort = u.callback_query.message.reply_text.await_args_list[0].args[0]
-            assert "Schön!" in antwort and "+10" in antwort
+            antwort = gesendet.await_args.args[3]
+            assert gesendet.await_args.args[2] == paare.ROLLE_DOM and "Schön!" in antwort and "+10" in antwort
             # fremde Aufgabe (Sub-Task vom Dom-Chat): nichts passiert
             u = _query("111", "vfollow:ja:t2")
             await vs.callback(u, MagicMock())
@@ -165,7 +167,7 @@ async def test_follow_callback_ja_und_nein():
             u = _query("222", "vfollow:nein:t2")
             await vs.callback(u, MagicMock())
             assert tasks["t2"]["status"] == "nicht_erledigt" and p.daten["sklave"]["punkte"] == 10
-            assert "10 Punkte" in u.callback_query.message.reply_text.await_args.args[0]
+            assert gesendet.await_args.args[2] == paare.ROLLE_SUB and "10 Punkte" in gesendet.await_args.args[3]
             # Doppel-Tap: Status nicht mehr offen
             u = _query("222", "vfollow:ja:t2")
             await vs.callback(u, MagicMock())
@@ -175,7 +177,7 @@ async def test_follow_callback_ja_und_nein():
             await vs.callback(u, MagicMock())
             assert u.callback_query.message.reply_text.await_count == 0
     finally:
-        db_tasks.get_task, db_tasks.update_task, vs.grok.simple = orig
+        db_tasks.get_task, db_tasks.update_task, vs.grok.simple, vs.telegram_helper.send_an = orig
 
 
 # ---------------------------------------------------------------- Wunsch-Relay
