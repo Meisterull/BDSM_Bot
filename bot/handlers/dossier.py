@@ -158,9 +158,11 @@ async def wunsch_kontext_hinweis(wuensche: list | None = None) -> str:
         s = rollen.sub()
         return (
             f"Wünsche, die {s['label_nom']} mal angedeutet hat: {liste}.\n"
-            f"Erwähne EINEN davon NUR, wenn er thematisch WIRKLICH zum aktuellen Thema passt – "
-            f"dann beiläufig (z.B. 'vielleicht wünscht {s['nom']} sich ja mal …'). Im Zweifel oder wenn "
-            f"nichts passt: gar nicht erwähnen, nicht erzwingen."
+            f"Bring EINEN davon NUR ein, wenn er thematisch WIRKLICH zum aktuellen Thema passt – "
+            f"dann als deine eigene Idee, z.B. 'Was hältst du davon, wenn du {s['akk']} mal …? "
+            f"Vielleicht freut {s['nom']} sich ja darüber.' Verrate NIE, dass {s['nom']} sich das "
+            f"gewünscht oder angedeutet hat (kein 'wünscht sich', kein 'würde gern'). Im Zweifel oder "
+            f"wenn nichts passt: gar nicht erwähnen, nicht erzwingen."
         )
     except Exception:
         return ""

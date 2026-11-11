@@ -662,6 +662,16 @@ MESSAGES = {
         "just send it to me as “Task: …”."
     ),
     "COACH_SN_WANN": "on {tag} at {zeit}",
+    # Safety net: coach relay contains something not said → ask first. Plain text.
+    "COACH_NETZ_FRAGE": (
+        "🔎 Before this goes to {sub_akk}: it contains something that wasn't in "
+        "your message ({funde}).\n\nThis is what would be sent:\n“{inhalt}”"
+    ),
+    "BUTTON_NETZ_OK": "✅ Send as is",
+    "BUTTON_NETZ_WORT": "✍️ Only my words",
+    "BUTTON_NETZ_NEIN": "❌ Don't send",
+    "COACH_NETZ_NEIN_OK": "👍 Not sent.",
+    "COACH_NETZ_VERALTET": "That's no longer current – just tell me again what should go to {sub_akk}.",
 
     # --- Currency ⭐: ranks, deductions, threshold push, savings goal, dominant's bet ---
     "RANG_ZEILE_MIT_NAECHSTEM": "{titel} · next rank {naechster} from {ab} points",

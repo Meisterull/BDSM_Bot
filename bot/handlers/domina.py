@@ -99,6 +99,14 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     sn_blockiert = False
     if sn_gefunden and sn_inhalt:
+        # Prüf-Netz (09.11.2026): steht im Tag etwas, das die Dom-Seite so nicht
+        # gesagt hat (erfundene Zeit/Zahl/Zusatzaufgabe), erst nachfragen.
+        funde = _netz_funde(chat_id, text, response, sn_inhalt)
+        if funde:
+            await _netz_rueckfrage(update, chat_id, sn_inhalt, funde, text, level,
+                                   task_text if is_task else "", keyword_task)
+            await _save_conversation(text, response)
+            return
         sn_gesendet = await _sende_sprachnachricht_an_sklaven(update, context, sn_inhalt)
         sn_blockiert = not sn_gesendet
         # Auftrag in der ausgerichteten Nachricht (LLM-Tag ODER Detektor) →
@@ -153,21 +161,22 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _sende_sprachnachricht_an_sklaven(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                                            inhalt: str) -> bool:
+                                            inhalt: str, msg=None) -> bool:
     """[SPRACHNACHRICHT:]-Tag des Coachs: Inhalt durchs Limits-Gate (wie die
     Aufgaben-Pfade, D8/H1), in der Herrin-Stimme ausformulieren (Sprech-Tags
     bei Grok-TTS) und dem Sklaven als Text (ohne Tags) + Voice zustellen.
     True = zugestellt (Text ist raus; Voice bleibt best-effort)."""
     from bot.services import limits_check, tts
+    msg = msg or update.message
     try:
         treffer = await limits_check.verletzungen(inhalt)
     except Exception:
         logger.exception("Limits-Check der Sprachnachricht fehlgeschlagen – nicht gesendet.")
-        await update.message.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
+        await msg.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
         return False
     if treffer:
         # verletzungen() liefert Dicts (limit/matched_via) – nur die Limit-Namen zeigen
-        await update.message.reply_text(
+        await msg.reply_text(
             t("COACH_SPRACHNACHRICHT_LIMIT",
               begriffe=", ".join(sorted({v["limit"] for v in treffer}))))
         return False
@@ -183,9 +192,9 @@ async def _sende_sprachnachricht_an_sklaven(update: Update, context: ContextType
                                           voice_text=nachricht)
     except Exception:
         logger.exception("Sprachnachricht-Zustellung an den Sklaven fehlgeschlagen.")
-        await update.message.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
+        await msg.reply_text(t("COACH_SPRACHNACHRICHT_FEHLER"))
         return False
-    await update.message.reply_text(t("COACH_SPRACHNACHRICHT_GESENDET"))
+    await msg.reply_text(t("COACH_SPRACHNACHRICHT_GESENDET"))
     return True
 
 
@@ -257,9 +266,10 @@ def _nachfrage_wann(tage: int) -> str:
 
 
 async def _biete_sprachnachricht_als_aufgabe(update: Update, chat_id: str, auftrag: str,
-                                             level: int, quelltext: str = "") -> None:
+                                             level: int, quelltext: str = "", msg=None) -> None:
     """Nach einer zugestellten Sprachnachricht mit Auftrag: Ein-Tipp-Frage an
     die Dom-Seite, ob daraus eine Aufgabe (mit Nachfrage) werden soll."""
+    msg = msg or update.message
     s = state.get(chat_id)
     kennung = uuid.uuid4().hex[:8]
     s["sn_aufgabe_id"] = kennung
@@ -271,7 +281,7 @@ async def _biete_sprachnachricht_als_aufgabe(update: Update, chat_id: str, auftr
         InlineKeyboardButton(t("BUTTON_SN_AUFGABE_NEIN"), callback_data=f"snaufgabe:nein:{kennung}"),
     ]])
     # Plain-Text (kein parse_mode): der Auftrag ist LLM-Freitext.
-    await update.message.reply_text(
+    await msg.reply_text(
         t("COACH_SN_AUFGABE_FRAGE", sub_akk=rollen.sub()["label_akk"], aufgabe=auftrag),
         reply_markup=buttons)
     logger.info("Sprachnachricht mit Auftrag – Aufgaben-Angebot an die Dom-Seite (%s).", kennung)
@@ -345,6 +355,93 @@ async def callback_sn_aufgabe(update: Update, context: ContextTypes.DEFAULT_TYPE
         await telegram_helper.send_sklave(context.bot, t("SKLAVE_SN_AUFGABE_HINWEIS", wann=wann))
     except Exception:
         logger.exception("Aufgaben-Hinweis an den Sub konnte nicht zugestellt werden")
+
+
+# ---------------------------------------------------------------------------
+# Prüf-Netz: Coach-Weitergabe gegen den Wortlaut der Dom-Seite abgleichen
+# ---------------------------------------------------------------------------
+
+_NETZ_KEYS = ("netz_id", "netz_inhalt", "netz_quelltext", "netz_level", "netz_task", "netz_keyword")
+
+
+def _netz_funde(chat_id: str, text: str, response: str, inhalt: str) -> list[str]:
+    """Nicht gedeckte Stellen im [SPRACHNACHRICHT:]-Inhalt (leer = treu oder Netz aus).
+    Quelle: Dom-Nachricht + die letzten Chat-Nachrichten (Bezug auf einen
+    Coach-Vorschlag: „schick ihm das"). Nur Deutsch – Wortlisten sind deutsch."""
+    import os
+    from bot.services import auftrag_netz, persona_config
+    if os.getenv("AUFTRAG_NETZ", "1") != "1":
+        return []
+    try:
+        if (persona_config.ui_locale() or config.BOT_LOCALE) != "de":
+            return []
+    except Exception:
+        if config.BOT_LOCALE != "de":
+            return []
+    verlauf = [m.get("content", "") for m in (state.get_history(chat_id) or [])[-6:]
+               if isinstance(m, dict) and m.get("content") != response]
+    try:
+        return auftrag_netz.pruefe(inhalt, text, *verlauf)
+    except Exception:
+        logger.exception("Prüf-Netz fehlgeschlagen – Nachricht geht ungeprüft raus.")
+        return []
+
+
+async def _netz_rueckfrage(update: Update, chat_id: str, inhalt: str, funde: list[str],
+                           quelltext: str, level: int, task_text: str, keyword_task: bool) -> None:
+    s = state.get(chat_id)
+    kennung = uuid.uuid4().hex[:8]
+    s.update({"netz_id": kennung, "netz_inhalt": inhalt, "netz_quelltext": quelltext,
+              "netz_level": level, "netz_task": task_text, "netz_keyword": keyword_task})
+    buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("BUTTON_NETZ_OK"), callback_data=f"snnetz:ok:{kennung}"),
+         InlineKeyboardButton(t("BUTTON_NETZ_WORT"), callback_data=f"snnetz:wort:{kennung}")],
+        [InlineKeyboardButton(t("BUTTON_NETZ_NEIN"), callback_data=f"snnetz:nein:{kennung}")],
+    ])
+    # Plain-Text: Inhalt ist LLM-Freitext.
+    await update.message.reply_text(
+        t("COACH_NETZ_FRAGE", sub_akk=rollen.sub()["label_akk"], funde="; ".join(funde), inhalt=inhalt),
+        reply_markup=buttons)
+    logger.info("Prüf-Netz: Weitergabe zurückgehalten (%s): %s", kennung, funde)
+
+
+async def callback_sn_netz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """✅ so senden / ✍️ nur ihre Worte / ❌ nicht senden (Rolle via Gate: Dom)."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        _, action, kennung = query.data.split(":", 2)
+    except ValueError:
+        return
+    if action not in ("ok", "wort", "nein"):
+        return
+    chat_id = str(update.effective_chat.id)
+    s = state.get(chat_id)
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    if s.get("netz_id") != kennung or not s.get("netz_inhalt"):
+        await query.message.reply_text(t("COACH_NETZ_VERALTET", sub_akk=rollen.sub()["label_akk"]))
+        return
+    werte = {k: s.pop(k, None) for k in _NETZ_KEYS}
+    if action == "nein":
+        await query.message.reply_text(t("COACH_NETZ_NEIN_OK"))
+        logger.info("Prüf-Netz: Weitergabe verworfen (%s).", kennung)
+        return
+    quelltext = werte["netz_quelltext"] or ""
+    inhalt = werte["netz_inhalt"] if action == "ok" else quelltext
+    gesendet = await _sende_sprachnachricht_an_sklaven(update, context, inhalt, msg=query.message)
+    logger.info("Prüf-Netz: Weitergabe %s (%s), zugestellt=%s.", action, kennung, gesendet)
+    if not gesendet or werte["netz_keyword"]:
+        return
+    if action == "ok":
+        auftrag = werte["netz_task"] or (inhalt if klingt_nach_auftrag(inhalt, quelltext) else "")
+    else:
+        auftrag = quelltext if klingt_nach_auftrag(quelltext) else ""
+    if auftrag:
+        await _biete_sprachnachricht_als_aufgabe(update, chat_id, auftrag, werte["netz_level"] or 1,
+                                                 quelltext=quelltext, msg=query.message)
 
 
 async def _baue_system_prompt(

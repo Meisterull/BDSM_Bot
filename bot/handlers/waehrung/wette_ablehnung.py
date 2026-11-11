@@ -130,7 +130,7 @@ async def _strafe_anordnen(bot, w: dict, strafe: str) -> tuple[str, str] | None:
         treffer = await limits_check.verletzungen(strafe, hl, gr)
         if treffer:
             return "limit", ", ".join(sorted({v["limit"] for v in treffer}))
-        anordnung = grok.clean_text(await grok.simple(fp.strafe_fuer_ablehnung(strafe), max_tokens=300))
+        anordnung = grok.clean_text(await grok.simple(fp.strafe_fuer_ablehnung(strafe), max_tokens=300, reasoning=True))
         if not anordnung:
             return "fehler", ""
         treffer = await limits_check.verletzungen(anordnung, hl, gr)

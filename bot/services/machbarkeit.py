@@ -13,6 +13,7 @@ Fail-open: ist die Prüfung nicht möglich, gilt der Text als stimmig.
 """
 import logging
 
+from bot import config
 from bot.services import grok, inventar
 from bot.prompts import followup as fp
 
@@ -26,8 +27,13 @@ async def maengel(text: str, art: str = "aufgabe") -> list[str]:
     if not (text or "").strip():
         return []
     try:
+        # Eigenes Prüf-Modell, falls konfiguriert (config.LLM_MODEL_PRUEF) – sonst
+        # das Reasoning-Modell. Die Denkstufe gehört zum Prüf-Modell, nicht zum Default.
+        extra = ({"modell": config.LLM_MODEL_PRUEF,
+                  "reasoning_effort": config.LLM_PRUEF_EFFORT or None}
+                 if config.LLM_MODEL_PRUEF else {})
         roh = await grok.simple(fp.machbarkeits_pruefung(text, inventar.vorhanden(), art=art),
-                                reasoning=True, temperature=0, max_tokens=500)
+                                reasoning=True, temperature=0, max_tokens=500, **extra)
         daten = grok.parse_json(roh)
         if not isinstance(daten, dict) or daten.get("ok", True):
             return []

@@ -561,7 +561,7 @@ async def _wett_idee_generieren(schwerpunkt: str = "") -> str | None:
             # Reasoning (Live-Proben 16.09.): das schnelle Modell drehte die Rolle
             # einer Vorliebe um, bot das Aussetzen des Safewords als Einsatz an und
             # verwechselte Sieger/Verlierer; das Reasoning-Modell blieb in 4/4 stimmig.
-            reasoning=True,
+            reasoning=True, lokal=True,
         )
 
     idee = await _generiere(prompt)
@@ -658,6 +658,33 @@ async def wett_vorschlag_auf_abruf(bot, schwerpunkt: str = "") -> bool:
     return True
 
 
+_NEU_LAEUFT: set[str] = set()   # Kennungen, für die gerade eine „Andere Idee" entsteht
+
+
+async def _wett_idee_neu_wuerfeln(bot, query, kennung: str, zaehler: int, schwerpunkt: str) -> None:
+    """Hintergrund-Teil von 🎲: neue Idee erzeugen und zustellen. Bei Misserfolg
+    bleiben die Knöpfe der alten Idee stehen – sie kann gleich nochmal tippen."""
+    try:
+        neu = await _wett_idee_generieren(schwerpunkt)
+        if not neu:
+            await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
+            return
+        # Während der Generierung kann die alte Idee verschickt oder ersetzt
+        # worden sein – dann käme die neue nur noch als Irrläufer an.
+        offen = (await qdrant.get_user_profile("domina") or {}).get(FELD_WETT_IDEE) or {}
+        if state.is_paused() or offen.get("kennung") != kennung:
+            logger.info("Neu gewürfelte Wett-Idee verworfen – Vorschlag %s inzwischen erledigt.", kennung)
+            return
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        neu_kennung = await _wett_idee_zustellen(bot, neu, zaehler + 1, schwerpunkt)
+        logger.info("Wett-Idee neu gewürfelt (%s → %s, Wurf %d).", kennung, neu_kennung, zaehler + 1)
+    finally:
+        _NEU_LAEUFT.discard(kennung)
+
+
 async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Buttons unter dem Wettvorschlag (Rolle via main._callback_gate: Dom).
     senden → Herrin-Ansage an den Sub (Text + Voice, Weg der Sprachnachricht);
@@ -695,17 +722,17 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if zaehler >= WETT_IDEE_MAX_NEU:
             await query.message.reply_text(t("COACH_WETTIDEE_NEU_LIMIT"))
             return
-        schwerpunkt = offen.get("schwerpunkt", "") or ""
-        neu = await _wett_idee_generieren(schwerpunkt)
-        if not neu:
-            await query.message.reply_text(t("COACH_WETTIDEE_FEHLER"))
+        # Doppel-Tipp während der laufenden Generierung: still schlucken.
+        if kennung in _NEU_LAEUFT:
             return
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except Exception:
-            pass
-        neu_kennung = await _wett_idee_zustellen(context.bot, neu, zaehler + 1, schwerpunkt)
-        logger.info("Wett-Idee neu gewürfelt (%s → %s, Wurf %d).", kennung, neu_kennung, zaehler + 1)
+        schwerpunkt = offen.get("schwerpunkt", "") or ""
+        # Im Hintergrund (11.11.2026): Generierung + Prüfung dauern 30–70 s. Im
+        # Handler abgewartet blockierte das den ganzen Paar-Kanal (Updates laufen
+        # seriell, auch der Chat der anderen Seite stand solange).
+        from bot.handlers import waehrung as waehrung_h
+        _NEU_LAEUFT.add(kennung)
+        waehrung_h.im_hintergrund(
+            _wett_idee_neu_wuerfeln(context.bot, query, kennung, zaehler, schwerpunkt))
         return
 
     # senden: in der Herrin-Stimme ausformulieren (Sprech-Tags bei Grok-TTS),
@@ -718,7 +745,8 @@ async def callback_wett_idee(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     try:
         ansage = grok.clean_text(await grok.simple(
-            followup_prompts.wette_an_sklaven(idee, einsatz=waehrung.WETT_EINSATZ), max_tokens=350))
+            followup_prompts.wette_an_sklaven(idee, einsatz=waehrung.WETT_EINSATZ), max_tokens=350,
+            reasoning=True))
     except Exception:
         logger.exception("Wett-Ansage konnte nicht formuliert werden")
         ansage = ""

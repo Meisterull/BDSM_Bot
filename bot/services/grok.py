@@ -26,7 +26,8 @@ _MAX_DELAY = 30.0   # Maximale Wartezeit
 async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False,
                temperature: float | None = None, max_tokens: int | None = None,
                frequency_penalty: float | None = None,
-               presence_penalty: float | None = None) -> str:
+               presence_penalty: float | None = None, lokal: bool = False,
+               modell: str | None = None, reasoning_effort: str | None = None) -> str:
     """
     Sendet Chat-Request an Grok, gibt Antwort-Text zurück.
     Wiederholt bei Fehlern mit exponential backoff.
@@ -34,8 +35,11 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
     temperature=0 z.B. für deterministische Klassifikation; max_tokens begrenzt die Länge.
     frequency_penalty/presence_penalty (OpenAI-kompatibel) bremsen wortgleiche
     Wiederholungen; default None = unverändert (nur Pfade, die es brauchen, setzen sie).
+    modell überschreibt die Modellwahl für diesen einen Aufruf (z.B. das Prüf-Modell
+    der Machbarkeits-Prüfung); reasoning_effort (low|medium|high) geht nur mit, wenn
+    gesetzt – nicht jedes Modell kennt den Parameter (HTTP 400 → einmal ohne ihn).
     """
-    model = config.LLM_MODEL_REASONING if reasoning else config.LLM_MODEL
+    model = modell or (config.LLM_MODEL_REASONING if reasoning else config.LLM_MODEL)
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": system_prompt}] + messages,
@@ -43,6 +47,11 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
     }
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
+    # Ohne ausdrückliche Vorgabe gilt für Reasoning-Aufrufe die konfigurierte Denkstufe.
+    if reasoning_effort is None and reasoning and not modell:
+        reasoning_effort = config.LLM_REASONING_EFFORT or None
+    if reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
     # Penalties nur senden, wenn das Modell sie unterstützt – grok-4.3 quittiert
     # sie sonst mit HTTP 400 (siehe config.GROK_SUPPORTS_PENALTIES).
     if config.GROK_SUPPORTS_PENALTIES:
@@ -53,6 +62,14 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
 
     logger.debug("LLM %s, Modell: %s", config.LLM_PROVIDER, model)
 
+    # Generator-Test (11.11.2026): ausgewählte Generatoren (Tiny-Task, Wett-Idee)
+    # gehen zuerst ans lokale Generator-Modell – mit vollem Live-Prompt. Fehler,
+    # Zeitüberschreitung oder leere Antwort → ganz normal weiter zu Grok.
+    if lokal and config.GENERATOR_LLM_MODEL:
+        antwort = await _generator_lokal(payload, max_tokens)
+        if antwort:
+            return antwort
+
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES):
         try:
@@ -60,6 +77,14 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
             last_exc = e
+            # Netz für reasoning_effort: Modelle ohne den Parameter quittieren ihn
+            # mit HTTP 400 (xAI: grok-4.20-reasoning). Einmal ohne ihn wiederholen,
+            # statt wegen einer Konfig-Kleinigkeit in den langsamen Fallback zu laufen.
+            if status == 400 and "reasoning_effort" in payload:
+                logger.warning("LLM (%s) lehnt reasoning_effort für %s ab – wiederhole ohne.",
+                               config.LLM_PROVIDER, model)
+                payload.pop("reasoning_effort")
+                continue
             if status == 429 or status >= 500:
                 if attempt < _MAX_RETRIES - 1:  # nach dem letzten Versuch nicht mehr schlafen
                     delay = min(_BASE_DELAY * (2 ** attempt), _MAX_DELAY)
@@ -116,10 +141,21 @@ async def _post_chat(url: str, headers: dict, payload: dict,
     # Zeitmessung im ganzen Bot). Eine INFO-Zeile pro Call reicht: der
     # Logserver/`docker logs` machen daraus Tages-Summen per grep.
     usage = daten.get("usage") or {}
+    # Denk-Tokens (11.11.2026): bei Reasoning-Modellen stecken Wartezeit und
+    # Kosten fast ganz in den reasoning_tokens, die in `out` NICHT enthalten
+    # sind (Live: out=5, denk≈1900, 20 s). cache = Anteil des Prompts aus dem
+    # Präfix-Cache des Anbieters. Beide nur anhängen, wenn vorhanden.
+    zusatz = ""
+    denk = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+    if denk:
+        zusatz += f" denk={denk}"
+    cache = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+    if cache:
+        zusatz += f" cache={cache}"
     logger.info(
-        "LLM-Call %s: %.1fs | Tokens in=%s out=%s",
+        "LLM-Call %s: %.1fs | Tokens in=%s out=%s%s",
         payload.get("model"), time.monotonic() - start,
-        usage.get("prompt_tokens", "?"), usage.get("completion_tokens", "?"),
+        usage.get("prompt_tokens", "?"), usage.get("completion_tokens", "?"), zusatz,
     )
     # `content` kann bei Refusal/leerem Completion `null`/leer sein. Das ist wie
     # ein Fehler zu behandeln (ValueError → Retry+Fallback-Kaskade in chat()):
@@ -139,6 +175,7 @@ async def _try_fallback(payload: dict, model: str) -> str | None:
     if config.FALLBACK_LLM_KEY:
         headers["Authorization"] = f"Bearer {config.FALLBACK_LLM_KEY}"
     fb_payload = {**payload, "model": config.FALLBACK_LLM_MODEL or model}
+    fb_payload.pop("reasoning_effort", None)  # anbieter-spezifisch, der Fallback kennt ihn nicht
     try:
         logger.warning("LLM (%s) nicht erreichbar – nutze Fallback-LLM %s (Modell %s, Timeout %.0fs)",
                        config.LLM_PROVIDER, config.FALLBACK_LLM_URL,
@@ -150,9 +187,45 @@ async def _try_fallback(payload: dict, model: str) -> str | None:
         return None
 
 
+async def _generator_lokal(payload: dict, max_tokens: int | None) -> str | None:
+    """Ein Aufruf ans lokale Generator-Modell (Ollama /api/chat, damit num_ctx
+    gesetzt werden kann – der OpenAI-Endpunkt schneidet lange Live-Prompts ab).
+    None bei Fehler/leer; der Aufrufer fällt dann auf Grok zurück."""
+    body = {
+        "model": config.GENERATOR_LLM_MODEL,
+        "messages": payload["messages"],
+        "stream": False,
+        "options": {
+            "temperature": payload.get("temperature", 0.7),
+            "num_predict": max_tokens or 900,
+            "num_ctx": config.GENERATOR_LLM_CTX,
+            "num_thread": config.GENERATOR_LLM_THREADS,
+        },
+    }
+    start = time.monotonic()
+    try:
+        resp = await _client.post(f"{config.OLLAMA_URL.rstrip('/')}/api/chat", json=body,
+                                  timeout=config.GENERATOR_LLM_TIMEOUT)
+        resp.raise_for_status()
+        daten = resp.json()
+        text = ((daten.get("message") or {}).get("content") or "").strip()
+        logger.info("LLM-Call %s (lokal, Generator): %.1fs | Tokens in=%s out=%s",
+                    config.GENERATOR_LLM_MODEL, time.monotonic() - start,
+                    daten.get("prompt_eval_count", "?"), daten.get("eval_count", "?"))
+        if not text:
+            logger.warning("Lokales Generator-Modell lieferte leere Antwort – nutze Grok.")
+            return None
+        return text
+    except Exception as e:
+        logger.warning("Lokales Generator-Modell fehlgeschlagen nach %.0fs (%s: %s) – nutze Grok.",
+                       time.monotonic() - start, type(e).__name__, e)
+        return None
+
+
 async def simple(prompt: str | tuple, reasoning: bool = False,
                  temperature: float | None = None, max_tokens: int | None = None,
-                 system: str = "") -> str:
+                 system: str = "", lokal: bool = False,
+                 modell: str | None = None, reasoning_effort: str | None = None) -> str:
     """Einfacher Single-Turn Aufruf. `system` erlaubt es, statische Anteile
     (Persona/Stil/Regeln) als System-Message zu trennen, statt alles in die
     User-Message zu mischen (Prompt-Injection-Hygiene).
@@ -164,7 +237,8 @@ async def simple(prompt: str | tuple, reasoning: bool = False,
         builder_system, prompt = prompt
         system = system or builder_system
     return await chat(system, [{"role": "user", "content": prompt}], reasoning=reasoning,
-                      temperature=temperature, max_tokens=max_tokens)
+                      temperature=temperature, max_tokens=max_tokens, lokal=lokal,
+                      modell=modell, reasoning_effort=reasoning_effort)
 
 
 def clean_text(text: str) -> str:

@@ -105,6 +105,7 @@ _CALLBACK_ROLLEN = (
     ("stille:",             paare.ROLLE_DOM),
     ("herrinfehl:",         paare.ROLLE_DOM),   # Versäumnis: nachholen/streichen
     ("snaufgabe:",          paare.ROLLE_DOM),   # Sprachnachricht → Aufgabe ja/nein
+    ("snnetz:",             paare.ROLLE_DOM),   # Prüf-Netz: Weitergabe ok/Wortlaut/nein
     ("wettidee:",           paare.ROLLE_DOM),   # Wettvorschlag: senden / andere Idee
     ("punkteabzug:",        paare.ROLLE_DOM),   # Währung: −25/−50 unter dem Strafvorschlag
     ("wunschpreis:",        paare.ROLLE_DOM),   # Währung: Preis eines Wunsches
@@ -244,6 +245,14 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     if isinstance(err, TRANSIENTE_NETZFEHLER) and not isinstance(err, BadRequest):
         logger.warning("Transienter Netzfehler (PTB-Retry läuft): %s: %s",
                        type(err).__name__, err)
+        return
+    # Veralteter Knopfdruck (Live 07.11.2026): Updates eines Paares laufen
+    # seriell – tippt jemand während einer langen Generierung nochmal, kommt
+    # der zweite Tipp erst nach > 30 s dran und Telegram lehnt sein
+    # query.answer() ab. Das ist kein Fehler: der erste Tipp hat die Arbeit
+    # erledigt. Still verwerfen statt „⚠️ Ein Fehler ist aufgetreten".
+    if isinstance(err, BadRequest) and "query is too old" in str(err).lower():
+        logger.info("Veralteter Knopfdruck verworfen (Antwortfrist abgelaufen).")
         return
     logger.error("Unbehandelter Fehler:", exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:

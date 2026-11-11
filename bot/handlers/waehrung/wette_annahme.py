@@ -149,7 +149,7 @@ async def _einsatz_text(w: dict, ergebnis: str, automatisch: bool = False) -> st
     try:
         text = grok.clean_text(await grok.simple(
             fp.wett_ergebnis_an_dom(idee, sub_gewonnen=(ergebnis == "gewonnen"), automatisch=automatisch),
-            max_tokens=250))
+            max_tokens=250, reasoning=True))
         if not text:
             return _abmachung(w)
         sp = await qdrant.get_user_profile("sklave") or {}

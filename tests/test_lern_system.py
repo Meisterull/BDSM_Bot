@@ -342,6 +342,70 @@ async def test_llm_fallback():
     assert await _grok._try_fallback(payload, "grok") is None
 
 
+async def test_llm_reasoning_effort_netz():
+    """11.11.2026: modell= überschreibt die Modellwahl; reasoning_effort geht nur
+    mit, wenn gesetzt; lehnt das Modell ihn mit HTTP 400 ab, folgt genau EIN
+    Aufruf ohne ihn (kein Fallback); der Fallback bekommt ihn nie zu sehen."""
+    from types import SimpleNamespace as _NS
+    aufrufe = []
+
+    # Eigene Fehlerklassen: lokal ist httpx ein MagicMock-Stub (nicht als
+    # except-Ziel brauchbar), im Container das echte Modul – beides abgedeckt.
+    class _Status(Exception):
+        def __init__(self, code):
+            super().__init__(f"HTTP {code}")
+            self.response = _NS(status_code=code)
+
+    class _Transport(Exception):
+        pass
+
+    alt = (_grok.httpx.HTTPStatusError, _grok.httpx.TransportError)
+    _grok.httpx.HTTPStatusError, _grok.httpx.TransportError = _Status, _Transport
+
+    async def fake_post(url, headers, pl, timeout=None):
+        aufrufe.append(dict(pl))
+        if "reasoning_effort" in pl:
+            raise _Status(400)
+        return "OK"
+
+    _grok._post_chat = fake_post
+    # chat() direkt: grok.simple ist in dieser Datei von früheren Tests ersetzt.
+    nachricht = [{"role": "user", "content": "p"}]
+    assert await _grok.chat("", nachricht, modell="pruef-modell", reasoning_effort="low", reasoning=True) == "OK"
+    assert [a["model"] for a in aufrufe] == ["pruef-modell", "pruef-modell"]
+    assert "reasoning_effort" in aufrufe[0] and "reasoning_effort" not in aufrufe[1]
+    aufrufe.clear()
+    assert await _grok.chat("", nachricht) == "OK"
+    assert "reasoning_effort" not in aufrufe[0] and aufrufe[0]["model"] == _config.LLM_MODEL
+
+    # Konfigurierte Denkstufe: nur bei reasoning=True, nie im normalen Chat-Pfad
+    _config.LLM_REASONING_EFFORT = "low"
+    async def ok_post(url, headers, pl, timeout=None):
+        aufrufe.append(dict(pl))
+        return "OK"
+    _grok._post_chat = ok_post
+    aufrufe.clear()
+    await _grok.chat("", nachricht, reasoning=True)
+    await _grok.chat("", nachricht)
+    assert aufrufe[0].get("reasoning_effort") == "low" and aufrufe[0]["model"] == _config.LLM_MODEL_REASONING
+    assert "reasoning_effort" not in aufrufe[1]
+    _config.LLM_REASONING_EFFORT = ""
+
+    _config.FALLBACK_LLM_URL = "http://fb/v1/chat/completions"
+    _config.FALLBACK_LLM_MODEL = "llama3.1"
+    aufrufe.clear()
+
+    async def nur_merken(url, headers, pl, timeout=None):
+        aufrufe.append(dict(pl))
+        return "FB"
+
+    _grok._post_chat = nur_merken
+    await _grok._try_fallback({"model": "m", "messages": [], "reasoning_effort": "low"}, "m")
+    assert "reasoning_effort" not in aufrufe[0]
+    _config.FALLBACK_LLM_URL = ""
+    _grok.httpx.HTTPStatusError, _grok.httpx.TransportError = alt
+
+
 def test_state_persistenz():
     """message_history + Pause-Flag überleben einen simulierten Neustart via STATE_FILE."""
     import tempfile
@@ -1570,6 +1634,7 @@ def _run():
     test_serie_variationen_parse()
     test_wochenplan_parse()
     asyncio.run(test_llm_fallback())
+    asyncio.run(test_llm_reasoning_effort_netz())
     test_state_persistenz()
     test_sklave_prompt_wissen()
     test_sklave_themen()

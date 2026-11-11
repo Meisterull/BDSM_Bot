@@ -665,6 +665,16 @@ MESSAGES = {
         "schreib sie mir einfach als „Aufgabe: …“."
     ),
     "COACH_SN_WANN": "am {tag} um {zeit}",
+    # Prüf-Netz (09.11.2026): Coach-Weitergabe enthält Ungesagtes → erst fragen. Plain-Text.
+    "COACH_NETZ_FRAGE": (
+        "🔎 Kurz bevor das an {sub_akk} geht: Da steht etwas drin, das so nicht in "
+        "deiner Nachricht war ({funde}).\n\nSo würde es rausgehen:\n„{inhalt}“"
+    ),
+    "BUTTON_NETZ_OK": "✅ So senden",
+    "BUTTON_NETZ_WORT": "✍️ Nur meine Worte",
+    "BUTTON_NETZ_NEIN": "❌ Nicht senden",
+    "COACH_NETZ_NEIN_OK": "👍 Nicht gesendet.",
+    "COACH_NETZ_VERALTET": "Das ist nicht mehr aktuell – schreib mir einfach nochmal, was an {sub_akk} gehen soll.",
 
     # --- Währung ⭐ (16.09.2026): Ränge, Abzüge, Schwellen-Push, Sparziel, Herrin-Wette ---
     "RANG_ZEILE_MIT_NAECHSTEM": "{titel} · nächster Rang {naechster} ab {ab} Punkten",

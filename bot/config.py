@@ -59,6 +59,20 @@ LLM_MODEL_REASONING = (os.getenv("LLM_MODEL_REASONING")
                        or (os.getenv("GROK_MODEL_REASONING") if LLM_PROVIDER == "grok" else None)
                        or LLM_MODEL)
 # Request-Timeout: lokale CPU-Inferenz braucht deutlich länger als die Cloud.
+# Prüf-Modell (11.11.2026): eigenes Modell nur für die Machbarkeits-Prüfung
+# (services/machbarkeit) – ein reiner Kontroll-Durchlauf, der keine Stimme hat.
+# Leer = Reasoning-Modell wie bisher. LLM_PRUEF_EFFORT (low|medium|high) nur
+# setzen, wenn das Modell reasoning_effort kennt (xAI: grok-4.7 ja,
+# grok-4.20-reasoning nein – der Aufruf wiederholt sich dann einmal ohne).
+# Messung 11.11.2026, 16 echte Vorschläge + Inventar: grok-4.20-reasoning
+# Median 17–22 s, 1–2 Mängel-Funde; grok-4.3 11 s, 0 Funde (blind);
+# grok-4.7/low 13 s, 5 Funde (alle sachlich richtig).
+# Denkstufe für ALLE reasoning=True-Aufrufe (Generatoren, Analysen). Leer = Parameter
+# wird nicht gesendet. Bei grok-4.7 senkt "low" die Wartezeit deutlich (Prüfung:
+# Median 32 s → 13 s), ohne dass die Rollen-/Richtungs-Treue in der Probe litt.
+LLM_REASONING_EFFORT = (os.getenv("LLM_REASONING_EFFORT") or "").strip().lower()
+LLM_MODEL_PRUEF = (os.getenv("LLM_MODEL_PRUEF") or "").strip()
+LLM_PRUEF_EFFORT = (os.getenv("LLM_PRUEF_EFFORT") or "").strip().lower()
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT") or ("180" if LLM_PROVIDER == "ollama" else "60"))
 # Embedding-Modell (lokal via Ollama). jina-embeddings-v2-base-de ist deutsch-trainiert
 # und schlug nomic im Retrieval-Vergleich (Top-3 100% vs 70%, MRR +13%). 768-dim wie zuvor.
@@ -320,7 +334,14 @@ FALLBACK_LLM_TIMEOUT = float(os.getenv("FALLBACK_LLM_TIMEOUT", "300"))
 # lokale CPU-Modelle verarbeiten Prompts zu langsam für den vollen Sklaven-Prompt.
 # Läuft auf dem Ollama unter OLLAMA_URL (OpenAI-kompatibler /v1-Endpoint). Leer = aus.
 LOKAL_LLM_MODEL = os.getenv("LOKAL_LLM_MODEL", "")  # z.B. krith/mistral-nemo-instruct-2407-abliterated:IQ4_XS
-LOKAL_LLM_TIMEOUT = float(os.getenv("LOKAL_LLM_TIMEOUT", "180"))  # Sekunden; CPU-Inferenz ist langsam
+LOKAL_LLM_TIMEOUT = float(os.getenv("LOKAL_LLM_TIMEOUT", "180"))
+# Generator-Test (11.11.2026): optionales lokales Modell (Ollama)
+# für Tiny-Task- und Wett-Idee-Generierung, mit vollem Live-Prompt; Grok bleibt
+# Rückfall. Leer = aus. Timeout großzügig: ~6k Prompt-Tokens brauchen auf der CPU ~6 min.
+GENERATOR_LLM_MODEL = os.getenv("GENERATOR_LLM_MODEL", "")
+GENERATOR_LLM_TIMEOUT = float(os.getenv("GENERATOR_LLM_TIMEOUT", "900"))
+GENERATOR_LLM_CTX = int(os.getenv("GENERATOR_LLM_CTX", "12288"))
+GENERATOR_LLM_THREADS = int(os.getenv("GENERATOR_LLM_THREADS", "6"))  # Sekunden; CPU-Inferenz ist langsam
 
 # Aufgaben-Serien Optionen (Tage)
 SERIE_OPTIONEN = [2, 3, 7, 14]

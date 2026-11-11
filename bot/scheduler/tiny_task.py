@@ -28,7 +28,7 @@ async def _arc_tag_anpassen(aufgabe: str, stimmung: str, sklave_profile: dict, d
     Gibt den angepassten Text zurück oder None (dann Original verwenden)."""
     try:
         prompt = fp.kette_anpassung(aufgabe, f"Storyline – sein letztes Gefühl war: {stimmung}", stimmung)
-        angepasst = grok.clean_text(await grok.simple(prompt))
+        angepasst = grok.clean_text(await grok.simple(prompt, reasoning=True))
         if not angepasst or len(angepasst) < 5:
             return None
         hl = sklave_profile.get("hard_limits", []) or []
@@ -394,7 +394,7 @@ async def _machbarkeits_maengel(vorschlag: str) -> list[str]:
 
 
 async def _machbarkeit_sichern(vorschlag: str, prompt: str, system: str,
-                               sk_hl: list, do_gr: list) -> str:
+                               sk_hl: list, do_gr: list, lokal: bool = False) -> str:
     """Prüfung + genau EIN neuer Entwurf mit der Mängelliste. Der neue Entwurf
     gewinnt, wenn er nicht mehr Mängel hat als der alte (er kennt sie ja);
     sonst bleibt das Original."""
@@ -411,7 +411,7 @@ async def _machbarkeit_sichern(vorschlag: str, prompt: str, system: str,
         "Handlung weniger als eine verkeilte Szene."
     )
     neu = await limits_check.generate_mit_limit_retry(
-        retry_prompt, sk_hl, do_gr, system=system, reasoning=True)
+        retry_prompt, sk_hl, do_gr, system=system, reasoning=True, lokal=lokal)
     if not neu:
         logger.info("Machbarkeits-Retry leer – Original bleibt.")
         return vorschlag
@@ -424,6 +424,32 @@ async def _machbarkeit_sichern(vorschlag: str, prompt: str, system: str,
         return neu
     logger.info("Machbarkeits-Retry hat mehr Mängel – Original bleibt.")
     return vorschlag
+
+
+FEST_DATEI = "data/tiny_task_fest.json"
+
+
+async def _sende_festen_vorschlag(bot: Bot) -> bool:
+    import json, os
+    if not os.path.exists(FEST_DATEI):
+        return False
+    try:
+        with open(FEST_DATEI, encoding="utf-8") as f:
+            fest = json.load(f)
+        heute = datetime.now(ZoneInfo(config.TIMEZONE)).date().isoformat()
+        if fest.get("datum") != heute or not (fest.get("vorschlag") or "").strip():
+            if (fest.get("datum") or "") < heute:
+                os.remove(FEST_DATEI)  # abgelaufen
+            return False
+        vorschlag = fest["vorschlag"].strip()[:3997]
+        await telegram_helper.send_domina(bot, t("TINYTASK_PREFIX_TINY", vorschlag=vorschlag), parse_mode="Markdown")
+        await _save_tiny_task(vorschlag, list(fest.get("kategorien") or []))
+        os.remove(FEST_DATEI)
+        logger.info("Fest vorgegebener Tiny-Task gesendet (%s).", fest.get("kategorien"))
+        return True
+    except Exception:
+        logger.exception("Fester Tiny-Task-Vorschlag fehlgeschlagen – generiere normal.")
+        return False
 
 
 async def _send_tiny_task_vorschlag(bot: Bot) -> None:
@@ -445,6 +471,12 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
 
         domina_profile = await qdrant.get_user_profile("domina") or {}
         sklave_profile = await qdrant.get_user_profile("sklave") or {}
+
+        # Fest vorgegebener Vorschlag für heute (data/tiny_task_fest.json, einmalig von Hand
+        # gelegt, z. B. ein Probe-Vorschlag, der gefiel): wird statt einer Neugenerierung
+        # gesendet und danach gelöscht. Gilt nur am eingetragenen Datum.
+        if await _sende_festen_vorschlag(bot):
+            return
 
         # Arc-Check zuerst: Eine aktive Storyline übernimmt die Vorschlags-Generierung
         # komplett – die teure Kontext-Vorbereitung (Embedding + ~10 Qdrant-Queries)
@@ -487,9 +519,11 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
         sk_hl = sklave_profile.get("hard_limits", []) or []
         do_gr = domina_profile.get("grenzen", []) or []
 
+        # Seit 11.11.2026 laufen ALLE Vorschläge übers Reasoning-Modell (Owner-
+        # Entscheid nach Probe mit grok-4.7) – vorher nur der Wochenend-Vorschlag.
         async def _generiere() -> str | None:
             return await limits_check.generate_mit_limit_retry(
-                prompt, sk_hl, do_gr, system=system, reasoning=ist_wochenende,
+                prompt, sk_hl, do_gr, system=system, reasoning=True, lokal=True,
             )
 
         if ist_wochenende:
@@ -527,7 +561,7 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
                 "Schluss ohne 'Wie lange…?'-Frage."
             )
             neu = await limits_check.generate_mit_limit_retry(
-                retry_prompt, sk_hl, do_gr, system=system, reasoning=ist_wochenende,
+                retry_prompt, sk_hl, do_gr, system=system, reasoning=True, lokal=True,
             )
             if neu and len(schablonen._formel_verstoesse(neu)) <= len(funde):
                 vorschlag = neu
@@ -542,7 +576,7 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
                 vorschlag = geschnitten
 
         # Körperliche Machbarkeit als zweiter Durchlauf, danach Meta-Rückfragen kappen.
-        vorschlag = await _machbarkeit_sichern(vorschlag, prompt, system, sk_hl, do_gr)
+        vorschlag = await _machbarkeit_sichern(vorschlag, prompt, system, sk_hl, do_gr, lokal=True)
         gekappt = schablonen._meta_rueckfrage_entfernen(vorschlag)
         if gekappt != vorschlag:
             logger.info("Meta-Rückfrage am Schluss entfernt.")

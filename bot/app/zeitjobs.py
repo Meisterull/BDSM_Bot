@@ -26,7 +26,16 @@ logger = logging.getLogger(__name__)
 
 
 
-scheduler = AsyncIOScheduler(timezone=config.TIMEZONE)
+# misfire_grace_time (11.11.2026): APScheduler verwirft einen Lauf ersatzlos,
+# wenn er mehr als 1 s (Default) zu spät starten würde. Live 08.11.: der Server
+# stockte minutenlang, 40 Läufe „missed by 0:02–0:04" – zufällig nur
+# Intervall-Jobs. Trifft das 16:00/18:00 oder den Sonntags-Wochenplan, fällt
+# der Tag bzw. die Woche still aus. 15 min Nachholfenster; coalesce fasst
+# mehrere verpasste Läufe eines Intervall-Jobs zu einem zusammen.
+scheduler = AsyncIOScheduler(
+    timezone=config.TIMEZONE,
+    job_defaults={"misfire_grace_time": 900, "coalesce": True},
+)
 
 
 def _paar_update_prozessor():

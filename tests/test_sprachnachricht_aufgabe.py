@@ -224,6 +224,9 @@ class _Welt:
         limits_check.format_verletzungen = lambda tr: ", ".join(str(x) for x in tr)
         praeferenz_detektor.erkenne_und_schlage_vor = AsyncMock()
         state.set_mode(DOM, "chat")
+        # Prüf-Netz (eigene Tests in test_auftrag_netz.py) hier aus – diese
+        # Tests prüfen den Fluss nach einer freigegebenen Weitergabe.
+        os.environ["AUFTRAG_NETZ"] = "0"
         for key in domina._SN_AUFGABE_KEYS:
             state.get(DOM).pop(key, None)
         return self

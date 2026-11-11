@@ -183,7 +183,18 @@ class _Welt:
 def _press(data: str):
     q = _Query(data)
     u = SimpleNamespace(callback_query=q, effective_chat=SimpleNamespace(id=int(DOM)))
-    _run(cq.callback_wett_idee(u, SimpleNamespace(bot=object())))
+    # 🎲 läuft seit 11.11.2026 im Hintergrund – hier einsammeln und direkt
+    # im Anschluss ausführen, damit die Tests das Ergebnis sehen.
+    from bot.handlers import waehrung as waehrung_h
+    hintergrund: list = []
+    original = waehrung_h.im_hintergrund
+    waehrung_h.im_hintergrund = hintergrund.append
+    try:
+        _run(cq.callback_wett_idee(u, SimpleNamespace(bot=object())))
+    finally:
+        waehrung_h.im_hintergrund = original
+    for coro in hintergrund:
+        _run(coro)
     return q
 
 
@@ -343,6 +354,27 @@ def test_callback_neu_mit_deckel():
     # nach dem Deckel geht Senden weiterhin
     q = _press(f"wettidee:senden:{k4}")
     assert len(w.sub_sends) == 1 and w.offen == {"gesendet": k4}
+
+
+def test_callback_neu_doppeltipp_und_irrlaeufer():
+    """11.11.2026: 🎲 läuft im Hintergrund. Ein zweiter Tipp während der
+    Generierung wird geschluckt; ist der Vorschlag inzwischen verschickt,
+    kommt die neu gewürfelte Idee nicht mehr als Irrläufer an."""
+    w = _Welt([GUT, GUT + " (2)", GUT + " (3)"]).install()
+    _run(cq.sende_wett_idee(None))
+    k1 = w.offen["kennung"]
+    # Generierung läuft schon → zweiter Tipp startet keine weitere
+    cq._NEU_LAEUFT.add(k1)
+    try:
+        q = _press(f"wettidee:neu:{k1}")
+    finally:
+        cq._NEU_LAEUFT.discard(k1)
+    assert len(w.dom_sends) == 1 and q.message.replies == [] and not q.markup_entfernt
+    # Vorschlag während der Generierung verschickt → neue Idee wird verworfen
+    q = _Query(f"wettidee:neu:{k1}")
+    w.profile["domina"][cq.FELD_WETT_IDEE] = {"gesendet": k1}
+    _run(cq._wett_idee_neu_wuerfeln(object(), q, k1, 0, ""))
+    assert len(w.dom_sends) == 1 and not q.markup_entfernt and k1 not in cq._NEU_LAEUFT
 
 
 def test_impuls_reihenfolge():
@@ -511,6 +543,7 @@ def _run_alle():
     test_sende_wett_idee_mit_buttons()
     test_callback_senden()
     test_callback_neu_mit_deckel()
+    test_callback_neu_doppeltipp_und_irrlaeufer()
     test_impuls_reihenfolge()
     test_machbarkeit_im_wett_generator()
     test_verlauf_im_prompt()

@@ -196,6 +196,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(herrin_versaeumnis.callback,        pattern=r"^herrin:"))
     app.add_handler(CallbackQueryHandler(herrin_versaeumnis.callback_domina, pattern=r"^herrinfehl:"))
     app.add_handler(CallbackQueryHandler(domina.callback_sn_aufgabe,         pattern=r"^snaufgabe:"))
+    app.add_handler(CallbackQueryHandler(domina.callback_sn_netz,            pattern=r"^snnetz:"))
     app.add_handler(CallbackQueryHandler(coach_quiz.callback_wett_idee,      pattern=r"^wettidee:"))
     app.add_handler(CallbackQueryHandler(waehrung_h.callback_punkteabzug,     pattern=r"^punkteabzug:"))
     app.add_handler(CallbackQueryHandler(waehrung_h.callback_wunschpreis,     pattern=r"^wunschpreis:"))

@@ -76,7 +76,7 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
     )
 
     try:
-        vorschlag = await grok.simple(prompt, system=system)
+        vorschlag = await grok.simple(prompt, system=system, reasoning=True)
         # Gleiche Detektor-Mechanik wie beim Aufgaben-Vorschlag (Live 18.09.: die Idee
         # begann mit dem verbotenen Einstieg und endete mit einer Profil-Rückfrage).
         funde = schablonen._formel_verstoesse(vorschlag or "")
@@ -86,7 +86,7 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
             neu = await grok.simple(
                 prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN Schablonen "
                 "benutzt: " + "; ".join(funde) + ". Formuliere die Idee neu – anderer Einstieg, "
-                "kein Profil-Abgleich, keine Rückfrage.", system=system)
+                "kein Profil-Abgleich, keine Rückfrage.", system=system, reasoning=True)
             if neu and len(schablonen._formel_verstoesse(neu)) <= len(funde):
                 vorschlag = neu
         vorschlag = schablonen._meta_rueckfrage_entfernen(schablonen._begruendungs_formel_entfernen(vorschlag or ""))
