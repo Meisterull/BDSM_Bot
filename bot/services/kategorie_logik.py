@@ -11,6 +11,7 @@ Drei Aufgaben, die vorher verstreut/dupliziert waren:
      Dislikes immer ausgeschlossen, Wiederholungen gedämpft.
 """
 import logging
+import re
 import random
 
 from bot import config
@@ -408,12 +409,65 @@ def reaktions_spitzen(sklave_profil: dict) -> str:
 
 def dislike_kategorien(sklave_profil: dict, schwelle: int = 2) -> list[str]:
     """Kategorien, die der Sklave wiederholt negativ erlebt (≥ schwelle negativ
-    UND mehr negativ als positiv)."""
-    reaktionen = (sklave_profil or {}).get("kategorie_reaktionen", {}) or {}
-    return [
+    UND mehr negativ als positiv) – plus gelernte `mag_nicht_<Kategorie>`-Tags.
+
+    Die Tags sind das Langzeitgedächtnis: die Zähler in `kategorie_reaktionen`
+    altern nach 28 Tagen ohne Signal weg (decay_reaktionen), der Tag bleibt. Ohne
+    ihn war eine gelernte Abneigung nach ein paar ruhigen Wochen wieder frei
+    wählbar (Live-Befund 12.11.2026).
+    Ein Tag zählt nicht, wenn die aktuellen Zähler netto positiv sind oder die
+    Kategorie ausdrücklich auf der Wunschliste steht."""
+    profil = sklave_profil or {}
+    reaktionen = profil.get("kategorie_reaktionen", {}) or {}
+    aus = [
         k for k, v in reaktionen.items()
         if v.get("negativ", 0) >= schwelle and v.get("negativ", 0) > v.get("positiv", 0)
     ]
+    wunsch = set(profil.get("wunsch_kategorien", []) or [])
+    for tag in profil.get("persoenlichkeit_tags", []) or []:
+        if not isinstance(tag, str) or not tag.startswith("mag_nicht_"):
+            continue
+        k = tag[len("mag_nicht_"):]
+        v = reaktionen.get(k) or {}
+        if (k and k not in aus and k not in wunsch
+                and v.get("positiv", 0) <= v.get("negativ", 0)):
+            aus.append(k)
+    return aus
+
+
+# Marker für den Dislike-Detektor auf FERTIGEN Vorschlagstexten. Die allgemeine
+# Keyword-Tabelle taugt dafür nicht überall: sie ist fürs Einsortieren gebaut und
+# bei manchen Kategorien bewusst breit ("gehorsam", "erlaubnis", "warten" unter
+# Dienst träfen fast jeden Vorschlag). Hier stehen je Kategorie nur eindeutige
+# Regex-Marker; Kategorien ohne Eintrag fallen auf die Keyword-Tabelle zurück.
+_DISLIKE_MARKER: dict[str, list[str]] = {
+    "Dienst": [
+        r"\bdienst(?!ag)", r"\bdiener", r"\bbedien", r"\bservier", r"\bbutler",
+        r"\bkellner", r"\bzofe", r"\bputz(?:t|en|e|st)\b", r"\bkoch(?:t|en|st)?\b", r"\baufr(?:ä|ae)um",
+        r"\bhaushalt", r"\bstaubsaug", r"\babwasch", r"\bsp(?:ü|ue)lmaschine",
+        # bewusst OHNE "massage/massier" (Massager = Spielzeug) und ohne bloßes
+        # "putz" (bildhafte Komposita) – beides gab Fehlalarme auf echten Vorschlägen.
+        # "bringt dir was zu trinken" / "holt dir einen Kaffee"
+        r"\b(?:bring\w*|hol\w*)\b[^.!?\n]{0,40}\b(?:trinken|getr(?:ä|ae)nk\w*|kaffee|tee|drink)\b",
+    ],
+}
+
+
+def dislike_treffer(text: str, dislikes) -> list[str]:
+    """Welche der abgelehnten Kategorien bedient der fertige Vorschlagstext?
+    Wortanfangs-Matching (kein Mitten-im-Wort-Treffer). Reihenfolge wie `dislikes`."""
+    t = (text or "").lower()
+    if not t or not dislikes:
+        return []
+    kw_tabelle = keywords()
+    treffer = []
+    for kat in dislikes:
+        muster = _DISLIKE_MARKER.get(kat)
+        if muster is None:
+            muster = [r"\b" + re.escape(kw.lower()) for kw in kw_tabelle.get(kat, [])]
+        if any(re.search(m, t) for m in muster):
+            treffer.append(kat)
+    return treffer
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +570,45 @@ _DOMINA_SIGNAL = {
     "gut":       ("positiv", 1),  # gefiel ihr, heute nur nicht genutzt → mild
     "abgelehnt": ("negativ", 1),
 }
+
+
+# Alterung beim LESEN (nicht destruktiv): ein Domina-Signal gilt
+# DOMINA_SIGNAL_FRISCH_TAGE lang voll, danach verliert es je weiterem
+# angefangenem Zeitraum einen Punkt Richtung 0. Live-Befund 12.11.2026: ein
+# einzelnes, Monate altes "gefiel"-Signal stand ungewichtet als "zuletzt gern
+# übernommen" im Prompt und gab der Kategorie den vollen Auswahl-Bonus.
+DOMINA_SIGNAL_FRISCH_TAGE = 60
+_DOMINA_SIGNAL_VOLL = 3   # ab diesem Netto wirkt der volle Auswahl-Bonus/-Malus
+
+
+def domina_netto_effektiv(v: dict, jetzt=None) -> int:
+    """Netto-Signal (positiv − negativ) einer Kategorie nach Alterung. Ohne
+    Zeitstempel (Alt-Daten, Tests) bleibt das Netto unverändert."""
+    from datetime import datetime, timezone
+    v = v or {}
+    netto = int(v.get("positiv", 0)) - int(v.get("negativ", 0))
+    ts = v.get("letztes_signal")
+    if not netto or not ts:
+        return netto
+    try:
+        letztes = datetime.fromisoformat(ts)
+    except (ValueError, TypeError):
+        return netto
+    if letztes.tzinfo is None:
+        letztes = letztes.replace(tzinfo=timezone.utc)
+    tage = ((jetzt or datetime.now(timezone.utc)) - letztes).days
+    abzug = max(0, tage // DOMINA_SIGNAL_FRISCH_TAGE)
+    if netto > 0:
+        return max(0, netto - abzug)
+    return min(0, netto + abzug)
+
+
+def domina_praeferenz_rangliste(praeferenzen: dict, jetzt=None) -> tuple[list[str], list[str]]:
+    """(gern, ungern) – nur Kategorien mit verbleibendem Signal, stärkstes zuerst."""
+    eff = {k: domina_netto_effektiv(v, jetzt) for k, v in (praeferenzen or {}).items()}
+    gern = sorted((k for k, n in eff.items() if n > 0), key=lambda k: (-eff[k], k))
+    ungern = sorted((k for k, n in eff.items() if n < 0), key=lambda k: (eff[k], k))
+    return gern, ungern
 
 
 async def record_domina_praeferenz(kategorien: list, signal: str) -> None:
@@ -660,11 +753,14 @@ def gewichtete_auswahl(
         # netto negativ → Malus. Eigenes Gewicht, unabhängig von wunsch/tops.
         dp = domina_praeferenzen.get(kat)
         if dp:
-            netto = int(dp.get("positiv", 0)) - int(dp.get("negativ", 0))
+            # Gealtertes Netto, nach Stärke skaliert: ein einzelnes Signal wiegt
+            # ein Drittel, ab _DOMINA_SIGNAL_VOLL gilt der volle Bonus/Malus.
+            netto = domina_netto_effektiv(dp)
+            anteil = _W_DOMINA_PRAEFERENZ * min(abs(netto), _DOMINA_SIGNAL_VOLL) / _DOMINA_SIGNAL_VOLL
             if netto > 0:
-                w += _W_DOMINA_PRAEFERENZ
+                w += anteil
             elif netto < 0:
-                w = max(1.0, w - _W_DOMINA_PRAEFERENZ)
+                w = max(1.0, w - anteil)
         return float(w)
 
     buckets = {

@@ -10,6 +10,22 @@ from bot.prompts.followup import bausteine
 
 
 
+# Beispiel-Felder für die ABWECHSLUNGs-Anweisung. Fest verdrahtet empfahl die
+# Liste auch Felder, die ein Paar ausdrücklich nicht will – gelernte Abneigung
+# oder persönliche Grenze (Live-Befund 12.11.2026).
+_CLUSTER_BEISPIELE = ("Oral", "Impact", "Anbetung", "Demütigung", "Dienst", "Orgasmus-Kontrolle")
+
+
+def _cluster_beispiele(dislikes: list = None, domina_grenzen: list = None) -> str:
+    """Beispiel-Felder ohne alles, was in einer Dislike-Kategorie oder einer
+    Domina-Grenze steckt (Teilwort-Abgleich, z. B. "Anbetung" in "Fußanbetung")."""
+    gesperrt = [str(x).lower() for x in list(dislikes or []) + list(domina_grenzen or []) if x]
+    frei = [b for b in _CLUSTER_BEISPIELE
+            if not any(b.lower() in g or b.lower().replace("-", "") in g.replace("_", "")
+                       for g in gesperrt)]
+    return ", ".join(frei or _CLUSTER_BEISPIELE)
+
+
 def _aufgaben_kontext(
     erfahrungsstand: str,
     level: int,
@@ -41,6 +57,7 @@ def _aufgaben_kontext(
     verbrauchte_zutaten: list = None,
     kombi_vorlieben: list = None,
     inventar_impuls: str = None,
+    domina_grenzen: list = None,
 ) -> str:
     """Gemeinsamer Kontext-Block für tiny_task_vorschlag und
     ausfuehrlicher_task_vorschlag – Profil-Daten + alle Hinweis-Bausteine.
@@ -107,7 +124,7 @@ def _aufgaben_kontext(
             f"Wähle für heute ein klar ANDERES Thema/Feld – nicht nur eine andere "
             f"Handlung im selben Bereich. Lagen die letzten Vorschläge alle im "
             f"selben Cluster, geh heute bewusst in ein anderes "
-            f"(Oral, Impact, Anbetung, Demütigung, Dienst, Orgasmus-Kontrolle …). "
+            f"({_cluster_beispiele(sklave_dislike_kategorien, domina_grenzen)} …). "
             f"Keine Variation oder Umformulierung der genannten.\n"
             f"ZEITBEZÜGE: Zeitwörter IN den Aufgabentexten oben ('heute Abend' …) "
             f"beziehen sich auf deren damaligen Tag, nicht auf heute. Erfinde in "
@@ -204,7 +221,10 @@ def _aufgaben_kontext(
 
         def _lieblings_zeile(k: str) -> str:
             if k in schwach:
-                return f"💚 {k} (zuletzt aber schwach bewertet – nur mit wirklich frischem Dreh)"
+                # Ihr Urteil über die bisherige Umsetzung – SEIN Wunsch bleibt
+                # (vorher „zuletzt aber schwach bewertet": wertete den Wunsch ab).
+                return (f"💚 {k} (bleibt {s['poss']} Wunsch – {d['real_dat']} gefiel nur die "
+                        f"bisherige Umsetzung nicht: anders aufziehen als zuletzt)")
             return f"💚 {k}"
 
         wunsch_str = (
@@ -311,21 +331,23 @@ def _aufgaben_kontext(
     # seit 01.07. die Kategorie-Auswahl, der Prompt erklärte es aber nicht (B7).
     domina_praef_str = ""
     if domina_kategorie_praeferenzen:
-        _netto = lambda v: int(v.get("positiv", 0)) - int(v.get("negativ", 0))
-        gern = [k for k, v in domina_kategorie_praeferenzen.items() if _netto(v) > 0]
-        ungern = [k for k, v in domina_kategorie_praeferenzen.items() if _netto(v) < 0]
+        # Gealtert + nach Stärke sortiert (kategorie_logik.domina_netto_effektiv):
+        # verblasste Einzelsignale fallen raus, statt als "zuletzt" zu gelten.
+        from bot.services import kategorie_logik
+        gern, ungern = kategorie_logik.domina_praeferenz_rangliste(domina_kategorie_praeferenzen)
         teile = []
         if gern:
-            teile.append(f"zuletzt gern übernommen: {', '.join(sorted(gern))}")
+            teile.append(f"gern übernommen: {', '.join(gern)}")
         if ungern:
-            teile.append(f"eher abgelehnt: {', '.join(sorted(ungern))}")
+            teile.append(f"eher abgelehnt: {', '.join(ungern)}")
         if teile:
             # Gleiches Geschlecht → "ihre Vorlieben, nicht ihre" wäre sinnfrei;
             # dann über das Label abgrenzen ("nicht die der Sklavin").
             sub_poss = f"{s['poss']}e"
             abgrenzung = sub_poss if sub_poss != d["poss"] else f"die {s['label_gen']}"
             domina_praef_str = (
-                f"\nVorschlags-Feedback {d['real_gen']} ({d['poss']} Vorlieben, nicht {abgrenzung}): "
+                f"\nVorschlags-Feedback {d['real_gen']} ({d['poss']} Vorlieben, nicht {abgrenzung}; "
+                f"stärkstes Signal zuerst): "
                 + " – ".join(teile) + "\n"
             )
     # Vorlieben je Zeile (nicht komma-verkettet): Klammer-Zusätze mit Richtungs-/
@@ -335,10 +357,19 @@ def _aufgaben_kontext(
         vorlieben_block = "\n" + "\n".join(f"    - {v}" for v in sklave_vorlieben)
     else:
         vorlieben_block = " nicht angegeben"
+    # Persönliche Grenzen der Domina gehören IN den Prompt (Live-Befund
+    # 12.11.2026): bisher fing sie nur der nachgelagerte Wort-Check ab – der
+    # erkennt Umschreibungen nicht, und das Modell wusste von nichts.
+    grenzen_zeile = ""
+    if domina_grenzen:
+        grenzen_zeile = (
+            f"\n  Persönliche Grenzen (NIEMALS vorschlagen, auch nicht umschrieben oder als "
+            f"Beiwerk – \"langweilig\" heißt: will {d['nom']} nicht): {', '.join(domina_grenzen)}"
+        )
     return f"""Profil {d['real_gen']}:
   Erfahrungsstand: {erfahrungsstand}
   {coach_persona.level_zeile(level)}
-  Interessen: {', '.join(interessen) if interessen else 'nicht angegeben'}
+  Interessen: {', '.join(interessen) if interessen else 'nicht angegeben'}{grenzen_zeile}
 Profil {s['label_gen']}:
   Vorlieben (verdecktes Steuerwissen – als Hebel nutzen, NIE als Liste oder Treffer erwähnen):{vorlieben_block}
   Absolute Grenzen (NIEMALS): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine'}

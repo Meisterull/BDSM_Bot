@@ -136,6 +136,23 @@ async def get_nicht_erledigt_streak(user_id: str) -> int:
     return streak
 
 
+BEWERTUNG_NIEDRIG_MIN = 2     # so viele 1-2★-Wertungen je Kategorie braucht es
+BEWERTUNG_NIEDRIG_TAGE = 60   # … innerhalb dieses Fensters
+
+
+def _juenger_als(iso: str, tage: int, jetzt=None) -> bool:
+    """True, wenn der ISO-Zeitstempel höchstens `tage` Tage alt ist. Unlesbar/leer
+    → False (ohne Datum kein belastbares Signal)."""
+    from datetime import datetime, timezone
+    try:
+        ts = datetime.fromisoformat(iso)
+    except (ValueError, TypeError):
+        return False
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ((jetzt or datetime.now(timezone.utc)) - ts).days <= tage
+
+
 async def get_bewertungs_kontext(user_id: str) -> str:
     """Liefert einen Kontext-String über gut/schlecht bewertete Aufgaben-Kategorien."""
     results, _ = await kern._aio(kern.client.scroll,
@@ -157,14 +174,25 @@ async def get_bewertungs_kontext(user_id: str) -> str:
     # Vorlieben-Signal im Prompt nutzlos (Review D7, B4).
     hoch = [k for p in payloads if p.get("domina_bewertung", 0) >= 4
             if (k := p.get("kategorie", "")) and k != "allgemein"]
-    niedrig = [k for p in payloads if p.get("domina_bewertung", 0) <= 2
-               if (k := p.get("kategorie", "")) and k != "allgemein"]
+    # Niedrig-Signal nur, wenn es belastbar ist (Live-Befund 12.11.2026: eine
+    # einzelne, Monate alte Wertung bremste dauerhaft eine Wunsch-Kategorie):
+    # mindestens BEWERTUNG_NIEDRIG_MIN Wertungen derselben Kategorie
+    # innerhalb der letzten BEWERTUNG_NIEDRIG_TAGE Tage.
+    niedrig_zahl: dict[str, int] = {}
+    for p in payloads:
+        k = p.get("kategorie", "")
+        if (p.get("domina_bewertung", 0) <= 2 and k and k != "allgemein"
+                and _juenger_als(p.get("erteilt_am", ""), BEWERTUNG_NIEDRIG_TAGE)):
+            niedrig_zahl[k] = niedrig_zahl.get(k, 0) + 1
+    niedrig = sorted(k for k, n in niedrig_zahl.items() if n >= BEWERTUNG_NIEDRIG_MIN)
 
     kontext = ""
     if hoch:
         kontext += f"Aufgaben die der Domina gut gefielen (4-5★): {', '.join(set(hoch))}\n"
     if niedrig:
-        kontext += f"Aufgaben die weniger gefielen (1-2★): {', '.join(set(niedrig))}\n"
+        # "der Domina" ausdrücklich: ohne Zuschreibung las das Modell die Zeile
+        # im Sklaven-Kontext als SEINE Abneigung.
+        kontext += f"Aufgaben die der Domina zuletzt mehrfach weniger gefielen (1-2★): {', '.join(niedrig)}\n"
     return kontext
 
 

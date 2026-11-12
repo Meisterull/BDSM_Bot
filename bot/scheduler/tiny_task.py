@@ -383,6 +383,8 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         verbrauchte_zutaten=verbrauchte_zutaten,
         kombi_vorlieben=kombi_vorlieben,
         inventar_impuls=inventar_impuls,
+        # Persönliche Grenzen der Domina fürs LLM sichtbar (nicht nur im Wort-Check).
+        domina_grenzen=domina_profile.get("grenzen", []) or [],
     )
 
 
@@ -427,6 +429,43 @@ async def _machbarkeit_sichern(vorschlag: str, prompt: str, system: str,
 
 
 FEST_DATEI = "data/tiny_task_fest.json"
+
+
+async def _dislike_sichern(vorschlag: str, prompt: str, system: str,
+                           sk_hl: list, do_gr: list,
+                           dislikes: list, bewertungs_kontext: str = "") -> str:
+    """Bedient der Entwurf eine Kategorie, die der Sklave wiederholt ablehnt,
+    wird genau EINMAL neu generiert. Der Neuversuch zählt nur, wenn er weniger
+    Treffer hat – sonst bleibt der (limit-geprüfte) Erstentwurf.
+
+    Kategorien im SPANNUNGSFELD (Domina 4-5★, s. Prompt-Builder) sind als Strafe
+    oder bewusste Forderung ausdrücklich erlaubt und werden nicht geprüft."""
+    try:
+        hoch = next((z for z in (bewertungs_kontext or "").splitlines()
+                     if "gut gefielen" in z), "")
+        pruefen = [k for k in dislikes if k and k not in hoch]
+        funde = kategorie_logik.dislike_treffer(vorschlag, pruefen)
+        if not funde:
+            return vorschlag
+        logger.info("Vorschlag bedient abgelehnte Kategorie(n) (%s) – generiere einmal neu.",
+                    ", ".join(funde))
+        retry_prompt = (
+            prompt + "\n\nACHTUNG: Dein letzter Entwurf lief auf "
+            + ", ".join(kategorie_logik.anzeige_name(k) for k in funde)
+            + " hinaus – das lehnt er wiederholt ab. Entwirf eine ANDERE Szene aus den "
+            "Kategorien für heute, die ohne dieses Feld auskommt: auch nicht als Rolle, "
+            "Verkleidung, Rahmenhandlung oder Beiwerk."
+        )
+        neu = await limits_check.generate_mit_limit_retry(
+            retry_prompt, sk_hl, do_gr, system=system, reasoning=True, lokal=True,
+        )
+        if neu and len(kategorie_logik.dislike_treffer(neu, pruefen)) < len(funde):
+            return neu
+        logger.info("Dislike-Retry %s – Original bleibt.",
+                    "leer" if not neu else "bedient die Kategorie weiterhin")
+    except Exception:
+        logger.exception("Dislike-Detektor fehlgeschlagen – Entwurf bleibt.")
+    return vorschlag
 
 
 async def _sende_festen_vorschlag(bot: Bot) -> bool:
@@ -544,6 +583,15 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
         if vorschlag is None:
             logger.error("Tiny-Task auch nach Re-Generierung Grenzen-verletzend – verworfen.")
             return
+
+        # Dislike-Detektor + genau EIN Retry (Live-Befund 12.11.2026: Vorschlag
+        # baute auf einer gelernten Abneigung auf). Die Prompt-Regel allein
+        # reicht erfahrungsgemäß nicht; best-effort – blockiert nie den Versand.
+        vorschlag = await _dislike_sichern(
+            vorschlag, prompt, system, sk_hl, do_gr,
+            kwargs.get("sklave_dislike_kategorien") or [],
+            kwargs.get("bewertungs_kontext") or "",
+        )
 
         # D9/DIV1/3/5: Schablonen-Detektor + genau EIN Retry (Muster Anti-Echo
         # im Sklave-Chat) – das reine Prompt-Verbot verlor in ~60 % der Outputs.

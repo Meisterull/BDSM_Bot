@@ -40,7 +40,8 @@ async def chat_kurz(system: str, messages: list[dict], max_tokens: int = 160) ->
     logger.warning("Grok-Ausfall: nutze lokales Fallback-Modell %s", config.LOKAL_LLM_MODEL)
     resp = await _client.post(url, json=payload)
     resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"] or ""
+    from bot.services import grok  # lazy: grok importiert dieses Modul
+    return grok.ohne_steuer_token(resp.json()["choices"][0]["message"]["content"] or "")
 
 
 def kuerze_history(history: list[dict], anzahl: int = 4, max_zeichen: int = 300) -> list[dict]:

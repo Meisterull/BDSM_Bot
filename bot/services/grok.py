@@ -17,6 +17,20 @@ _HEADERS = {"Content-Type": "application/json"}
 if config.LLM_API_KEY:  # Ollama braucht keinen Key
     _HEADERS["Authorization"] = f"Bearer {config.LLM_API_KEY}"
 
+# Steuer-Token, die Modelle gelegentlich als Text mitliefern (<|eos|>,
+# <|im_end|>, <|eot_id|> …). Live-Befund 12.11.2026: so ein Token hing an
+# gespeicherten Kurzlabels und wanderte von dort in spätere Prompts.
+_STEUER_TOKEN = re.compile(r"<\|[A-Za-z0-9_\-]{1,40}\|>")
+
+
+def ohne_steuer_token(text: str) -> str:
+    """Entfernt mitgelieferte Steuer-Token aus LLM-Output (zentral für alle
+    Antwortwege: Primär-/Fallback-Endpoint und beide lokalen Modelle)."""
+    if not text or "<|" not in text:
+        return text or ""
+    return _STEUER_TOKEN.sub("", text).strip()
+
+
 # Retry Konfiguration
 _MAX_RETRIES = 3
 _BASE_DELAY = 1.0   # Sekunden
@@ -161,7 +175,7 @@ async def _post_chat(url: str, headers: dict, payload: dict,
     # ein Fehler zu behandeln (ValueError → Retry+Fallback-Kaskade in chat()):
     # ein stilles "" würde sonst an reply_text("") crashen bzw. Antworten
     # verschlucken – im schlimmsten Fall NACH einem Status-Update (gefuehl.py).
-    content = daten["choices"][0]["message"]["content"]
+    content = ohne_steuer_token(daten["choices"][0]["message"]["content"])
     if not content or not content.strip():
         raise ValueError("LLM lieferte leere Antwort (Refusal/leeres Completion)")
     return content
@@ -208,7 +222,7 @@ async def _generator_lokal(payload: dict, max_tokens: int | None) -> str | None:
                                   timeout=config.GENERATOR_LLM_TIMEOUT)
         resp.raise_for_status()
         daten = resp.json()
-        text = ((daten.get("message") or {}).get("content") or "").strip()
+        text = ohne_steuer_token(((daten.get("message") or {}).get("content") or "").strip())
         logger.info("LLM-Call %s (lokal, Generator): %.1fs | Tokens in=%s out=%s",
                     config.GENERATOR_LLM_MODEL, time.monotonic() - start,
                     daten.get("prompt_eval_count", "?"), daten.get("eval_count", "?"))

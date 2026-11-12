@@ -634,8 +634,8 @@ def test_prompt_abschluesse_und_div6():
     )
     assert "VERBRAUCHTE ABSCHLÜSSE" in prompt
     assert "Wie lange willst du das laufen lassen?" in prompt
-    assert "Buttplug_Tragen (zuletzt aber schwach bewertet" in prompt
-    assert "💚 Pegging" in prompt and "Pegging (zuletzt" not in prompt
+    assert "Buttplug_Tragen (bleibt sein Wunsch" in prompt
+    assert "💚 Pegging" in prompt and "Pegging (bleibt" not in prompt
 
 
 # --------------------------------------------------------------------------

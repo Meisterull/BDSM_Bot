@@ -79,7 +79,13 @@ _SYNONYME: dict[str, list[str]] = {
     "rauchen":       ["rauch", "zigarette", "kippe", "asche"],
     "fussanbetung":  ["fussanbetung", "fuss", "fuesse", "fuessen", "zehen", "foot", "feet"],
     "haltungstraining": ["haltungstraining", "haltungsuebung", "haltung halten",
-                         "position halten", "strammstehen", "posture"],
+                         "position halten", "strammstehen", "posture",
+                         # Umschreibungen ohne das Stichwort rutschten durch
+                         # (Live-Befund 12.11.2026)
+                         "haltung bewahren", "koerperhaltung", "knie zusammen",
+                         "haende auf den oberschenkel", "haende auf die oberschenkel",
+                         "gerade sitzen", "aufrecht sitzen", "ruecken gerade",
+                         "stillsitzen", "still sitzen", "stillstehen", "still stehen"],
 
     # --- Englische Limit-Begriffe (englischsprachige Paare) -----------------
     # SICHERHEIT: Werte mischen englische UND deutsche Stämme, damit auch
