@@ -395,19 +395,40 @@ def test_spiel_impuls_pool():
         quiz.sende_spontane_frage, wette.sende_spontanes_angebot = _quiz, _wette
         paare.sub_chat_id, paare.dom_chat_id = (lambda: "222"), (lambda: "111")
 
+        claim_bei_pruefung = []
+
         async def _lage(profil):
+            # Während der Pool-Prüfung darf der Slot noch NICHT reserviert sein
+            # (12.11.2026): sonst sperrt ein Impuls, der gar nichts senden kann,
+            # den zeitgleich tickenden Coach-Impuls aus.
+            claim_bei_pruefung.append(impulse._impuls_claim)
             return lage[0]
         wette.angebots_lage = _lage
-        # Quiz aus + keine Aufgabe → nichts, Claim wieder frei
+        # Quiz aus + keine Aufgabe → nichts, Slot nie reserviert
         config.SPIEL_IMPULS_QUIZ = False
         impulse._impuls_claim = None
         asyncio.run(impulse.spiel_impuls_job(None))
         assert gesendet == [] and impulse._impuls_claim is None
-        # Quiz aus, aber Wette möglich → Wette
+        assert claim_bei_pruefung == [None]
+        assert impulse._impuls_sperrgrund("") is None
+        # Quiz aus, aber Wette möglich → Wette; reserviert wird erst zum Senden
         lage[0] = "ok"
         impulse._impuls_claim = None
+        claim_beim_senden = []
+
+        async def _wette_claim(bot):
+            claim_beim_senden.append(impulse._impuls_claim)
+            return await _wette(bot)
+        wette.sende_spontanes_angebot = _wette_claim
         asyncio.run(impulse.spiel_impuls_job(None))
         assert gesendet == ["wette"]
+        assert claim_bei_pruefung[-1] is None and claim_beim_senden[0] is not None
+        assert impulse._impuls_sperrgrund("") == "claim"
+        wette.sende_spontanes_angebot = _wette
+        # Slot vom Coach-Impuls reserviert → Spiel-Impuls sendet nichts
+        gesendet.clear()
+        asyncio.run(impulse.spiel_impuls_job(None))
+        assert gesendet == []
         # Quiz an, keine Aufgabe → Quiz
         gesendet.clear(); lage[0] = "keine_aufgabe"
         config.SPIEL_IMPULS_QUIZ = True

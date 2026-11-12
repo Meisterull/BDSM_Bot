@@ -179,8 +179,11 @@ def test_impuls_slot_frei():
         assert impulse._impuls_slot_frei(frisch) is False
         vor3h = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
         assert impulse._impuls_slot_frei(vor3h) is True
+        assert impulse._impuls_sperrgrund(frisch) == "anker"
+        assert impulse._impuls_sperrgrund(vor3h) is None
         impulse._impuls_claim = datetime.now(timezone.utc)
         assert impulse._impuls_slot_frei(vor3h) is False
+        assert impulse._impuls_sperrgrund(vor3h) == "claim"
     finally:
         impulse._impuls_claim = alt
 

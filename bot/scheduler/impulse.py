@@ -88,13 +88,32 @@ _impuls_claim: datetime | None = None
 _WUNSCH_WETTE_VERSUCHE = 3
 
 
+def _impuls_sperrgrund(anderer_anker: str) -> str | None:
+    """Warum der Slot belegt ist: "claim" (der andere Impuls hat ihn in diesem
+    Tick reserviert und sendet gerade), "anker" (der andere Impuls ging vor
+    weniger als _IMPULS_KOLLISION wirklich raus) oder None (frei)."""
+    jetzt = datetime.now(timezone.utc)
+    if _impuls_claim and jetzt - _impuls_claim < _IMPULS_KOLLISION:
+        return "claim"
+    if jetzt - basis._parse_datum(anderer_anker or "") < _IMPULS_KOLLISION:
+        return "anker"
+    return None
+
+
 def _impuls_slot_frei(anderer_anker: str) -> bool:
     """True, wenn weder der persistente Sende-Anker des ANDEREN Impulses noch
     ein frischer In-Prozess-Claim jünger als _IMPULS_KOLLISION ist."""
-    jetzt = datetime.now(timezone.utc)
-    if _impuls_claim and jetzt - _impuls_claim < _IMPULS_KOLLISION:
-        return False
-    return jetzt - basis._parse_datum(anderer_anker or "") >= _IMPULS_KOLLISION
+    return _impuls_sperrgrund(anderer_anker) is None
+
+
+def _log_sperre(wer: str, anderer: str, grund: str) -> None:
+    """Die beiden Sperrgründe getrennt loggen – "war vor < 45 min dran" stand
+    vorher auch dann im Log, wenn der andere Impuls gar nichts gesendet hatte."""
+    if grund == "claim":
+        logger.info("%s ausgesetzt – %s hat den Slot in diesem Tick reserviert.", wer, anderer)
+    else:
+        logger.info("%s ausgesetzt – Kollisions-Sperre (%s ging vor < %s raus).",
+                    wer, anderer, _IMPULS_KOLLISION)
 
 
 @basis._job_guard
@@ -125,9 +144,9 @@ async def spiel_impuls_job(bot: Bot) -> None:
     letzte = basis._parse_datum(sklave_profile.get("spiel_impuls_letzte_am", ""))
     if jetzt - letzte < timedelta(days=config.SPIEL_IMPULS_MIN_ABSTAND_TAGE):
         return
-    if not _impuls_slot_frei(domina_profile.get("coach_impuls_letzte_am", "")):
-        logger.info("Spiel-Impuls ausgesetzt – Kollisions-Sperre (Coach-Impuls war vor < %s dran).",
-                    _IMPULS_KOLLISION)
+    grund = _impuls_sperrgrund(domina_profile.get("coach_impuls_letzte_am", ""))
+    if grund:
+        _log_sperre("Spiel-Impuls", "Coach-Impuls", grund)
         return
     # Der Wurf wird geloggt (Owner-Wunsch 03.09.2026): Er fällt nur, wenn alle
     # Gates offen sind — max. ein paar Zeilen am Abend, und man sieht beim
@@ -137,16 +156,10 @@ async def spiel_impuls_job(bot: Bot) -> None:
         logger.info("Spiel-Impuls: Würfel dagegen (%.2f ≥ %.2f)",
                     wurf, config.SPIEL_IMPULS_CHANCE)
         return
-    # In-Prozess-Claim SYNCHRON nach dem Würfel: beide Impuls-Jobs ticken als
-    # gleich registrierte 30-Min-Jobs in derselben Sekunde – die persistenten
-    # Anker fallen erst nach dem Send, die LLM-Generierung läuft dazwischen
-    # (Live-Befund 06.09.: beide Kanäle bekamen zeitgleich ein Quiz).
-    if _impuls_claim and datetime.now(timezone.utc) - _impuls_claim < _IMPULS_KOLLISION:
-        logger.info("Spiel-Impuls ausgesetzt – Coach-Impuls hat den Slot in diesem Tick beansprucht.")
-        return
-    mein_claim = datetime.now(timezone.utc)
-    _impuls_claim = mein_claim
-
+    # Pool VOR der Reservierung bestimmen (Live-Befund 12.11.2026): vorher
+    # reservierte der Job den Slot, stellte dann fest, dass nichts anzubieten
+    # ist, und hatte den zeitgleich tickenden Coach-Impuls bis dahin schon
+    # ausgesperrt – der Tick ging für beide verloren.
     from bot.handlers import quiz, wette  # lazy: zirkulären Import vermeiden
     spiele = []
     if config.SPIEL_IMPULS_QUIZ:
@@ -160,9 +173,17 @@ async def spiel_impuls_job(bot: Bot) -> None:
         logger.info("Spiel-Impuls: Wette nicht anbietbar (%s).", lage)
     if not spiele:
         logger.info("Spiel-Impuls: nichts im Pool (Quiz aus, Wette nicht anbietbar) – ausgesetzt.")
-        if _impuls_claim is mein_claim:
-            _impuls_claim = None
         return
+    # In-Prozess-Claim: Prüfen und Setzen SYNCHRON hintereinander (kein await
+    # dazwischen). Beide Impuls-Jobs ticken als gleich registrierte 30-Min-Jobs
+    # in derselben Sekunde – die persistenten Anker fallen erst nach dem Send,
+    # die LLM-Generierung läuft dazwischen (Live-Befund 06.09.: beide Kanäle
+    # bekamen zeitgleich ein Quiz).
+    if _impuls_claim and datetime.now(timezone.utc) - _impuls_claim < _IMPULS_KOLLISION:
+        logger.info("Spiel-Impuls ausgesetzt – Coach-Impuls hat den Slot in diesem Tick reserviert.")
+        return
+    mein_claim = datetime.now(timezone.utc)
+    _impuls_claim = mein_claim
     random.shuffle(spiele)
     gesendet = None
     for name, senden in spiele:
@@ -289,9 +310,9 @@ async def coach_impuls_job(bot: Bot) -> None:
     if jetzt - letzte < timedelta(days=config.COACH_IMPULS_MIN_ABSTAND_TAGE):
         return
     sklave_profile = await qdrant.get_user_profile("sklave") or {}
-    if not _impuls_slot_frei(sklave_profile.get("spiel_impuls_letzte_am", "")):
-        logger.info("Coach-Impuls ausgesetzt – Kollisions-Sperre (Spiel-Impuls war vor < %s dran).",
-                    _IMPULS_KOLLISION)
+    grund = _impuls_sperrgrund(sklave_profile.get("spiel_impuls_letzte_am", ""))
+    if grund:
+        _log_sperre("Coach-Impuls", "Spiel-Impuls", grund)
         return
     wurf = random.random()
     if wurf >= config.COACH_IMPULS_CHANCE:
@@ -300,7 +321,7 @@ async def coach_impuls_job(bot: Bot) -> None:
         return
     # In-Prozess-Claim synchron nach dem Würfel (s. Kommentar am Spiel-Impuls).
     if _impuls_claim and datetime.now(timezone.utc) - _impuls_claim < _IMPULS_KOLLISION:
-        logger.info("Coach-Impuls ausgesetzt – Spiel-Impuls hat den Slot in diesem Tick beansprucht.")
+        logger.info("Coach-Impuls ausgesetzt – Spiel-Impuls hat den Slot in diesem Tick reserviert.")
         return
     mein_claim = datetime.now(timezone.utc)
     _impuls_claim = mein_claim
