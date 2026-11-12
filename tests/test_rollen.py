@@ -110,9 +110,9 @@ def test_persona_prompt_nutzt_rollen():
     with _rollen("mann", "frau", bot_name="Viktor", sklave_anrede=""):
         p = persona.fuer_sklaven_prompt()
         assert "Sein Name ist Viktor" in p
-    with _rollen("", "", bot_name="Alexa", sklave_anrede=""):
+    with _rollen("", "", bot_name="Vera", sklave_anrede=""):
         p = persona.fuer_sklaven_prompt()
-        assert "Ihr Name ist Alexa" in p
+        assert "Ihr Name ist Vera" in p
 
 
 def test_sklave_prompt_pronomen():

@@ -209,17 +209,17 @@ _BG_TASKS: set = set()
 _PIPELINE_LOCKS: dict[str, asyncio.Lock] = {}
 
 
-async def _post_reply_pipeline(bot, text: str) -> None:
+async def _post_reply_pipeline(bot, text: str, vorher: str = "") -> None:
     """Best-effort-Nachverarbeitung NACH der ausgelieferten Antwort (Review D8/N1):
     Wunsch-Erfassung, Präferenz-Detektor und Domina-Relay brauchen je einen
     Grok-Call und liefen vorher inline unter dem Paar-Lock. Jeder Schritt hat
     sein eigenes Fangnetz – ein Fehler bricht die anderen nicht ab."""
     lock = _PIPELINE_LOCKS.setdefault(paare.aktueller_kontext(), asyncio.Lock())
     async with lock:
-        await _post_reply_pipeline_inner(bot, text)
+        await _post_reply_pipeline_inner(bot, text, vorher)
 
 
-async def _post_reply_pipeline_inner(bot, text: str) -> None:
+async def _post_reply_pipeline_inner(bot, text: str, vorher: str = "") -> None:
     # Geäußerte Wünsche / "würde gern mal ausprobieren" dauerhaft aufnehmen
     # (gated über Signalwörter, hard-limit-gefiltert). Profile liest der
     # Erfasser bewusst selbst frisch: Read-then-Patch auf entdeckte_wuensche
@@ -236,7 +236,11 @@ async def _post_reply_pipeline_inner(bot, text: str) -> None:
     # Vorlieben / No-Gos erkennen und dem Sklaven als ✅/🗑-Vorschlag anbieten.
     try:
         from bot.services import praeferenz_detektor
-        await praeferenz_detektor.erkenne_und_schlage_vor(bot, "sklave", text)
+        if praeferenz_detektor.ist_nachtrag_bitte(text):
+            # Reine Bitte ohne Inhalt → Detektor auf die Nachricht davor.
+            await praeferenz_detektor.nachtrag(bot, "sklave", vorher)
+        else:
+            await praeferenz_detektor.erkenne_und_schlage_vor(bot, "sklave", text)
     except Exception as e:
         logger.error("Präferenz-Detektor (Sklave) fehlgeschlagen: %s", e)
 
@@ -541,6 +545,26 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             logger.error("Anti-Echo-Neugenerierung fehlgeschlagen: %s", e)
 
+    # Profil-Ehrlichkeit: die Chat-Stimme weiß nicht, was der Detektor NACH der
+    # Antwort speichert oder verwirft – versichert sie trotzdem „ist eingetragen",
+    # einmal neu generieren (Prompt-Regel allein verliert gegen die History).
+    try:
+        from bot.services import praeferenz_detektor as _pd
+        if _pd.behauptet_eintrag(response, text):
+            logger.info("Sklave-Antwort behauptet Profil-Eintrag – generiere einmal neu.")
+            async with telegram_helper.typing_action(context.bot, chat_id):
+                response = await grok.chat(
+                    system + "\n\nACHTUNG: Deine letzte Antwort hat behauptet, etwas sei in sein "
+                    "Profil / seine Vorlieben eingetragen, notiert oder hinzugefügt. Das kannst du "
+                    "nicht wissen und nicht tun. Antworte neu OHNE jede solche Zusage: reagier auf "
+                    "den Inhalt, und zur Bitte ums Eintragen höchstens ein kurzer Satz, dass er den "
+                    "Vorschlag gleich per Knopf selbst bestätigt.",
+                    history,
+                    max_tokens=750,
+                )
+    except Exception as e:
+        logger.error("Profil-Ehrlichkeits-Neugenerierung fehlgeschlagen: %s", e)
+
     # Limits-Post-Check (D9/N24, Owner-Entscheid 15.08.): die freie Chat-Antwort
     # war der einzige Sub-sichtbare Pfad ohne limits_check (alle Generatoren
     # laufen über generate_mit_limit_retry). Meta-Gespräch-Heuristik gegen
@@ -595,7 +619,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # inline warteten beide Partner sonst u.U. 10-30 s auf ihre nächste
     # Nachricht. Referenz halten wie tiny_task_feedback._BG_TASKS; der
     # Paar-Kontext (contextvar) wandert per create_task-Kontext-Kopie mit.
-    _bg = asyncio.create_task(_post_reply_pipeline(context.bot, text))
+    # Nachricht davor mitgeben: „füge es hinzu" meint deren Inhalt.
+    _user = [m["content"] for m in history if m.get("role") == "user"]
+    _vorher = _user[-2] if len(_user) >= 2 else ""
+    _bg = asyncio.create_task(_post_reply_pipeline(context.bot, text, _vorher))
     _BG_TASKS.add(_bg)
     _bg.add_done_callback(_BG_TASKS.discard)
 

@@ -151,7 +151,9 @@ async def wunsch_kontext_hinweis(wuensche: list | None = None) -> str:
             wuensche = (await qdrant.get_user_profile("sklave") or {}).get("entdeckte_wuensche", []) or []
         if not wuensche:
             return ""
-        liste = "; ".join(wuensche[:6])
+        # Die JÜNGSTEN sechs (Liste wächst hinten): mit [:6] kamen neu geäußerte
+        # Wünsche ab dem siebten Eintrag nie beim Coach an.
+        liste = "; ".join(wuensche[-6:])
         # Rollen-Formen statt Hardcoding (D9/A4): "der Sklave"/"er" stimmte nur
         # für die F/M-Konstellation (render_baseline-Kontrakt).
         from bot.prompts import rollen
@@ -319,6 +321,9 @@ _WUNSCH_SIGNALE = (
     "neugierig", "mal testen", "träum", "vorstellen", "stelle mir vor", "interessier",
     "freuen würde", "würde mich freuen", "freuen", "schön wäre", "wäre schön",
     "darf ich", "dürfen", "ich will", "ich mag", "sehne", "gefallen würde",
+    # „… gerne hätte" / „ich möchte …" rutschte durch (kein Treffer →
+    # kein Extraktor-Lauf); der Extraktor selbst antwortet bei Nicht-Wunsch KEINE.
+    "gern", "möchte", "moechte",
 )
 
 

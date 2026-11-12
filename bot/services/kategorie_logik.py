@@ -330,9 +330,24 @@ async def alle_kategorien_async() -> list[str]:
 # Klassifikation
 # ---------------------------------------------------------------------------
 
+# Alltagswörter, die ein Keyword nur als Teilwort enthalten und sonst falsch
+# einsortieren (Live-Befund 12.11.2026: ein Wochentag im Titel einer Aufgabe
+# genügte für die Kategorie Dienst). Werden vor dem Matching aus dem Text
+# genommen; das Matching selbst bleibt ein Teilwort-Vergleich, weil deutsche
+# Vorsilben-Formen (ausgepeitscht, gefesselt) sonst nicht mehr träfen.
+_FALSCHE_FREUNDE = re.compile(
+    r"\bdienstags?\b|\bregelm(?:ä|ae)(?:ss|ß)ig\w*|\bin der regel\b|\berwart\w*|\babwart\w*",
+    re.IGNORECASE,
+)
+
+
+def _match_text(text: str) -> str:
+    return _FALSCHE_FREUNDE.sub(" ", (text or "").lower())
+
+
 def keyword_match(text: str) -> str:
     """Reines Keyword-Matching. Gibt 'allgemein' zurück, wenn nichts passt."""
-    text_lower = (text or "").lower()
+    text_lower = _match_text(text)
     for kat, kws in keywords().items():
         if any(kw in text_lower for kw in kws):
             return kat
@@ -343,7 +358,7 @@ def kategorien_in_text(text: str) -> set[str]:
     """ALLE Kategorien, deren Keywords im Text vorkommen (keyword_match liefert
     nur den ersten Treffer – für Ausschluss-Logik braucht es alle, z.B. beim
     Mapping von Freitext-Vorlieben auf Kategorien)."""
-    text_lower = (text or "").lower()
+    text_lower = _match_text(text)
     return {kat for kat, kws in keywords().items()
             if any(kw in text_lower for kw in kws)}
 
@@ -435,6 +450,61 @@ def dislike_kategorien(sklave_profil: dict, schwelle: int = 2) -> list[str]:
     return aus
 
 
+# Verfall gelernter Abneigungs-Tags. Seit die Tags als Dislike zählen, ist die
+# Kategorie hart ausgeschlossen – es kommen also keine neuen Reaktionen mehr,
+# die den Tag wieder lösen könnten. Darum bekommt jeder mag_nicht_-Tag einen
+# Zeitstempel (Profil-Feld `tag_seit`) und fällt nach DISLIKE_TAG_TAGE ohne
+# neues negatives Signal weg: die Kategorie darf dann wieder vorkommen, zwei
+# frische negative Reaktionen sperren sie sofort erneut (Zähler-Dislike).
+DISLIKE_TAG_TAGE = 180
+FELD_TAG_SEIT = "tag_seit"
+
+
+def tags_pflegen(tags: list, tag_seit: dict, jetzt=None,
+                 tage: int = DISLIKE_TAG_TAGE) -> tuple[list, dict, list]:
+    """Reine Pflege-Logik: stempelt ungestempelte mag_nicht_-Tags mit `jetzt`,
+    entfernt abgelaufene Tags und räumt Stempel verschwundener Tags weg.
+    Rückgabe: (tags_neu, tag_seit_neu, verfallen)."""
+    from datetime import datetime, timezone
+    jetzt = jetzt or datetime.now(timezone.utc)
+    seit = dict(tag_seit or {})
+    bleiben, verfallen = [], []
+    for tag in tags or []:
+        if not isinstance(tag, str) or not tag.startswith("mag_nicht_"):
+            bleiben.append(tag)
+            continue
+        try:
+            ts = datetime.fromisoformat(seit.get(tag) or "")
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            ts = None
+        if ts is None:
+            seit[tag] = jetzt.isoformat()   # Alt-Bestand: Frist läuft ab jetzt
+            bleiben.append(tag)
+        elif (jetzt - ts).days >= tage:
+            verfallen.append(tag)
+            seit.pop(tag, None)
+        else:
+            bleiben.append(tag)
+    seit = {k: v for k, v in seit.items() if k in bleiben}
+    return bleiben, seit, verfallen
+
+
+async def pflege_dislike_tags(user_id: str = "sklave") -> list[str]:
+    """Wöchentlich (Wartungs-Job): Tags stempeln/verfallen lassen. Gibt die
+    verfallenen Tags zurück."""
+    from bot.services import qdrant
+    prof = await qdrant.get_user_profile(user_id) or {}
+    alt_tags = list(prof.get("persoenlichkeit_tags", []) or [])
+    alt_seit = dict(prof.get(FELD_TAG_SEIT, {}) or {})
+    tags, seit, verfallen = tags_pflegen(alt_tags, alt_seit)
+    if tags != alt_tags or seit != alt_seit:
+        await qdrant.patch_profile_fields(
+            user_id, {"persoenlichkeit_tags": tags, FELD_TAG_SEIT: seit})
+    return verfallen
+
+
 # Marker für den Dislike-Detektor auf FERTIGEN Vorschlagstexten. Die allgemeine
 # Keyword-Tabelle taugt dafür nicht überall: sie ist fürs Einsortieren gebaut und
 # bei manchen Kategorien bewusst breit ("gehorsam", "erlaubnis", "warten" unter
@@ -447,7 +517,7 @@ _DISLIKE_MARKER: dict[str, list[str]] = {
         r"\bhaushalt", r"\bstaubsaug", r"\babwasch", r"\bsp(?:ü|ue)lmaschine",
         # bewusst OHNE "massage/massier" (Massager = Spielzeug) und ohne bloßes
         # "putz" (bildhafte Komposita) – beides gab Fehlalarme auf echten Vorschlägen.
-        # "bringt dir was zu trinken" / "holt dir einen Kaffee"
+        # "holt dir einen Kaffee" / "bringt ihr ein Getränk"
         r"\b(?:bring\w*|hol\w*)\b[^.!?\n]{0,40}\b(?:trinken|getr(?:ä|ae)nk\w*|kaffee|tee|drink)\b",
     ],
 }

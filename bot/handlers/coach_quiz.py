@@ -552,6 +552,8 @@ async def _wett_idee_generieren(schwerpunkt: str = "") -> str | None:
         sklave_vorlieben=vorlieben, sklave_hard_limits=sk_hl,
         domina_interessen=interessen, verbrauchte_zutaten=zutaten,
         schwerpunkt=schwerpunkt, letzte_wetten=waehrung_h.letzte_wetten(sklave_profil),
+        domina_grenzen=do_gr,
+        sklave_dislike_kategorien=kategorie_logik.dislike_kategorien(sklave_profil),
     )
 
     async def _generiere(p: str) -> str | None:

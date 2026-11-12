@@ -335,6 +335,14 @@ unabhängig davon, in welcher Sprache die Reaktion formuliert ist."""
             if pos_ratio > 0.4 and f"mag_nicht_{kategorie}" in tags:
                 tags.remove(f"mag_nicht_{kategorie}")
 
+        # Verfalls-Stempel der Abneigungs-Tags (kategorie_logik.tags_pflegen):
+        # neuer Tag → Stempel; jede weitere negative Reaktion frischt ihn auf.
+        tag_seit = dict(sklave_profil.get(kategorie_logik.FELD_TAG_SEIT, {}) or {})
+        nicht_tag = f"mag_nicht_{kategorie}"
+        if nicht_tag in tags and (bucket == "negativ" or nicht_tag not in tag_seit):
+            tag_seit[nicht_tag] = datetime.now(timezone.utc).isoformat()
+        tag_seit = {k: v for k, v in tag_seit.items() if k in tags}
+
         # Progressive Steigerung: Intensitäts-Level dieser Kategorie fortschreiben
         levels = dict(sklave_profil.get("kategorie_level", {}) or {})
         aktuell = int(levels.get(kategorie, kategorie_logik.LEVEL_DEFAULT))
@@ -343,6 +351,7 @@ unabhängig davon, in welcher Sprache die Reaktion formuliert ist."""
         await qdrant.patch_profile_fields("sklave", {
             "kategorie_reaktionen": reaktionen,
             "persoenlichkeit_tags": tags,
+            kategorie_logik.FELD_TAG_SEIT: tag_seit,
             "kategorie_level": levels,
         })
     except Exception as e:

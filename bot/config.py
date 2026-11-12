@@ -181,6 +181,14 @@ SPIEL_IMPULS_QUIZ = os.getenv("SPIEL_IMPULS_QUIZ", "1") == "1"
 # Coach-Impuls komplett aus, weil der Spiel-Impuls um 20:47 zuerst dran war).
 IMPULS_KOLLISION_MINUTEN = int(os.getenv("IMPULS_KOLLISION_MINUTEN", "45"))
 
+# Wett-Fenster: in diesem Fenster dürfen die WETT-Zweige beider Impulse
+# (Wett-Angebot an den Sub, Wett-Idee an die Domina) auch AUSSERHALB der
+# kinderfreien Zeiten raus – eine Wette ist nur eine Nachricht, sie muss nicht
+# in der ungestörten Zeit beginnen. Quiz-Zweige bleiben an die kinderfreien
+# Zeiten gebunden. Leer = aus (Wetten wie bisher nur kinderfrei). Die Fenster
+# SPIEL_/COACH_IMPULS_FENSTER gelten zusätzlich weiter. Beispiel: 17:00-23:00
+WETT_IMPULS_FENSTER = os.getenv("WETT_IMPULS_FENSTER", "").strip()
+
 # Coach-Impuls ☕: Spiegel des Spiel-Impulses auf der Domina-Seite – der Coach
 # stellt spontan eine Quiz-Frage (Coach-Quiz) oder schlägt eine Wett-Idee zum
 # Weitergeben vor. Gleiche Mechanik: 30-Min-Check im Fenster ∩ kinderfreie

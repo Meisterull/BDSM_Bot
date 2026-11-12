@@ -32,7 +32,8 @@ def _wie_lange_her(datum_iso: str, heute=None) -> str:
 
 def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
               domina_interessen: list = None, verbrauchte_zutaten: list = None,
-              schwerpunkt: str = "", letzte_wetten: list = None, heute=None) -> tuple[str, str]:
+              schwerpunkt: str = "", letzte_wetten: list = None, heute=None,
+              domina_grenzen: list = None, sklave_dislike_kategorien: list = None) -> tuple[str, str]:
     """Coach-Impuls: fertige Wett-Idee für die Domina, zum Weitergeben an den Sub.
     Dieselben Bausteine wie die Aufgaben-Vorschläge (Live-Befund 07.09.: der
     erste Generator kannte weder Rollen-Rahmen noch Richtungs-Regel noch
@@ -100,4 +101,15 @@ DIE WETTE (strikt):
     prompt = f"""Vorlieben {s['label_gen']} (verdecktes Steuerwissen, aus {s['poss']}er Sicht notiert – NIE als Liste oder Treffer erwähnen):{vorlieben_block}
 Absolute Grenzen {s['label_gen']} (NIEMALS): {', '.join(sklave_hard_limits) if sklave_hard_limits else 'keine'}
 Interessen {d['real_gen']}: {', '.join(domina_interessen) if domina_interessen else 'nicht angegeben'}"""
+    # Grenzen der Domina und gelernte Abneigungen des Subs (12.11.2026): beides
+    # kannte dieser Generator nicht. Abneigungen sind als Bedingung/Belohnung
+    # tabu, als Preis einer Niederlage aber erlaubt (wie das SPANNUNGSFELD der
+    # Aufgaben-Vorschläge: Strafe ja, Standard nein).
+    if domina_grenzen:
+        prompt += (f"\nPersönliche Grenzen {d['real_gen']} (NIEMALS, auch nicht umschrieben – "
+                   f"\"langweilig\" heißt: will {d['nom']} nicht): {', '.join(domina_grenzen)}")
+    if sklave_dislike_kategorien:
+        prompt += (f"\nDas lehnt {s['label_nom']} wiederholt ab: {', '.join(sklave_dislike_kategorien)} – "
+                   f"nie als Wett-Bedingung und nie als Gewinn; höchstens als Preis, den {s['nom']} "
+                   f"bei einer Niederlage zahlt.")
     return system, prompt

@@ -87,6 +87,46 @@ _MAGST_RE = re.compile(
     re.IGNORECASE)
 
 
+# Verrat von Sub-Wissen: die Dom-Seite soll Vorlieben/Wünsche als Einfall des
+# Coach erleben, nicht als weitergetragenes Geständnis (coach_persona.tarnung()).
+# Deterministisches Netz unter der Prompt-Regel – gleiche Mechanik wie oben.
+# Pronomen der Sub-Seite kommen aus rollen (Konstellation ist Laufzeit-Config).
+def _verrat_re() -> re.Pattern:
+    from bot.prompts import rollen
+    s = rollen.sub()
+    nom, poss = re.escape(s["nom"]), re.escape(s["poss"].rstrip("e"))
+    fuell = r"(?:ja |doch |eh |so |total |voll |richtig |echt |heimlich |insgeheim |schon lange )*"
+    return re.compile(
+        rf"\bw(?:ü|ue)nscht sich\b"
+        rf"|\bhat sich\b[^.!?\n]{{0,40}}\bgew(?:ü|ue)nscht\b"
+        rf"|\b{nom} w(?:ü|ue)rde {fuell}(?:so |zu )?gern"
+        rf"|\btr(?:ä|ae)umt {fuell}(?:davon|von)\b"
+        rf"|\bhat\b[^.!?\n]{{0,25}}\b(?:erz(?:ä|ae)hlt|verraten|gestanden|gebeichtet|angedeutet|anvertraut)\b"
+        rf"|\b{nom} steht {fuell}(?:auf|drauf)\b(?! allen vieren| und\b| den knien)"
+        rf"|\b{poss}\w* (?:geheim\w* |heimlich\w* |gr(?:ö|oe)(?:ß|ss)te\w* |neue\w* )?"
+        rf"(?:wunsch|w(?:ü|ue)nsche\w*|fantasie\w*|vorlieb\w*|kinks?|traum|tr(?:ä|ae)ume\w*)\b"
+        rf"|\blaut (?:{poss}\w* |dem )?(?:profil|dossier)\b"
+        rf"|\b(?:in|aus) {poss}\w* (?:profil|dossier)\b"
+        rf"|\bauf {poss}\w* (?:liste|wunschliste)\b",
+        re.IGNORECASE)
+
+
+# Nachsatz für den einen Retry nach einem Verrats-Fund (Generatoren + Chat).
+TARN_NACHSATZ = (
+    "\n\nACHTUNG: Dein letzter Entwurf hat verdecktes Wissen als Geständnis weitergetragen "
+    "(Muster: „er wünscht sich“, „er würde gern“, „sein Wunsch“, „seine Vorliebe“, „er steht ja "
+    "auf“, „hat erzählt“). Formuliere neu: der Inhalt darf bleiben, aber ausschließlich als DEIN "
+    "eigener spontaner Einfall oder als Vermutung aus Beobachtbarem – nichts zitieren, nichts "
+    "der Sub-Seite zuschreiben, kein Profil-Abgleich."
+)
+
+
+def verraet_sub_wissen(text: str) -> bool:
+    """True, wenn der Text der Dom-Seite ein Sub-Geständnis weiterträgt
+    („er wünscht sich …", „sein Wunsch", „er steht ja auf …", „hat mir erzählt")."""
+    return _verrat_re().search(text or "") is not None
+
+
 def _begruendungs_formel_entfernen(text: str) -> str:
     """Notbremse (Live 17.09.2026): Retry schlechter als das Original → das
     Original ging MIT „Das passt jetzt gut, weil …" raus. Die Begründung ist
@@ -146,6 +186,9 @@ def _formel_verstoesse(text: str) -> list[str]:
         funde.append('Absetz-Meta-Kommentar („ohne dass es wieder …")')
     if _MAGST_RE.search(text or ""):
         funde.append('Profil-Treffer-Meldung („…, den du/er magst")')
+    if verraet_sub_wissen(text):
+        funde.append('Verrat von verdecktem Wissen („er wünscht sich / würde gern / steht auf / '
+                     'sein Wunsch / hat erzählt") – nur als DEIN eigener Einfall formulieren')
     return funde
 
 

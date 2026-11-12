@@ -948,6 +948,16 @@ MESSAGES = {
         "_No-Gos werden nur ergänzt oder um Ausnahmen präzisiert, nie entfernt._"
     ),
 
+    "PRAEFERENZ_VERWORFEN": (
+        "⚠️ Nicht ins Profil übernommen – kollidiert mit einer eingetragenen Grenze:\n```\n{liste}\n```\n"
+        "_Falls das ein Fehlgriff ist: schreib es noch einmal und sag dazu, von wem es ausgeht "
+        "(z. B. „ihre …“ / „meine eigenen …“)._"
+    ),
+    "PRAEFERENZ_NICHTS_NEUES": (
+        "📝 Ich habe in deiner Nachricht davor nichts Neues fürs Profil gefunden. "
+        "Schreib mir die Vorliebe bitte noch einmal in einem Satz."
+    ),
+
     # --- Skills / Wissens-Briefe ----------------------------------------------------
     "SKILL_HEADER": "📚 *Wissen – {kategorie}* (_{source}, Stand {stand}_)\n\n",
     "SKILL_LERNE_USAGE": (

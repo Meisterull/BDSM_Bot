@@ -82,6 +82,13 @@ async def _generate_vorschlaege(
     if skill_block:
         prompt += "\n\n" + skill_block
     raw = await grok.simple(prompt, system=system, reasoning=True)
+    # Tarn-Netz (coach_persona.tarnung()): Geständnis-Formulierungen → einmal neu.
+    from bot.scheduler import schablonen
+    if schablonen.verraet_sub_wissen(raw):
+        logger.info("Inspiration verrät Sub-Wissen – generiere einmal neu.")
+        neu = await grok.simple(prompt + schablonen.TARN_NACHSATZ, system=system, reasoning=True)
+        if neu and not schablonen.verraet_sub_wissen(neu):
+            raw = neu
 
     sk_hl = sklave_profile.get("hard_limits", []) or []
     do_gr = domina_profile.get("grenzen", []) or []
@@ -188,7 +195,7 @@ Die 3 Ideen sollen:
 - Aus unterschiedlichen Kategorien stammen (verfügbar: {', '.join(kategorie_logik.alle_kategorien(sklave_profile))})
 - Zum Level {level} und zur aktuellen Uhrzeit passen
 - Konkret und direkt umsetzbar sein
-- Jeweils einen kurzen "Warum gut" Hinweis haben, der sich auf SEIN Profil bezieht (nicht generisch)
+- Jeweils einen kurzen "Warum gut" Hinweis haben, der nicht generisch ist: was die Idee mit ihm macht oder warum sie gerade jetzt sitzt – aus Beobachtbarem oder als deine Vermutung, NIE als Abgleich mit seinen Vorlieben/Wünschen ("er wünscht sich", "trifft seine Vorliebe", "er steht auf")
 
 Format:
 1. *[Aufgaben-Name]*

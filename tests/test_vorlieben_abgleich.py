@@ -44,8 +44,8 @@ def test_dislikes_aus_tags():
 
 def test_dislike_treffer():
     t = kategorie_logik.dislike_treffer
-    assert t("Er spielt zehn Minuten dein Dienstmädchen.", ["Dienst"]) == ["Dienst"]
-    assert t("Er bringt dir was zu trinken und schweigt.", ["Dienst"]) == ["Dienst"]
+    assert t("Er macht heute den Dienstboten für dich.", ["Dienst"]) == ["Dienst"]
+    assert t("Er holt dir einen Kaffee aus der Küche.", ["Dienst"]) == ["Dienst"]
     assert t("Er putzt das Bad, bis du zufrieden bist.", ["Dienst"]) == ["Dienst"]
     # Die breite Einsortier-Tabelle (gehorsam/erlaubnis/warten) darf NICHT auslösen
     assert t("Am Dienstag wartet er gehorsam auf deine Erlaubnis.", ["Dienst"]) == []
@@ -87,7 +87,7 @@ def test_lieblings_zeile_wertet_wunsch_nicht_ab():
 async def test_haltung_umschreibungen():
     gr = ["Haltungstraining (langweilig)"]
     v = limits_check.verletzungen
-    assert await v("Knie zusammen, Hände auf den Oberschenkeln, zehn Minuten.", [], gr)
+    assert await v("Er sitzt da, die Knie zusammen und beide Hände auf den Oberschenkeln.", [], gr)
     assert await v("Er soll aufrecht sitzen und den Rücken gerade halten.", [], gr)
     assert await v("Er hält die Position, bis du nickst.", [], gr) == []  # bewusst nicht breiter
     assert await v("Er kniet vor dir, Hände auf dem Rücken.", [], gr) == []
@@ -123,7 +123,7 @@ async def test_bewertungs_kontext_schwelle_und_fenster():
 
 async def test_dislike_sichern():
     orig = tiny_task.limits_check.generate_mit_limit_retry
-    schlecht = "Er spielt zehn Minuten dein Dienstmädchen."
+    schlecht = "Er macht heute den Dienstboten für dich."
     try:
         # kein Treffer → kein LLM-Call
         gen = AsyncMock(return_value="NEU")
@@ -188,6 +188,111 @@ def test_steuer_token_raus():
     assert o("") == "" and o(None) == ""
 
 
+def test_falsche_freunde_im_keyword_match():
+    km = kategorie_logik.keyword_match
+    assert km("Dienstag – Strafe: zwanzig Zeilen abschreiben") == "Bestrafung"
+    assert km("Er soll dich heute bedienen und dir dienen") == "Dienst"
+    assert "Dienst" not in kategorie_logik.kategorien_in_text(
+        "Dienstags regelmäßig, in der Regel abends – sie erwartet ihn")
+    assert "Dienst" in kategorie_logik.kategorien_in_text("Er hält sich an jede Regel")
+
+
+def test_tags_pflegen_verfall():
+    jetzt = datetime.now(timezone.utc)
+    alt = (jetzt - timedelta(days=200)).isoformat()
+    frisch = (jetzt - timedelta(days=20)).isoformat()
+    tp = kategorie_logik.tags_pflegen
+    # ungestempelter Alt-Bestand: Frist läuft ab jetzt, Tag bleibt
+    tags, seit, weg = tp(["mag_nicht_Dienst", "willig"], {}, jetzt)
+    assert tags == ["mag_nicht_Dienst", "willig"] and weg == []
+    assert seit == {"mag_nicht_Dienst": jetzt.isoformat()}
+    # abgelaufen → raus, frischer bleibt, andere Tags unangetastet, Waisen-Stempel weg
+    tags, seit, weg = tp(["mag_nicht_Dienst", "mag_nicht_CBT", "mag_Pegging"],
+                         {"mag_nicht_Dienst": alt, "mag_nicht_CBT": frisch, "mag_nicht_Weg": alt}, jetzt)
+    assert tags == ["mag_nicht_CBT", "mag_Pegging"] and weg == ["mag_nicht_Dienst"]
+    assert seit == {"mag_nicht_CBT": frisch}
+    # kaputter Stempel wird neu gesetzt statt zu crashen
+    tags, seit, weg = tp(["mag_nicht_Dienst"], {"mag_nicht_Dienst": "kaputt"}, jetzt)
+    assert tags == ["mag_nicht_Dienst"] and seit["mag_nicht_Dienst"] == jetzt.isoformat()
+    # nach dem Verfall ist die Kategorie kein Dislike mehr
+    assert kategorie_logik.dislike_kategorien({"persoenlichkeit_tags": ["mag_Pegging"]}) == []
+
+
+def test_wett_idee_kennt_grenzen_und_abneigungen():
+    _s, ohne = fp.wett_idee(sklave_vorlieben=["A"], sklave_hard_limits=[], domina_interessen=["B"])
+    assert "Persönliche Grenzen" not in ohne and "lehnt" not in ohne
+    _s, mit = fp.wett_idee(sklave_vorlieben=["A"], sklave_hard_limits=[], domina_interessen=["B"],
+                           domina_grenzen=["Fußanbetung (langweilig)"],
+                           sklave_dislike_kategorien=["Dienst"])
+    assert "Persönliche Grenzen der Domina (NIEMALS" in mit and "Fußanbetung (langweilig)" in mit
+    assert "lehnt der Sklave wiederholt ab: Dienst" in mit and "nie als Wett-Bedingung" in mit
+
+
+def test_wett_fenster_ausserhalb_kinderfrei():
+    """WETT_IMPULS_FENSTER: Wett-Zweige dürfen außerhalb der kinderfreien Zeiten
+    raus, Quiz-Zweige nicht; ohne Fenster bleibt alles wie bisher."""
+    from bot import config
+    from bot.scheduler import basis, impulse
+    from bot.handlers import quiz, wette
+    from bot.services import paare, zeiten
+    from bot.services.db import profile as db_profile
+    gesendet = []
+    alt = (config.SPIEL_IMPULS, config.SPIEL_IMPULS_QUIZ, config.SPIEL_IMPULS_CHANCE,
+           config.SPIEL_IMPULS_FENSTER, config.WETT_IMPULS_FENSTER, basis._flow_aktiv,
+           zeiten.ist_im_fenster, db_profile.get_user_profile, db_profile.patch_profile_fields,
+           quiz.sende_spontane_frage, wette.angebots_lage, wette.sende_spontanes_angebot,
+           impulse._impuls_claim, paare.sub_chat_id, paare.dom_chat_id)
+
+    async def _profil(rolle):
+        return {"kinderfreie_zeiten": ["KINDERFREI"]} if rolle == "domina" else {}
+
+    async def _quiz(bot):
+        gesendet.append("quiz"); return True
+
+    async def _wette(bot):
+        gesendet.append("wette"); return True
+
+    async def _lage(profil):
+        return "ok"
+    offen = {"IMPULS": True, "KINDERFREI": False, "WETT": True}
+    try:
+        config.SPIEL_IMPULS, config.SPIEL_IMPULS_QUIZ, config.SPIEL_IMPULS_CHANCE = True, True, 1.0
+        config.SPIEL_IMPULS_FENSTER = "IMPULS"
+        basis._flow_aktiv = lambda *a, **k: False
+        zeiten.ist_im_fenster = lambda jetzt, liste: any(offen.get(e, False) for e in liste) if liste else True
+        db_profile.get_user_profile = _profil
+        db_profile.patch_profile_fields = lambda *a, **k: _profil("x")
+        quiz.sende_spontane_frage, wette.sende_spontanes_angebot, wette.angebots_lage = _quiz, _wette, _lage
+        paare.sub_chat_id, paare.dom_chat_id = (lambda: "222"), (lambda: "111")
+
+        def lauf():
+            gesendet.clear(); impulse._impuls_claim = None
+            asyncio.run(impulse.spiel_impuls_job(None))
+            return list(gesendet)
+        # kein Wett-Fenster konfiguriert + nicht kinderfrei → nichts (Bestand)
+        config.WETT_IMPULS_FENSTER = ""
+        assert lauf() == []
+        # Wett-Fenster offen + nicht kinderfrei → nur die Wette, nie das Quiz
+        config.WETT_IMPULS_FENSTER = "WETT"
+        for _ in range(8):
+            assert lauf() == ["wette"]
+        # Wett-Fenster zu + nicht kinderfrei → nichts
+        offen["WETT"] = False
+        assert lauf() == []
+        # kinderfrei → Quiz wieder im Pool
+        offen["KINDERFREI"] = True
+        assert {lauf()[0] for _ in range(30)} == {"quiz", "wette"}
+        # außerhalb des Impuls-Fensters hilft auch das Wett-Fenster nicht
+        offen.update(IMPULS=False, WETT=True)
+        assert lauf() == []
+    finally:
+        (config.SPIEL_IMPULS, config.SPIEL_IMPULS_QUIZ, config.SPIEL_IMPULS_CHANCE,
+         config.SPIEL_IMPULS_FENSTER, config.WETT_IMPULS_FENSTER, basis._flow_aktiv,
+         zeiten.ist_im_fenster, db_profile.get_user_profile, db_profile.patch_profile_fields,
+         quiz.sende_spontane_frage, wette.angebots_lage, wette.sende_spontanes_angebot,
+         impulse._impuls_claim, paare.sub_chat_id, paare.dom_chat_id) = alt
+
+
 def _run():
     test_dislikes_aus_tags()
     test_dislike_treffer()
@@ -198,6 +303,10 @@ def _run():
     asyncio.run(test_dislike_sichern())
     test_domina_signal_alter_und_gewicht()
     test_steuer_token_raus()
+    test_falsche_freunde_im_keyword_match()
+    test_tags_pflegen_verfall()
+    test_wett_idee_kennt_grenzen_und_abneigungen()
+    test_wett_fenster_ausserhalb_kinderfrei()
     print("✅ Alle Vorlieben-Abgleich-Tests bestanden")
 
 

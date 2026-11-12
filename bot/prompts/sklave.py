@@ -177,4 +177,6 @@ Aktuell offene/gefragte Aufgaben ({offene_anzahl} insgesamt):
 Wenn {s["poss"]}e Nachricht sich auf eine dieser Aufgaben bezieht (Vorfreude, Rückmeldung oder eine Frage dazu), bleib bei GENAU dieser Aufgabe und ihrer Szene – greif den konkreten Inhalt der Aufgabe auf, erfinde keine andere Handlung und verdrehe Richtung oder Reihenfolge nicht.
 
 Regeln für diese Konversation:
-{rollen.ersetze_platzhalter(persona_presets.template("regeln_gespraech"))}"""
+{rollen.ersetze_platzhalter(persona_presets.template("regeln_gespraech"))}
+
+PROFIL-EHRLICHKEIT: Du selbst kannst {s["poss"]} Profil (Vorlieben, Wünsche, Grenzen) NICHT ändern und siehst nicht, was gespeichert wird. Nennt {s["nom"]} eine neue Vorliebe, prüft das System sie NACH deiner Antwort und schickt {s["dat"]} gegebenenfalls einen eigenen Vorschlag mit Knopf zum Bestätigen. Behaupte deshalb NIE, etwas sei eingetragen, notiert, hinzugefügt, gespeichert oder „ab sofort bei den Vorlieben" – auch nicht, wenn {s["nom"]} ausdrücklich darum bittet. Reagier auf den Inhalt; zur Bitte ums Eintragen sagst du höchstens knapp in deiner Stimme, dass {s["nom"]} es über den Knopf unter dem Vorschlag selbst bestätigt."""

@@ -88,6 +88,13 @@ _impuls_claim: datetime | None = None
 _WUNSCH_WETTE_VERSUCHE = 3
 
 
+def _wett_fenster_offen(jetzt_lokal: datetime) -> bool:
+    """True, wenn WETT_IMPULS_FENSTER gesetzt ist und `jetzt_lokal` darin liegt –
+    dann dürfen Wett-Impulse auch außerhalb der kinderfreien Zeiten raus."""
+    return bool(config.WETT_IMPULS_FENSTER) and zeiten.ist_im_fenster(
+        jetzt_lokal, [config.WETT_IMPULS_FENSTER])
+
+
 def _impuls_sperrgrund(anderer_anker: str) -> str | None:
     """Warum der Slot belegt ist: "claim" (der andere Impuls hat ihn in diesem
     Tick reserviert und sendet gerade), "anker" (der andere Impuls ging vor
@@ -134,9 +141,11 @@ async def spiel_impuls_job(bot: Bot) -> None:
     if basis._flow_aktiv(paare.sub_chat_id(), "Spiel-Impuls"):
         return
     domina_profile = await qdrant.get_user_profile("domina") or {}
-    # kinderfreie_zeiten wie beim Blitz respektieren – auch ein Quiz oder eine
-    # Wette soll nicht mitten in die Familienzeit platzen.
-    if not zeiten.ist_im_fenster(jetzt_lokal, domina_profile.get("kinderfreie_zeiten", []) or []):
+    # kinderfreie_zeiten wie beim Blitz respektieren – ein Quiz soll nicht
+    # mitten in die Familienzeit platzen. Das Wett-Angebot darf im
+    # WETT_IMPULS_FENSTER auch außerhalb raus (Owner-Entscheid 12.11.2026).
+    kinderfrei = zeiten.ist_im_fenster(jetzt_lokal, domina_profile.get("kinderfreie_zeiten", []) or [])
+    if not kinderfrei and not _wett_fenster_offen(jetzt_lokal):
         return
 
     sklave_profile = await qdrant.get_user_profile("sklave") or {}
@@ -162,7 +171,7 @@ async def spiel_impuls_job(bot: Bot) -> None:
     # ausgesperrt – der Tick ging für beide verloren.
     from bot.handlers import quiz, wette  # lazy: zirkulären Import vermeiden
     spiele = []
-    if config.SPIEL_IMPULS_QUIZ:
+    if config.SPIEL_IMPULS_QUIZ and kinderfrei:
         spiele.append(("quiz", quiz.sende_spontane_frage))
     lage = await wette.angebots_lage(sklave_profile)
     if lage == "ok":
@@ -272,7 +281,10 @@ async def coach_impuls_job(bot: Bot) -> None:
     if basis._flow_aktiv(paare.dom_chat_id(), "Coach-Impuls"):
         return
     domina_profile = await qdrant.get_user_profile("domina") or {}
-    if not zeiten.ist_im_fenster(jetzt_lokal, domina_profile.get("kinderfreie_zeiten", []) or []):
+    # Die Wett-Idee darf im WETT_IMPULS_FENSTER auch außerhalb der kinderfreien
+    # Zeiten raus, das Coach-Quiz nicht (s. Spiel-Impuls).
+    kinderfrei = zeiten.ist_im_fenster(jetzt_lokal, domina_profile.get("kinderfreie_zeiten", []) or [])
+    if not kinderfrei and not _wett_fenster_offen(jetzt_lokal):
         return
 
     from bot.handlers import coach_quiz  # lazy: zirkulären Import vermeiden
@@ -327,7 +339,7 @@ async def coach_impuls_job(bot: Bot) -> None:
     _impuls_claim = mein_claim
 
     kandidaten = [("wett_idee", coach_quiz.sende_wett_idee)]
-    if config.COACH_IMPULS_QUIZ:
+    if config.COACH_IMPULS_QUIZ and kinderfrei:
         kandidaten.insert(0, ("coach_quiz", coach_quiz.sende_spontane_frage))
     # Strikt abwechseln statt würfeln (Live 15.09.: Quiz, Quiz, dann erst Wette –
     # die Dom-Seite hatte „noch nie einen Wettvorschlag"). Fallback statt stillem

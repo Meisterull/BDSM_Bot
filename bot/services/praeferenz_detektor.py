@@ -115,12 +115,61 @@ def _finde_bestand(wert: str, bestand: list[str]) -> str | None:
     return None
 
 
+# „Füge es bitte hinzu" / „trag das ein": reine Bitte ohne eigenen Inhalt – gemeint
+# ist die Nachricht davor. Nur kurze Nachrichten, sonst trägt der Text selbst Inhalt.
+_NACHTRAG_RE = re.compile(
+    r"\b(f(ü|ue)g\w*\b.{0,25}\b(hinzu|dazu)|trag\w*\b.{0,25}\bein\b|nimm\w*\b.{0,25}\b(auf|dazu)\b"
+    r"|schreib\w*\b.{0,25}\b(auf|dazu|rein)\b|notier\w*|merk\w* dir (das|es)|erg(ä|ae)nz\w*"
+    r"|add (it|this|that))\b"
+)
+
+
+def ist_nachtrag_bitte(text: str) -> bool:
+    t = _norm(text)
+    return 0 < len(t) <= 60 and _NACHTRAG_RE.search(t) is not None
+
+
+# Die Chat-Stimme kennt den Speicherstand nicht: ob etwas im Profil landet,
+# entscheidet erst der Detektor NACH der Antwort (und dann der ✅-Tipp). Muster
+# aus dem Live-Betrieb: Antwort versichert „ist eingetragen", während der
+# Kandidat still verworfen wurde. Satzweise: Profil-Begriff + Speicher-Verb.
+_EINTRAG_THEMA = r"\b(vorlieben|profil\w*|wunschliste|deine[rn]? liste|preferences|profile)\b"
+_EINTRAG_VERB = (
+    r"\b(hinzu\w*|dazu|notier\w*|eingetragen|eintrag\w*|trage\b.{0,40}\bein|vermerk\w*|aufgenommen"
+    r"|nehme\b.{0,40}\bauf|verankert\w*|gespeichert|erweiter\w*|erg(ä|ae)nz\w*|added|saved|noted"
+    r"|offiziell\w*|teil|steht (jetzt|nun|schon|bereits|ab sofort))\b"
+)
+_EINTRAG_VERB_NACKT = (
+    r"\b(notiert|eingetragen|vermerkt|aufgenommen|hinzugef(ü|ue)gt|gespeichert|verankert|erledigt"
+    r"|f(ü|ue)ge\b.{0,40}\bhinzu|trage\b.{0,40}\bein|added|saved|noted|offiziell\w*)\b"
+)
+
+
+def behauptet_eintrag(antwort: str, user_text: str = "") -> bool:
+    """True, wenn die Chat-Antwort behauptet, etwas sei ins Profil eingetragen
+    (oder werde es gerade). Nach einer Nachtrag-Bitte reicht das nackte Verb."""
+    nachtrag = ist_nachtrag_bitte(user_text)
+    for satz in re.split(r"(?<=[.!?…])\s+|\n+", (antwort or "").lower()):
+        if re.search(_EINTRAG_THEMA, satz) and re.search(_EINTRAG_VERB, satz):
+            return True
+        if nachtrag and re.search(_EINTRAG_VERB_NACKT, satz):
+            return True
+    return False
+
+
 _SYSTEM = (
     "Du pflegst ein BDSM-Präferenzprofil. Analysiere AUSSCHLIESSLICH die zitierte "
     "Nachricht und extrahiere, was die Person über SICH SELBST an Vorlieben oder "
     "Grenzen/No-Gos ausdrückt.\n"
     "- vorlieben: Dinge, die sie mag / gern hätte / erregend findet (knappe Stichpunkte, "
-    "max. 8 Wörter, aus ihrer Perspektive).\n"
+    "max. 22 Wörter, aus ihrer Perspektive). EINE zusammenhängende Szene oder Praktik = "
+    "GENAU EIN Stichpunkt: Bezeichnung/Rolle, Haltung, Ort, Gegenstand und Ablauf derselben "
+    "Szene gehören in denselben Eintrag ('X sein: so liegend, mit Y') – NICHT zerlegen, auch "
+    "nicht in 'Name der Szene' und 'Beschreibung'. Ein Bruchstück allein sagt später nichts "
+    "mehr. Mehrere Stichpunkte nur für wirklich verschiedene Vorlieben. Hat die Praktik eine RICHTUNG (wer gibt, wer empfängt, wessen "
+    "Körper oder Körperflüssigkeit), benenne sie in JEDEM Stichpunkt ausdrücklich mit "
+    "Possessiv direkt vor dem Begriff ('ihre …', 'seine …', 'von meiner Herrin', "
+    "'meine eigenen …') statt sie wegzulassen – die Richtung entscheidet über Limits.\n"
     "- nogos: Dinge, die sie ausdrücklich NICHT will / ekelhaft / angstbesetzt / als Grenze "
     "benennt (knappe Stichpunkte). ACHTUNG: 'nicht nur X' / 'nicht bloß X' heißt, die Person "
     "will MEHR als X – das ist WEDER ein No-Go zu X noch eine Grenze. Nur ausdrückliche "
@@ -142,13 +191,40 @@ async def erkenne_und_schlage_vor(bot, rolle: str, text: str) -> bool:
     if rolle not in _VORLIEBE_FELD or not _gated(text):
         return False
     try:
-        return await _verarbeite(bot, rolle, text)
+        return await _verarbeite(bot, rolle, text) == "vorschlag"
     except Exception:
         logger.exception("Präferenz-Detektor fehlgeschlagen (rolle=%s)", rolle)
         return False
 
 
-async def _verarbeite(bot, rolle: str, text: str) -> bool:
+async def nachtrag(bot, rolle: str, vorher: str) -> bool:
+    """Ausdrückliche Bitte („füge es hinzu") zur Nachricht davor: Detektor ohne
+    Gating auf `vorher`; kommt weder Vorschlag noch Verworfen-Meldung heraus,
+    bekommt die Person eine ehrliche Rückmeldung statt Schweigen."""
+    if rolle not in _VORLIEBE_FELD:
+        return False
+    try:
+        status = await _verarbeite(bot, rolle, vorher) if (vorher or "").strip() else ""
+        if not status:
+            from bot.messages import t
+            await _sende(bot, rolle, t("PRAEFERENZ_NICHTS_NEUES"))
+        return status == "vorschlag"
+    except Exception:
+        logger.exception("Präferenz-Nachtrag fehlgeschlagen (rolle=%s)", rolle)
+        return False
+
+
+async def _sende(bot, rolle: str, nachricht: str, **kw) -> None:
+    from bot.services import telegram_helper
+    if rolle == "sklave":
+        await telegram_helper.send_sklave(bot, nachricht, **kw)
+    else:
+        await telegram_helper.send_domina(bot, nachricht, **kw)
+
+
+async def _verarbeite(bot, rolle: str, text: str) -> str:
+    """Rückgabe: "vorschlag" (✅/🗑 gesendet), "verworfen" (nur Verworfen-Meldung)
+    oder "" (nichts erkannt / nichts Neues)."""
     antwort = await grok.simple(
         fp.nutzer_text("Nachricht", text[:600]), system=_SYSTEM, temperature=0,
     )  # Extraktion: deterministisch
@@ -156,9 +232,9 @@ async def _verarbeite(bot, rolle: str, text: str) -> bool:
         parsed = grok.parse_json(antwort)
     except Exception:
         logger.debug("Präferenz-Detektor: Grok-Antwort nicht parsebar: %s", antwort[:200])
-        return False
+        return ""
     if not isinstance(parsed, dict):
-        return False
+        return ""
 
     vorlieben_roh = [v for v in (parsed.get("vorlieben") or []) if isinstance(v, str) and v.strip()]
     nogos_roh = [v for v in (parsed.get("nogos") or []) if isinstance(v, str) and v.strip()]
@@ -169,7 +245,7 @@ async def _verarbeite(bot, rolle: str, text: str) -> bool:
         and isinstance(a.get("ausnahme"), str) and a["ausnahme"].strip()
     ]
     if not vorlieben_roh and not nogos_roh and not ausnahmen_roh:
-        return False
+        return ""
 
     profil = await qdrant.get_user_profile(rolle) or {}
     vorlieben_feld = _VORLIEBE_FELD[rolle]
@@ -190,15 +266,18 @@ async def _verarbeite(bot, rolle: str, text: str) -> bool:
 
     # Vorlieben → list_add (grenz-gefiltert, dedupliziert)
     neue_vorlieben: list[str] = []
+    verworfen: list[tuple[str, str]] = []
     for v in vorlieben_roh:
         v = v.strip()
         if not _ist_neu(v, bestand_vorlieben + neue_vorlieben):
             continue
         # Perspektive: die Vorliebe ist aus Sicht der äußernden Person formuliert –
         # beim Sklaven meint "ihre/deine X" die Seite der Herrin (Richtungs-Limits, s. limits_check).
-        if await limits_check.verletzungen(
-                v, sk_hl, do_gr, sprecher="sub" if rolle == "sklave" else "herrin"):
+        treffer = await limits_check.verletzungen(
+            v, sk_hl, do_gr, sprecher="sub" if rolle == "sklave" else "herrin")
+        if treffer:
             logger.info("Vorliebe grenzverletzend, verworfen: %s", v)
+            verworfen.append((v, str(treffer[0].get("limit") or "")))
             continue
         neue_vorlieben.append(v)
     if neue_vorlieben:
@@ -239,8 +318,22 @@ async def _verarbeite(bot, rolle: str, text: str) -> bool:
     if refine_paare:
         changes.append({"feld": nogo_feld, "operation": "limit_refine", "wert": refine_paare})
 
+    # Verworfenes nie still schlucken: die Person erfährt, WAS an WELCHER Grenze
+    # hängen blieb (Fehlalarm-Klasse: Richtung ging beim Kürzen verloren) – sonst
+    # glaubt sie, es sei gespeichert.
+    if verworfen:
+        from bot.messages import t
+        from bot.services import telegram_helper
+        zeilen = "\n".join(f"✖️ {v} – Grenze: {g}" if g else f"✖️ {v}" for v, g in verworfen)
+        try:
+            await _sende(bot, rolle, t("PRAEFERENZ_VERWORFEN",
+                                       liste=telegram_helper.md_einbett_sicher(zeilen)),
+                         parse_mode="Markdown")
+        except Exception:
+            logger.exception("Verworfen-Meldung fehlgeschlagen (rolle=%s)", rolle)
+
     if not changes:
-        return False
+        return "verworfen" if verworfen else ""
 
     patch = {"changes": changes}
     diff = _format_diff(neue_vorlieben, neue_nogos, refine_paare)
@@ -264,12 +357,9 @@ async def _verarbeite(bot, rolle: str, text: str) -> bool:
     # einer ```-Fence – ein Backtick darin bricht die Fence (strip_md-Fallback).
     nachricht = t("PRAEFERENZ_VORSCHLAG", diff=telegram_helper.md_einbett_sicher(diff))
     buttons = _cr.vorschlag_buttons(point_id)
-    if rolle == "sklave":
-        await telegram_helper.send_sklave(bot, nachricht, parse_mode="Markdown", reply_markup=buttons)
-    else:
-        await telegram_helper.send_domina(bot, nachricht, parse_mode="Markdown", reply_markup=buttons)
+    await _sende(bot, rolle, nachricht, parse_mode="Markdown", reply_markup=buttons)
     logger.info("Präferenz-Vorschlag gesendet (rolle=%s): %s", rolle, diff)
-    return True
+    return "vorschlag"
 
 
 def _format_diff(vorlieben: list[str], nogos: list[str], refine_paare: list[dict] | None = None) -> str:

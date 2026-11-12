@@ -170,7 +170,7 @@ Format (REINER TEXT, kein Markdown, keine Sterne, keine Backticks):
 
 Montag – [Kategorie]
 Aufgabe: <konkrete Aufgabe in einem Satz, die zu IHM passt – kein generischer 101-Task>
-Warum: <kurze Begründung – warum gerade für ihn, nicht "weil Abwechslung wichtig ist">
+Warum: <kurze Begründung, warum das an DIESEM Tag dran ist – aus Beobachtbarem (wie er zuletzt reagiert hat, was die Woche hergibt, was es mit ihm macht) oder als deine Vermutung; NIE als Abgleich mit seinen Vorlieben/Wünschen ("er wünscht sich", "trifft seine Vorliebe", "sein Wunsch") und nicht "weil Abwechslung wichtig ist">
 
 Dienstag – [Kategorie]
 …

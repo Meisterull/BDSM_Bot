@@ -75,6 +75,13 @@ async def sklave_dossier_job(bot: Bot) -> None:
         logger.info("Kategorie-Reaktionen gealtert (Recency): %d Kategorien aktiv.", n)
     except Exception:
         logger.exception("sklave_dossier_job (Decay) fehlgeschlagen")
+    try:
+        verfallen = await kategorie_logik.pflege_dislike_tags("sklave")
+        if verfallen:
+            logger.info("Abneigungs-Tags verfallen (kein Signal seit %d Tagen): %d",
+                        kategorie_logik.DISLIKE_TAG_TAGE, len(verfallen))
+    except Exception:
+        logger.exception("sklave_dossier_job (Tag-Pflege) fehlgeschlagen")
 
 
 @basis._job_guard

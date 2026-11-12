@@ -647,6 +647,94 @@ async def test_praeferenz_detektor():
     assert ok2 is False and not saved
 
 
+def test_verrat_detektor():
+    """Dom-seitige Texte dürfen Sub-Wissen nicht als Geständnis weitertragen
+    (ausgedachte Beispiele)."""
+    from bot.scheduler import schablonen as sb
+    for t_ in ("Er wünscht sich schon lange, dass du ihm die Augen verbindest.",
+               "Mach das ruhig, er würde so gern mal gefesselt werden.",
+               "Sein heimlicher Wunsch ist ein Abend im Keller.",
+               "Er steht ja total auf kalte Hände.",
+               "Er hat mir neulich erzählt, dass ihn das reizt.",
+               "Das steht in seinem Profil."):
+        assert sb.verraet_sub_wissen(t_), t_
+        assert any("Verrat" in f for f in sb._formel_verstoesse(t_)), t_
+    for t_ in ("Verbind ihm die Augen und lass ihn warten. Ich wette, das macht was mit ihm.",
+               "Er steht auf allen Vieren vor dem Bett und wartet.",
+               "Was hältst du davon, wenn du ihn mal fesselst?",
+               "Wenn er aufsteht, fängst du von vorn an.",
+               "Die Wunschliste für neues Spielzeug hat noch Platz."):
+        assert not sb.verraet_sub_wissen(t_), t_
+
+
+def test_limits_richtung_meine_herrin():
+    """„meine Herrin" / „mein Sklave" benennt die andere Person: das Possessiv
+    davor ist keine eigene Zuschreibung (ausgedachte Beispiele)."""
+    from bot.services import limits_check as lc
+    hl = ["Speichel des Subs"]
+    tn = lc._normalisiere
+    # Sub schreibt: X von meiner Herrin → nicht sein eigenes → kein Treffer
+    assert lc._prufe_liste(tn("Speichel von meiner Herrin im Glas"), hl, "q", "sub") == []
+    assert lc._prufe_liste(tn("ihren Speichel im Glas"), hl, "q", "sub") == []
+    # eigenes bleibt Treffer, ebenso richtungslos
+    assert lc._prufe_liste(tn("meinen eigenen Speichel im Glas"), hl, "q", "sub")
+    assert lc._prufe_liste(tn("Speichel im Glas"), hl, "q", "sub")
+    # Herrin-Text: „Speichel meines Sklaven" ist SEINER → Treffer (vorher durchgerutscht)
+    assert lc._prufe_liste(tn("den Speichel meines Sklaven im Glas"), hl, "q", "herrin")
+    assert lc._prufe_liste(tn("meinen Speichel im Glas"), hl, "q", "herrin") == []
+
+
+async def test_praeferenz_verworfen_und_nachtrag():
+    """Verworfenes wird gemeldet statt still geschluckt; „füge es hinzu" läuft als
+    Nachtrag auf die Nachricht davor; Eintrag-Behauptungen der Chat-Stimme werden
+    erkannt (ausgedachte Beispiele)."""
+    from bot.services import praeferenz_detektor as pd
+    from bot.services import telegram_helper as _th
+    from bot.handlers import coach_regeln as _cr
+
+    # Detektoren
+    assert pd.ist_nachtrag_bitte("Füge es bitte hinzu")
+    assert pd.ist_nachtrag_bitte("trag das bitte ein")
+    assert not pd.ist_nachtrag_bitte("ok danke")
+    assert not pd.ist_nachtrag_bitte("Füge bitte hinzu, dass ich es liebe, wenn du mir abends "
+                                     "die Augen verbindest und mich lange warten lässt")
+    assert pd.behauptet_eintrag("Schön. Das füge ich deinen Vorlieben hinzu, Kleine Maus.")
+    assert pd.behauptet_eintrag("Das kommt ab sofort zu deinen Vorlieben dazu.")
+    assert pd.behauptet_eintrag("Dein Wunsch ist schon notiert.", "Füge es bitte hinzu")
+    assert pd.behauptet_eintrag("Dann ist es jetzt offiziell Teil deiner Liste.", "Füge es bitte hinzu")
+    assert pd.behauptet_eintrag("Das ist jetzt Teil deiner Vorlieben.")
+    assert not pd.behauptet_eintrag("Dein Wunsch ist schon notiert.", "Wie war dein Tag?")
+    assert not pd.behauptet_eintrag("Ich kenne deine Vorlieben gut genug. Knie dich hin.")
+    assert not pd.behauptet_eintrag("Bestätige den Vorschlag gleich selbst mit dem Knopf.", "Füge es bitte hinzu")
+
+    # Alles verworfen → Meldung mit Grenze, kein Vorschlag
+    pd.grok.simple = _aw(lambda *a, **k: '{"vorlieben":["Würgen beim Küssen"],"nogos":[]}')
+    db_profile.get_user_profile = _aw(lambda uid: {"vorlieben": [], "hard_limits": ["Atemkontrolle"]})
+    pd.limits_check.verletzungen = _aw(
+        lambda v, a=None, b=None, **k: [{"limit": "Atemkontrolle"}] if "würgen" in v.lower() else [])
+    saved, sent = {}, []
+    async def fake_save(**kwargs):
+        saved.update(kwargs)
+        return "pid-2"
+    db_coach_regeln.save_coach_regel = fake_save
+    _th.send_sklave = _aw(lambda bot, text, **k: sent.append(text))
+    _cr.vorschlag_buttons = lambda pid: {"btn": pid}
+    ok = await pd.erkenne_und_schlage_vor(object(), "sklave", "ich mag Würgen beim Küssen")
+    assert ok is False and not saved
+    assert len(sent) == 1 and "Würgen beim Küssen" in sent[0] and "Atemkontrolle" in sent[0], sent
+
+    # Nachtrag: läuft ohne Gating auf der Vor-Nachricht
+    sent.clear()
+    pd.grok.simple = _aw(lambda *a, **k: '{"vorlieben":["kalte Hände im Nacken"],"nogos":[]}')
+    assert await pd.nachtrag(object(), "sklave", "kalte Hände im Nacken") is True
+    assert saved["profile_patch"]["changes"][0]["wert"] == ["kalte Hände im Nacken"] and len(sent) == 1
+    # Nachtrag ohne Fund → ehrliche Rückmeldung statt Schweigen
+    sent.clear()
+    pd.grok.simple = _aw(lambda *a, **k: '{"vorlieben":[],"nogos":[]}')
+    assert await pd.nachtrag(object(), "sklave", "hm") is False
+    assert len(sent) == 1 and "nichts Neues" in sent[0], sent
+
+
 def test_limits_check_ausnahme_annotation():
     """Ausnahme-Annotation (limit_refine): Basis-Begriff muss weiter matchen,
     Ausnahme-Wörter dürfen KEINE fremden Synonym-Listen aktivieren."""
@@ -1646,6 +1734,9 @@ def _run():
     asyncio.run(test_wunsch_erfassung())
     asyncio.run(test_apply_profile_patch_limit_add())
     asyncio.run(test_praeferenz_detektor())
+    test_verrat_detektor()
+    test_limits_richtung_meine_herrin()
+    asyncio.run(test_praeferenz_verworfen_und_nachtrag())
     test_limits_check_ausnahme_annotation()
     asyncio.run(test_refine_profile_limit_und_patch())
     asyncio.run(test_patch_profile_fields_kein_full_upsert())

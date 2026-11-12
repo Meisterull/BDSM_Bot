@@ -251,14 +251,21 @@ _LIMIT_RICHTUNG_DOM = r"\b(der (herrin|domina|domme)|von der (herrin|domina)|of 
 # Zuschreibungs-Marker im geprüften Text, je Sprecher-Perspektive:
 # wem "gehört" die Praktik an dieser Textstelle? (Bare "sein" fehlt bewusst –
 # kollidiert mit dem Verb; entgangene Formen bleiben fail-closed Treffer.)
+# „meine Herrin" / „mein Sklave" benennt die ANDERE Person – das Possessiv davor
+# darf dann nicht als eigene Zuschreibung zählen („X von meiner Herrin" galt
+# sonst als mehrdeutig; „X meines Sklaven" in Herrin-Text sogar als ihr eigenes).
+_KEIN_DOM = r"(?! (herrin|domina))"
+_KEIN_SUB = r"(?! (sklave\w*|subs?\b))"
+
 _ATTR = {
     "herrin": {  # sie spricht den Sub an (generierte Aufgaben/Antworten)
-        "domina": r"\b(mein\w*|der (herrin|domina)|von mir|aus mir)\b",
-        "sub":    r"\b(dein\w*|seine[mnrs]?|eigen\w*|des (subs?|sklaven)|vom (sub|sklaven)|von dir)\b",
+        "domina": rf"\b(mein\w*{_KEIN_SUB}|der (herrin|domina)|von mir|aus mir)\b",
+        "sub":    r"\b(dein\w*|seine[mnrs]?|eigen\w*|des (subs?|sklaven)|vom (sub|sklaven)|von dir"
+                  r"|mein\w* (sklave\w*|subs?))\b",
     },
     "sub": {     # er schreibt (Chat-Nachricht, extrahierter Wunsch)
-        "domina": r"\b(dein\w*|ihre[mnrs]?|der (herrin|domina)|von (dir|ihr)|aus (dir|ihr))\b",
-        "sub":    r"\b(mein\w*|eigen\w*|von mir|des (subs?|sklaven))\b",
+        "domina": r"\b(dein\w*|ihre[mnrs]?|(der|mein\w*) (herrin|domina)|von (dir|ihr)|aus (dir|ihr))\b",
+        "sub":    rf"\b(mein\w*{_KEIN_DOM}|eigen\w*|von mir|des (subs?|sklaven))\b",
     },
 }
 
@@ -402,7 +409,7 @@ async def generate_mit_limit_retry(
     text = await grok.simple(prompt, system=system, **grok_kwargs)
     treffer = await verletzungen(text, sklave_hard_limits, domina_grenzen)
     if not treffer:
-        return text
+        return await _tarn_sichern(text, prompt, system, sklave_hard_limits, domina_grenzen, grok_kwargs)
 
     # Nur Anzahl/Quelle loggen – die konkreten Limit-Begriffe (intim) gehören nicht in die Logs.
     _quellen = sorted({tr["quelle"] for tr in treffer})
@@ -418,6 +425,27 @@ async def generate_mit_limit_retry(
     if await verletzungen(text, sklave_hard_limits, domina_grenzen):
         logger.error("LLM-Output auch nach Re-Generierung Grenzen-verletzend – verworfen.")
         return None
+    return text
+
+
+async def _tarn_sichern(text, prompt, system, sklave_hard_limits, domina_grenzen, grok_kwargs):
+    """Zentrales Tarn-Netz für alle Generatoren (Wochenplan, Tiny-Task, Wett-Idee,
+    Strafe, Arc …): trägt der Entwurf Sub-Wissen als Geständnis weiter
+    („er wünscht sich …", s. coach_persona.tarnung()), genau EIN Neuversuch.
+    Der Neuversuch zählt nur, wenn er sauber UND limit-konform ist – sonst
+    bleibt der (limit-geprüfte) Erstentwurf."""
+    from bot.services import grok
+    from bot.scheduler import schablonen  # lokal: schablonen importiert Services
+    try:
+        if not schablonen.verraet_sub_wissen(text):
+            return text
+        logger.info("Generator-Output verrät Sub-Wissen – generiere einmal neu.")
+        neu = await grok.simple(prompt + schablonen.TARN_NACHSATZ, system=system, **grok_kwargs)
+        if (neu and not schablonen.verraet_sub_wissen(neu)
+                and not await verletzungen(neu, sklave_hard_limits, domina_grenzen)):
+            return neu
+    except Exception:
+        logger.exception("Tarn-Neuversuch fehlgeschlagen – Erstentwurf bleibt.")
     return text
 
 

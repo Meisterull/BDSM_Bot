@@ -561,6 +561,22 @@ async def _chat_antwort(
         state.remove_last_message(chat_id, "user")
         await update.message.reply_text(t("FEHLER_KEINE_ANTWORT"))
         return None
+    # Tarnung (coach_persona.tarnung()): trägt die Antwort ein Sub-Geständnis
+    # weiter („er wünscht sich …"), einmal neu – Prompt-Regel allein verliert
+    # erfahrungsgemäß gegen History. Fehler → Erstantwort geht raus.
+    try:
+        from bot.scheduler import schablonen
+        if schablonen.verraet_sub_wissen(response):
+            logger.info("Coach-Antwort verrät Sub-Wissen – generiere einmal neu.")
+            async with telegram_helper.typing_action(context.bot, chat_id):
+                neu = await grok.chat(
+                    system + schablonen.TARN_NACHSATZ,
+                    history,
+                )
+            if neu:
+                response = neu
+    except Exception as e:
+        logger.error("Tarn-Neugenerierung fehlgeschlagen: %s", e)
     state.add_message(chat_id, "assistant", response)
     return response
 

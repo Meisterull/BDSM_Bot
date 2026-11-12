@@ -22,6 +22,8 @@ from bot.scheduler import basis, schablonen
 
 logger = logging.getLogger(__name__)
 
+ABWECHSLUNG_MAX_TAGE = 30
+
 
 async def _arc_tag_anpassen(aufgabe: str, stimmung: str, sklave_profile: dict, domina_profile: dict) -> str | None:
     """Passt einen vorgenerierten Arc-Tag ans letzte (negative) Gefühl an.
@@ -234,9 +236,13 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     # Mit Zeitabstand ("vor 4 Tagen: …"): eine undatierte "letzte Aufgaben"-Liste
     # datiert das Modell selbst und erfindet Zeitbezüge – "gestern" über eine
     # mehrere Tage alte Aufgabe (Live-Befund 08.08.).
+    # Nur Aufgaben der letzten ABWECHSLUNG_MAX_TAGE: eine Monate alte Aufgabe
+    # ist kein Grund, heute ein Themenfeld zu meiden (die Liste steht im Prompt
+    # unter "ABWECHSLUNG (strikt)").
     letzte_aufgaben = [
         zeiten.mit_alter_label(t.get("aufgabe", "")[:80], t.get("erteilt_am", ""))
-        for t in alle_tasks[:5] if t.get("aufgabe")
+        for t in alle_tasks[:5]
+        if t.get("aufgabe") and _eintrag_alter_tage(t.get("erteilt_am", "")) <= ABWECHSLUNG_MAX_TAGE
     ]
 
     # Letzte TinyTask-Vorschläge + Kategorien in einem Qdrant-Request laden.
@@ -625,6 +631,13 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
 
         # Körperliche Machbarkeit als zweiter Durchlauf, danach Meta-Rückfragen kappen.
         vorschlag = await _machbarkeit_sichern(vorschlag, prompt, system, sk_hl, do_gr, lokal=True)
+        # Schablonen- und Machbarkeits-Retry generieren mit dem Ausgangs-Prompt
+        # neu – der Dislike-Detektor muss deshalb auch am ENDE der Kette stehen.
+        vorschlag = await _dislike_sichern(
+            vorschlag, prompt, system, sk_hl, do_gr,
+            kwargs.get("sklave_dislike_kategorien") or [],
+            kwargs.get("bewertungs_kontext") or "",
+        )
         gekappt = schablonen._meta_rueckfrage_entfernen(vorschlag)
         if gekappt != vorschlag:
             logger.info("Meta-Rückfrage am Schluss entfernt.")

@@ -944,6 +944,16 @@ MESSAGES = {
         "_No-gos are only added or refined with exceptions, never removed._"
     ),
 
+    "PRAEFERENZ_VERWORFEN": (
+        "⚠️ Not added to the profile – it collides with a stored limit:\n```\n{liste}\n```\n"
+        "_If that is a false alarm: write it again and say who it comes from "
+        "(e.g. “her …” / “my own …”)._"
+    ),
+    "PRAEFERENZ_NICHTS_NEUES": (
+        "📝 I found nothing new for the profile in your previous message. "
+        "Please write the preference again in one sentence."
+    ),
+
     # --- Skills / Wissens-Briefe ----------------------------------------------------
     "SKILL_HEADER": "📚 *Knowledge – {kategorie}* (_{source}, as of {stand}_)\n\n",
     "SKILL_LERNE_USAGE": (

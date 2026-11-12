@@ -84,18 +84,46 @@ def _liebesleben_impuls() -> str:
 - Dräng nicht und mach kein Dauer-Thema draus. Lieber selten und echt als ständig."""
 
 
+def tarnung() -> str:
+    """Zentrale Tarn-Regel für JEDEN Output an die Dom-Seite: was das System über
+    die Sub-Seite weiß (Vorlieben, geäußerte Wünsche, Dossier, Reaktionsmuster),
+    ist verdecktes Steuerwissen. Es fließt als Einfall des Coach ein, nie als
+    Verrat („er wünscht sich …"). Steckt in allen drei Stimm-Bausteinen, damit
+    kein Prompt mit Sub-Wissen ohne sie auskommt (vorher nur in den
+    Aufgaben-Generatoren und im Wunsch-Hinweis)."""
+    s, d = rollen.sub(), rollen.dom()
+    return (
+        f"- TARNUNG DES STEUERWISSENS: Vorlieben, Wünsche, Fantasien, Dossier und Reaktionsmuster "
+        f"{s['label_gen']} sind dein VERDECKTES Wissen – {s['nom']} hat sie dem System anvertraut, nicht "
+        f"{d['real_dat']}. Verrate {d['real_dat']} nie, dass {s['nom']} sich etwas wünscht, davon träumt, "
+        f"darauf steht oder es dir erzählt/angedeutet/gestanden hat, und nie, dass etwas auf einer Liste, "
+        f"im Profil oder im Dossier steht – kein \"{s['nom']} wünscht sich\", \"{s['nom']} würde gern\", "
+        f"\"{s['poss']} Wunsch\", \"{s['poss']}e Fantasie\", \"{s['nom']} steht ja auf\", und keine "
+        f"Treffer-Meldungen wie \"das trifft/holt genau {s['poss']}e …\" oder \"genau {s['poss']} Ding\". "
+        f"Lass solches Wissen BEILÄUFIG einfließen, als wäre es dein eigener spontaner Einfall: als Idee, "
+        f"die DU gerade hast, höchstens als Vermutung (\"ich wette, das macht was mit {s['dat']}\"). Auch "
+        f"wenn {d['nom']} direkt fragt, was {s['nom']} mag: antworte mit eigenen Ideen und Vermutungen, "
+        f"zitiere nichts und zähle nichts auf. Eine Begründung stützt sich auf Beobachtbares (wie "
+        f"{s['nom']} zuletzt reagiert hat, was gerade ansteht), nie auf den Abgleich mit {s['poss']}em "
+        f"Profil. AUSNAHME: Was dieser Auftrag dir ausdrücklich zum Weitergeben gibt ({s['poss']}e "
+        f"Rückmeldung zu einer Aufgabe, {s['poss']}e Stimmung, ein Hinweis, den {s['nom']} ausrichten "
+        f"lassen will), gibst du ganz normal weiter."
+    )
+
+
 def fuer_coach_prompt() -> str:
     """Voller Chat-Baustein: Stimme + Liebesleben-Impuls + Inventar-Wissen + Chat-Format.
     Für freie Coach-Antworten."""
     inventar = inventar_block(perspektive="coach", geschenkidee=True)
     inventar_teil = ("\n\n" + inventar) if inventar else ""
-    return coach_stil() + _namen_block() + "\n\n" + _liebesleben_impuls() + inventar_teil + "\n\n" + _chat_format()
+    return (coach_stil() + _namen_block() + "\n" + tarnung() + "\n\n" + _liebesleben_impuls()
+            + inventar_teil + "\n\n" + _chat_format())
 
 
 def fuer_strukturierten_output() -> str:
     """Stimme OHNE Chat-Format – für Prompts, die ihr eigenes Format/Längenlimit
     vorgeben (z.B. 'kein Markdown', 'max. 4-5 Sätze')."""
-    return coach_stil() + _namen_block()
+    return coach_stil() + _namen_block() + "\n" + tarnung()
 
 
 # Anti-Klischee-Block für Aufgaben- und Strafen-Vorschläge.
@@ -113,7 +141,7 @@ def _aufgaben_anti_klischee() -> str:
 - Diese Aufgaben sind austauschbar – jede Standardliste hat sie. Sie ignorieren das Profil.
 - PERSONALISIERE stattdessen: nimm {s['poss']}e Vorlieben (als Hebel oder Umkehrung von Intensität/Rahmen), {s['poss']}e Kategorie-Reaktionsmuster (was wirkt bei {s['dat']}), die Interessen {d['real_gen']}, vergangene Aufgaben (nicht wiederholen, aber anknüpfen).
 - Eine gute Aufgabe lässt sich nur für {s['akk'].upper()} formulieren, nicht für irgend{s['unbest_akk']}.
-- TARNUNG DES STEUERWISSENS: Vorlieben-Liste, Dossier und Reaktionsmuster sind dein VERDECKTES Wissen. Verrate in der Nachricht nie, dass etwas auf einer Liste steht oder dass du gezielt eine Vorliebe {s['label_gen']} bedienst – keine Treffer-Meldungen wie "das trifft/holt genau {s['poss']}e …" oder "genau {s['poss']} Ding". Eine Begründung stützt sich auf Beobachtbares (wie {s['nom']} zuletzt reagiert hat, was gerade ansteht), nie auf den Abgleich mit {s['poss']}em Profil. Die Idee soll wie dein spontaner Einfall wirken.
+{tarnung()}
 - RICHTUNG/ROLLEN NIEMALS UMKEHREN: Legt eine Vorliebe fest, wer gibt und wer empfängt, wer was mit wem tut oder eine sonstige Bedingung ("nur bei X", "nur wenn Y"), dann übernimm diese Richtung EXAKT. "Umkehrung" meint nur Intensität/Framing (sanft↔hart, Lust↔Strafe) – NIEMALS die physische Rolle oder eine genannte Bedingung. Beispiel: "Wachsspiel nur bei {d['real_dat']}, Sub gießt und entfernt das Wachs" heißt NIE, dass der Sub das Wachs abbekommt. Im Zweifel: die im Profil genannte Richtung gilt, eine Umkehrung, die ein Hard Limit berühren würde, ist ausgeschlossen.
 - KÖRPERLICH MACHBAR: Spiel die Szene vor dem Schreiben Schritt für Schritt durch – wer trägt oder hält welches Teil, welche Körperstelle ist dadurch belegt, wohin zeigt es? Ein Knebel im Mund heißt: kein Lecken, kein Sprechen; ein Gegenstand ist nie an zwei Stellen zugleich; was {s['nom']} allein tun soll, muss allein gehen. Steht bei einem Gegenstand im Inventar, wie er benutzt wird, gilt genau das. Was sich körperlich ausschließt, gehört nicht in dieselbe Szene – lieber EINE saubere Handlung als mehrere ineinander verkeilte."""
 
