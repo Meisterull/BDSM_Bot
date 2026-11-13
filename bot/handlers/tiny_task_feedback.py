@@ -41,6 +41,19 @@ _GRUENDE = {
 }
 
 
+async def _signal_verbuchen(inhalt: str, kategorien: list, signal: str) -> None:
+    """Domina-Signal ('genutzt' | 'gut' | 'abgelehnt') nur auf die Kategorien
+    buchen, die der Vorschlagstext wirklich umsetzt – die Etiketten allein sagen
+    das nicht (s. kategorien_im_text_belegt). Bleibt keine übrig, wird nichts
+    gebucht: lieber kein Signal als ein falsches."""
+    belegt = await kategorie_logik.kategorien_im_text_belegt(inhalt, kategorien)
+    if not belegt:
+        logger.info("Tiny-Task-Feedback (%s): keine Etikett-Kategorie im Text belegt (%s) – kein Kategorie-Signal.",
+                    signal, ", ".join(kategorien) or "–")
+        return
+    await kategorie_logik.record_domina_praeferenz(belegt, signal)
+
+
 def _tasten_frage(point_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t("BUTTON_UEBERNOMMEN"), callback_data=f"tinyfb:uebernommen:{point_id}")],
@@ -73,15 +86,16 @@ def _flow_beenden(point_id: str) -> None:
 async def _positives_feedback(point_id: str, action: str) -> str:
     """Speichert 'uebernommen' bzw. 'gut' am Tiny-Task und liefert den Antwort-Text.
     Gemeinsame Logik fuer Button- und Text-Pfad. Verbucht zusätzlich das getrennte
-    Domina-Präferenz-Signal für die Kategorien des Vorschlags."""
+    Domina-Präferenz-Signal für die im Text belegten Kategorien des Vorschlags."""
     tiny_task = await qdrant.get_tiny_task_by_id(point_id) or {}
     kategorien = tiny_task.get("kategorien", [])
+    inhalt = tiny_task.get("inhalt", "")
     if action == "uebernommen":
         await qdrant.mark_tiny_task_status(point_id, "uebernommen")
-        await kategorie_logik.record_domina_praeferenz(kategorien, "genutzt")
+        await _signal_verbuchen(inhalt, kategorien, "genutzt")
         return t("TINYFB_ANTWORT_UEBERNOMMEN")
     await qdrant.mark_tiny_task_status(point_id, "gut_aber_ungenutzt", grund="Vorschlag war gut, heute aber nicht umgesetzt")
-    await kategorie_logik.record_domina_praeferenz(kategorien, "gut")
+    await _signal_verbuchen(inhalt, kategorien, "gut")
     return t("TINYFB_ANTWORT_GUT")
 
 
@@ -245,7 +259,7 @@ async def callback_button(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         grund = t(key)
         await qdrant.mark_tiny_task_status(point_id, "abgelehnt", grund=grund)
         if kategorie_signal:
-            await kategorie_logik.record_domina_praeferenz(eintrag.get("kategorien", []), "abgelehnt")
+            await _signal_verbuchen(eintrag.get("inhalt", ""), eintrag.get("kategorien", []), "abgelehnt")
         # Bewusst KEINE Regel-Ableitung (_vorschlag_aus_ablehnung) aus einem
         # festen Grund: ein Standardsatz trägt keine verallgemeinerbare Regel,
         # und jede Ableitung wäre eine weitere Nachricht mit Rückfrage.
@@ -304,7 +318,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # grund steht im Template ebenfalls in _…_ → Marker neutralisieren
         antwort = t("TINYFB_NOTIERT", grund=telegram_helper.md_einbett_sicher(text[:80]))
         # Getrenntes Domina-Präferenz-Signal: sie mochte diese Kategorien-Richtung nicht.
-        await kategorie_logik.record_domina_praeferenz(tt_kategorien, "abgelehnt")
+        await _signal_verbuchen(tt_inhalt, tt_kategorien, "abgelehnt")
         # Ebene 2: implizit lernen – Grok schlaegt eine generalisierte Regel vor.
         if tt_inhalt:
             import asyncio

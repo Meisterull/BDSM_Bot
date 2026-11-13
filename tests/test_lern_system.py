@@ -1540,6 +1540,8 @@ async def test_tinyfb_klassifikation():
     db_vorschlaege.get_tiny_task_by_id = _aw(lambda pid: {"inhalt": "Vorschlag X", "kategorien": ["Dienst"]})
     db_vorschlaege.mark_tiny_task_status = _aw(lambda pid, s, grund="": markiert.update({pid: (s, grund)}))
     tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig: praef.append((tuple(kats), sig)))
+    _orig_beleg = tfb.kategorie_logik.kategorien_im_text_belegt
+    tfb.kategorie_logik.kategorien_im_text_belegt = _aw(lambda inhalt, kats: list(kats))
     tfb._vorschlag_aus_ablehnung = _aw(lambda *a, **k: None)
     _th.reply_markdown_safe = AsyncMock()
 
@@ -1589,6 +1591,7 @@ async def test_tinyfb_klassifikation():
         (db_vorschlaege.get_tiny_task_by_id, db_vorschlaege.mark_tiny_task_status,
          tfb.grok.simple, _dom.handle, tfb.kategorie_logik.record_domina_praeferenz,
          tfb._vorschlag_aus_ablehnung, _th.reply_markdown_safe) = orig
+        tfb.kategorie_logik.kategorien_im_text_belegt = _orig_beleg
 
 
 async def test_tinyfb_ein_tipp_ohne_mode():
@@ -1624,6 +1627,8 @@ async def test_tinyfb_ein_tipp_ohne_mode():
     db_vorschlaege.get_tiny_task_by_id = _aw(lambda pid: eintraege.get(pid))
     db_vorschlaege.mark_tiny_task_status = _aw(_mark)
     tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig: praef.append((tuple(kats), sig)))
+    _orig_beleg = tfb.kategorie_logik.kategorien_im_text_belegt
+    tfb.kategorie_logik.kategorien_im_text_belegt = _aw(lambda inhalt, kats: list(kats))
     tfb._vorschlag_aus_ablehnung = _aw(lambda *a, **k: regel.append(a))
     _th.send_domina = AsyncMock()
 
@@ -1705,6 +1710,7 @@ async def test_tinyfb_ein_tipp_ohne_mode():
         (db_vorschlaege.get_tiny_task_by_id, db_vorschlaege.mark_tiny_task_status,
          tfb.kategorie_logik.record_domina_praeferenz, tfb._vorschlag_aus_ablehnung,
          _th.send_domina, tfb.InlineKeyboardButton, tfb.InlineKeyboardMarkup) = orig
+        tfb.kategorie_logik.kategorien_im_text_belegt = _orig_beleg
 
 
 def _run():

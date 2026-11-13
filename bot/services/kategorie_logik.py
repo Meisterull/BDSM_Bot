@@ -681,6 +681,44 @@ def domina_praeferenz_rangliste(praeferenzen: dict, jetzt=None) -> tuple[list[st
     return gern, ungern
 
 
+async def kategorien_im_text_belegt(inhalt: str, kategorien: list) -> list[str]:
+    """Welche der ETIKETT-Kategorien eines Vorschlags kommen in seinem Text
+    wirklich vor? Die Etiketten stammen aus der Auswahl VOR der Generierung; der
+    fertige Text setzt oft nur einen Teil davon um. Ein „Thema reizt mich nicht"
+    darf deshalb nicht pauschal alle Etiketten belasten – sonst sammelt eine
+    Kategorie Ablehnungen für Vorschläge, in denen sie gar nicht vorkam.
+    Ein LLM-Durchlauf (temperature 0), streng gegen die Etiketten validiert und
+    um wörtliche Keyword-Treffer ergänzt; bei Fehler oder unlesbarer Antwort
+    der Keyword-Abgleich allein.
+    Ohne Text gibt es nichts zu prüfen → Etiketten unverändert."""
+    kategorien = [k for k in (kategorien or []) if k]
+    if not kategorien or not (inhalt or "").strip():
+        return kategorien
+    system = (
+        f"Du prüfst einen {modi.thema()}-Aufgabenvorschlag gegen eine Liste von Kategorien.\n"
+        "Nenne die Kategorien aus der Liste, deren Praktik im Text tatsächlich stattfindet – "
+        "auch als Teilaspekt und auch wenn das Wort selbst nicht fällt (umschrieben zählt). "
+        "Nicht nennen: Kategorien, deren Praktik im Text gar nicht vorkommt.\n"
+        "Antworte mit den exakten Kategorie-Namen, durch Komma getrennt, sonst NUR mit KEINE. "
+        "Keine Erklärung."
+    )
+    prompt = "Kategorien: " + ", ".join(kategorien) + f"\n\nVorschlag:\n{inhalt[:1200]}"
+    try:
+        raw = grok.clean_text(await grok.simple(prompt, system=system, temperature=0)) or ""
+        teile = [x.strip().strip(".").lower().replace(" ", "_") for x in re.split(r"[,\n;]", raw) if x.strip()]
+        treffer = [k for k in kategorien if k.lower() in teile]
+        if treffer or (len(teile) == 1 and teile[0].startswith("keine")):
+            # Eindeutige Wort-Treffer ergänzen: das LLM übersieht gelegentlich
+            # eine Kategorie, die wörtlich im Text steht.
+            im_text = kategorien_in_text(inhalt)
+            return [k for k in kategorien if k in treffer or k in im_text]
+        logger.warning("Kategorie-Beleg: Antwort nicht lesbar – Keyword-Abgleich.")
+    except Exception:
+        logger.exception("Kategorie-Beleg fehlgeschlagen – Keyword-Abgleich")
+    im_text = kategorien_in_text(inhalt)
+    return [k for k in kategorien if k in im_text]
+
+
 async def record_domina_praeferenz(kategorien: list, signal: str) -> None:
     """Verbucht die Reaktion der DOMINA auf die Kategorien eines Vorschlags als
     eigenes Signal – NICHT in kategorie_reaktionen (das bleibt die Reaktion des

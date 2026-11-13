@@ -293,6 +293,56 @@ def test_wett_fenster_ausserhalb_kinderfrei():
          impulse._impuls_claim, paare.sub_chat_id, paare.dom_chat_id) = alt
 
 
+async def test_ablehnung_nur_auf_belegte_kategorien():
+    """Rückmeldungen der Domina treffen nur Etikett-Kategorien, die der Text
+    wirklich umsetzt – nicht pauschal alle Etiketten der Vorauswahl."""
+    from bot.handlers import tiny_task_feedback as tfb
+    kl = kategorie_logik
+    orig = (kl.grok.simple, kl.grok.clean_text, kl.record_domina_praeferenz)
+    kl.grok.clean_text = lambda x: x
+    etiketten = ["Spanking", "Pet_Play", "Peitsche"]
+    text = "Zwanzig Hiebe mit der Peitsche, er zählt laut mit."
+    try:
+        # LLM nennt eine Teilmenge → nur die, in Etikett-Reihenfolge; Fremdes fällt raus
+        kl.grok.simple = AsyncMock(return_value="peitsche, Spanking, Erfundenes")
+        assert await kl.kategorien_im_text_belegt(text, etiketten) == ["Spanking", "Peitsche"]
+        assert kl.grok.simple.call_args.kwargs.get("temperature") == 0
+        # LLM sagt KEINE → nur noch der wörtliche Treffer
+        kl.grok.simple = AsyncMock(return_value="KEINE")
+        assert await kl.kategorien_im_text_belegt(text, etiketten) == ["Peitsche"]
+        assert await kl.kategorien_im_text_belegt("Er räumt wortlos den Tisch ab.", etiketten) == []
+        # unlesbare Antwort / Fehler → Keyword-Abgleich gegen die Etiketten
+        for kaputt in (AsyncMock(return_value="Das ist schwer zu sagen"),
+                       AsyncMock(side_effect=RuntimeError("x"))):
+            kl.grok.simple = kaputt
+            assert await kl.kategorien_im_text_belegt(text, etiketten) == ["Peitsche"]
+        # ohne Text nichts zu prüfen → Etiketten unverändert, kein LLM-Call
+        kl.grok.simple = AsyncMock()
+        assert await kl.kategorien_im_text_belegt("", etiketten) == etiketten
+        assert await kl.kategorien_im_text_belegt(text, []) == []
+        kl.grok.simple.assert_not_called()
+
+        # Handler: nur Belegtes wird gebucht; bleibt nichts übrig → gar keine Buchung
+        gebucht = []
+
+        async def _rec(kats, sig):
+            gebucht.append((list(kats), sig))
+        kl.record_domina_praeferenz = _rec
+        kl.grok.simple = AsyncMock(return_value="Peitsche")
+        await tfb._signal_verbuchen(text, etiketten, "abgelehnt")
+        assert gebucht == [(["Peitsche"], "abgelehnt")], gebucht
+        gebucht.clear()
+        kl.grok.simple = AsyncMock(return_value="KEINE")
+        await tfb._signal_verbuchen("Er räumt wortlos den Tisch ab.", etiketten, "abgelehnt")
+        assert gebucht == []
+        # dasselbe für die positiven Signale
+        kl.grok.simple = AsyncMock(return_value="Spanking, Peitsche")
+        await tfb._signal_verbuchen(text, etiketten, "genutzt")
+        assert gebucht == [(["Spanking", "Peitsche"], "genutzt")], gebucht
+    finally:
+        kl.grok.simple, kl.grok.clean_text, kl.record_domina_praeferenz = orig
+
+
 def _run():
     test_dislikes_aus_tags()
     test_dislike_treffer()
@@ -307,6 +357,7 @@ def _run():
     test_tags_pflegen_verfall()
     test_wett_idee_kennt_grenzen_und_abneigungen()
     test_wett_fenster_ausserhalb_kinderfrei()
+    asyncio.run(test_ablehnung_nur_auf_belegte_kategorien())
     print("✅ Alle Vorlieben-Abgleich-Tests bestanden")
 
 
