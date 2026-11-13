@@ -41,7 +41,9 @@ async def chat_kurz(system: str, messages: list[dict], max_tokens: int = 160) ->
     resp = await _client.post(url, json=payload)
     resp.raise_for_status()
     from bot.services import grok  # lazy: grok importiert dieses Modul
-    return grok.ohne_steuer_token(resp.json()["choices"][0]["message"]["content"] or "")
+    text = grok.ohne_steuer_token(resp.json()["choices"][0]["message"]["content"] or "")
+    grok._log_ausgabe(text)
+    return text
 
 
 def kuerze_history(history: list[dict], anzahl: int = 4, max_zeichen: int = 300) -> list[dict]:

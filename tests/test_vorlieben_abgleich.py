@@ -343,6 +343,31 @@ async def test_ablehnung_nur_auf_belegte_kategorien():
         kl.grok.simple, kl.grok.clean_text, kl.record_domina_praeferenz = orig
 
 
+async def test_rollenspiel_szenarien_filter():
+    """Die Rollenspiel-Idee lässt Szenarien aus, die eine Abneigung des Subs,
+    ein Hard-Limit oder eine Grenze der Domina bedienen."""
+    from bot.scheduler import tagesjobs
+    from bot.handlers.rollenspiel import SZENARIEN_BIBLIOTHEK
+    alle = list(SZENARIEN_BIBLIOTHEK.values())
+
+    async def namen(profil, hl=(), gr=()):
+        return [sz["name"] for sz in await tagesjobs._szenarien_erlaubt(alle, profil, list(hl), list(gr))]
+    # ohne Einschränkung bleibt alles
+    assert len(await namen({})) == len(alle)
+    # Dienst-Abneigung: das Diener-Szenario fällt raus, die Inspektion bleibt
+    ohne_dienst = await namen({"persoenlichkeit_tags": ["mag_nicht_Dienst"]})
+    assert "Diener" not in ohne_dienst and "Inspektion" in ohne_dienst, ohne_dienst
+    assert len(ohne_dienst) == len(alle) - 1
+    # Abneigung über die Szenario-Kategorie
+    assert "Bestrafungsraum" not in await namen({"persoenlichkeit_tags": ["mag_nicht_Bestrafung"]})
+    # Grenze der Domina / Hard-Limit des Subs über den Szenario-Text
+    assert "Verhör" not in await namen({}, gr=["Verhör"])
+    assert "Inspektion" not in await namen({}, hl=["Inspektion"])
+    # alles gesperrt → leer (der Job schlägt dann nichts vor)
+    eng = [{"name": "Diener", "beschreibung": "Service", "vokabular": [], "aufgaben_kategorien": ["Dienst"]}]
+    assert await tagesjobs._szenarien_erlaubt(eng, {"persoenlichkeit_tags": ["mag_nicht_Dienst"]}, [], []) == []
+
+
 def _run():
     test_dislikes_aus_tags()
     test_dislike_treffer()
@@ -358,6 +383,7 @@ def _run():
     test_wett_idee_kennt_grenzen_und_abneigungen()
     test_wett_fenster_ausserhalb_kinderfrei()
     asyncio.run(test_ablehnung_nur_auf_belegte_kategorien())
+    asyncio.run(test_rollenspiel_szenarien_filter())
     print("✅ Alle Vorlieben-Abgleich-Tests bestanden")
 
 

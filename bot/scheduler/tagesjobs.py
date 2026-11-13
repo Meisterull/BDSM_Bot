@@ -11,13 +11,37 @@ from qdrant_client import models as qm
 from bot.services.qdrant import client
 from bot import config, state
 from bot.services import paare
-from bot.services import qdrant, grok, telegram_helper, kategorie_logik
+from bot.services import qdrant, grok, telegram_helper, kategorie_logik, limits_check
 from bot.prompts import followup as fp
 from bot.prompts import coach_persona
 from bot.messages import t
 from bot.scheduler import basis, schablonen
 
 logger = logging.getLogger(__name__)
+
+
+async def _szenarien_erlaubt(szenarien, sklave_profil: dict, hard_limits: list, grenzen: list) -> list[dict]:
+    """Szenarien für die Rollenspiel-Idee, die weder eine gelernte Abneigung
+    des Subs noch ein Hard-Limit oder eine Grenze der Domina bedienen. Vorher
+    wählte der Job nur nach Domina-Interessen bzw. per Zufall und schlug so ein
+    Szenario aus einer Kategorie vor, die der Sub wiederholt abgelehnt hat.
+    Geprüft werden die Szenario-Kategorien UND der Szenario-Text (Name,
+    Beschreibung, Vokabular)."""
+    dislikes = kategorie_logik.dislike_kategorien(sklave_profil)
+    gesperrt = set(dislikes)
+    for eintrag in list(hard_limits) + list(grenzen):
+        gesperrt |= kategorie_logik.kategorien_in_text(str(eintrag))
+    erlaubt = []
+    for sz in szenarien:
+        text = " ".join([sz.get("name", ""), sz.get("beschreibung", ""), *sz.get("vokabular", [])])
+        if gesperrt & set(sz.get("aufgaben_kategorien", [])):
+            continue
+        if kategorie_logik.dislike_treffer(text, dislikes):
+            continue
+        if await limits_check.verletzungen(text, hard_limits, grenzen):
+            continue
+        erlaubt.append(sz)
+    return erlaubt
 
 
 @basis._job_guard
@@ -52,16 +76,23 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
         return
 
     domina_profile = await qdrant.get_user_profile("domina") or {}
+    sklave_profile = await qdrant.get_user_profile("sklave") or {}
     interessen = [i.lower() for i in domina_profile.get("interessen", [])]
+    hard_limits = sklave_profile.get("hard_limits", []) or []
+    grenzen = domina_profile.get("grenzen", []) or []
+    erlaubte = await _szenarien_erlaubt(SZENARIEN_BIBLIOTHEK.values(), sklave_profile, hard_limits, grenzen)
+    if not erlaubte:
+        logger.info("Rollenspiel-Vorschlag: kein Szenario ohne Abneigung/Grenze übrig – kein Vorschlag.")
+        return
 
     # Passendes Szenario suchen (kat.lower(): die Szenario-Kategorien sind
     # kapitalisiert, die Interessen lowercased – ohne lower() matchte hier NIE
     # etwas und es kam immer das Zufalls-Szenario).
     passende = [
-        sz for sz in SZENARIEN_BIBLIOTHEK.values()
+        sz for sz in erlaubte
         if any(kat.lower() in interessen for kat in sz["aufgaben_kategorien"])
     ]
-    szenario = random.choice(passende) if passende else random.choice(list(SZENARIEN_BIBLIOTHEK.values()))
+    szenario = random.choice(passende or erlaubte)
 
     system = (
         f"Schlag der Domina ein Rollenspiel-Szenario für heute Abend vor – wie eine vertraute Freundin, die eine Idee hat.\n\n"
@@ -76,7 +107,13 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
     )
 
     try:
-        vorschlag = await grok.simple(prompt, system=system, reasoning=True)
+        # Limit-Netz wie bei den Aufgaben-Vorschlägen: das Szenario ist vorgefiltert,
+        # die Ausformulierung kann trotzdem in eine Grenze rutschen.
+        vorschlag = await limits_check.generate_mit_limit_retry(
+            prompt, hard_limits, grenzen, system=system, reasoning=True)
+        if not vorschlag:
+            logger.info("Rollenspiel-Vorschlag: Entwurf verletzt Grenzen auch im zweiten Anlauf – kein Vorschlag.")
+            return
         # Gleiche Detektor-Mechanik wie beim Aufgaben-Vorschlag (Live 18.09.: die Idee
         # begann mit dem verbotenen Einstieg und endete mit einer Profil-Rückfrage).
         funde = schablonen._formel_verstoesse(vorschlag or "")
@@ -87,7 +124,8 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
                 prompt + "\n\nACHTUNG: Dein letzter Entwurf hat diese VERBOTENEN Schablonen "
                 "benutzt: " + "; ".join(funde) + ". Formuliere die Idee neu – anderer Einstieg, "
                 "kein Profil-Abgleich, keine Rückfrage.", system=system, reasoning=True)
-            if neu and len(schablonen._formel_verstoesse(neu)) <= len(funde):
+            if (neu and len(schablonen._formel_verstoesse(neu)) <= len(funde)
+                    and not await limits_check.verletzungen(neu, hard_limits, grenzen)):
                 vorschlag = neu
         vorschlag = schablonen._meta_rueckfrage_entfernen(schablonen._begruendungs_formel_entfernen(vorschlag or ""))
         if basis._nach_llm_verworfen(domina_chat, "Rollenspiel-Vorschlag"):

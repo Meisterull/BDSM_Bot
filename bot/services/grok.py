@@ -37,6 +37,14 @@ _BASE_DELAY = 1.0   # Sekunden
 _MAX_DELAY = 30.0   # Maximale Wartezeit
 
 
+def _log_ausgabe(text: str) -> None:
+    """Jede Modell-Antwort im Wortlaut auf DEBUG – also nur in Logdatei und
+    Logserver, nicht in den Docker-json-Logs (wie GESENDET-INHALT). So lässt
+    sich nachsehen, was ein verworfener Entwurf enthielt (Limit-Treffer,
+    Detektor-Retry), der nie als Nachricht rausging."""
+    logger.debug("LLM-AUSGABE | %s", (text or "").replace("\n", " ⏎ "))
+
+
 async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False,
                temperature: float | None = None, max_tokens: int | None = None,
                frequency_penalty: float | None = None,
@@ -176,6 +184,7 @@ async def _post_chat(url: str, headers: dict, payload: dict,
     # ein stilles "" würde sonst an reply_text("") crashen bzw. Antworten
     # verschlucken – im schlimmsten Fall NACH einem Status-Update (gefuehl.py).
     content = ohne_steuer_token(daten["choices"][0]["message"]["content"])
+    _log_ausgabe(content)
     if not content or not content.strip():
         raise ValueError("LLM lieferte leere Antwort (Refusal/leeres Completion)")
     return content
@@ -223,6 +232,7 @@ async def _generator_lokal(payload: dict, max_tokens: int | None) -> str | None:
         resp.raise_for_status()
         daten = resp.json()
         text = ohne_steuer_token(((daten.get("message") or {}).get("content") or "").strip())
+        _log_ausgabe(text)
         logger.info("LLM-Call %s (lokal, Generator): %.1fs | Tokens in=%s out=%s",
                     config.GENERATOR_LLM_MODEL, time.monotonic() - start,
                     daten.get("prompt_eval_count", "?"), daten.get("eval_count", "?"))

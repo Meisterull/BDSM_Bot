@@ -375,6 +375,13 @@ async def verletzungen(
     return treffer
 
 
+def _log_treffer(treffer: list[dict]) -> None:
+    """Limit-Treffer im Klartext, nur auf DEBUG (Logdatei/Logserver)."""
+    for tr in treffer:
+        logger.debug("LIMIT-TREFFER | %s: „%s“ über „%s“",
+                     tr.get("quelle"), tr.get("limit"), tr.get("matched_via"))
+
+
 async def generate_mit_limit_retry(
     prompt: str | tuple,
     sklave_hard_limits: list[str] | None = None,
@@ -411,9 +418,12 @@ async def generate_mit_limit_retry(
     if not treffer:
         return await _tarn_sichern(text, prompt, system, sklave_hard_limits, domina_grenzen, grok_kwargs)
 
-    # Nur Anzahl/Quelle loggen – die konkreten Limit-Begriffe (intim) gehören nicht in die Logs.
+    # Auf WARNING nur Anzahl/Quelle – die konkreten Limit-Begriffe (intim) gehören
+    # nicht in die Docker-Logs. Welche Grenze über welches Wort traf, steht auf
+    # DEBUG in der Logdatei (s. _log_treffer); der Entwurf selbst als LLM-AUSGABE.
     _quellen = sorted({tr["quelle"] for tr in treffer})
     logger.warning("LLM-Output verletzt %d Grenze(n) [%s] – re-generiere.", len(treffer), ", ".join(_quellen))
+    _log_treffer(treffer)
     verboten = begriffe_zum_verbieten(treffer)
     verschaerft = (
         prompt + "\n\nWICHTIG: Der vorherige Vorschlag enthielt VERBOTENE BEGRIFFE: "
@@ -422,8 +432,10 @@ async def generate_mit_limit_retry(
         "Persoenliche Grenzen der Domina sind genauso unantastbar wie Hard Limits des Sklaven."
     )
     text = await grok.simple(verschaerft, system=system, **grok_kwargs)
-    if await verletzungen(text, sklave_hard_limits, domina_grenzen):
+    nochmal = await verletzungen(text, sklave_hard_limits, domina_grenzen)
+    if nochmal:
         logger.error("LLM-Output auch nach Re-Generierung Grenzen-verletzend – verworfen.")
+        _log_treffer(nochmal)
         return None
     return text
 

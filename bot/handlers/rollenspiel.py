@@ -26,7 +26,9 @@ SZENARIEN_BIBLIOTHEK = {
         "beschreibung": "Detaillierte Kontrolle und Bewertung des Sklaven",
         "ton": "kühl, präzise, bewertend, professionell distanziert",
         "vokabular": ["Inspektion", "Standard", "Mängel", "protokolliert"],
-        "aufgaben_kategorien": ["Dienst", "Regeln"],
+        # Kontrolle/Bewertung, kein Bedienen – „Dienst" stand hier fälschlich und
+        # nähme das Szenario bei einer Dienst-Abneigung grundlos aus dem Vorschlag.
+        "aufgaben_kategorien": ["Objektifizierung", "Regeln"],
     },
     "3": {
         "name": "Prüfung",
