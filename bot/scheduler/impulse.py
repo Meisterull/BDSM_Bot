@@ -8,6 +8,7 @@ import random
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from telegram import Bot
+from telegram.error import TimedOut
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, telegram_helper, zeiten
@@ -113,6 +114,24 @@ def _impuls_slot_frei(anderer_anker: str) -> bool:
     return _impuls_sperrgrund(anderer_anker) is None
 
 
+async def _impuls_versenden(bot: Bot, kandidaten: list, wer: str) -> str | None:
+    """Kandidaten der Reihe nach versuchen; Name des gesendeten Zweigs oder None.
+    Ein Telegram-Timeout zählt als GESENDET (Live-Befund 14.11.2026: die
+    Nachricht kam trotz TimedOut an, der Job brach aber vor dem Anker ab –
+    der Claim blieb 45 min hängen und sperrte beide Impulse, und ohne Anker
+    hätte derselbe Impuls am selben Abend ein zweites Mal rausgehen können).
+    Lieber einmal keine Nachricht als zwei."""
+    for name, senden in kandidaten:
+        try:
+            if await senden(bot):
+                return name
+        except TimedOut:
+            logger.warning("%s (%s): Telegram-Timeout beim Senden – wird als gesendet "
+                           "gewertet, um Doppelversand zu vermeiden.", wer, name)
+            return name
+    return None
+
+
 def _log_sperre(wer: str, anderer: str, grund: str) -> None:
     """Die beiden Sperrgründe getrennt loggen – "war vor < 45 min dran" stand
     vorher auch dann im Log, wenn der andere Impuls gar nichts gesendet hatte."""
@@ -194,11 +213,13 @@ async def spiel_impuls_job(bot: Bot) -> None:
     mein_claim = datetime.now(timezone.utc)
     _impuls_claim = mein_claim
     random.shuffle(spiele)
-    gesendet = None
-    for name, senden in spiele:
-        if await senden(bot):
-            gesendet = name
-            break
+    try:
+        gesendet = await _impuls_versenden(bot, spiele, "Spiel-Impuls")
+    except Exception:
+        # Sonst bliebe der Claim bis zum Ablauf hängen und sperrte beide Impulse.
+        if _impuls_claim is mein_claim:
+            _impuls_claim = None
+        raise
     if not gesendet:
         if _impuls_claim is mein_claim:
             _impuls_claim = None  # Slot wieder freigeben – es ging nichts raus
@@ -346,11 +367,12 @@ async def coach_impuls_job(bot: Bot) -> None:
     # Ausfall bleibt (Owner-Frage 06.09.): schlägt der Zweig fehl (z.B. leere
     # LLM-Antwort), kommt der andere dran.
     kandidaten = _impuls_reihenfolge(kandidaten, domina_profile.get("coach_impuls_letzter_typ", ""))
-    gesendet = None
-    for name, senden in kandidaten:
-        if await senden(bot):
-            gesendet = name
-            break
+    try:
+        gesendet = await _impuls_versenden(bot, kandidaten, "Coach-Impuls")
+    except Exception:
+        if _impuls_claim is mein_claim:
+            _impuls_claim = None
+        raise
     if not gesendet:
         if _impuls_claim is mein_claim:
             _impuls_claim = None

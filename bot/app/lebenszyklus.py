@@ -221,6 +221,11 @@ def main() -> None:
     app = (
         ApplicationBuilder()
         .token(config.TELEGRAM_BOT_TOKEN)
+        # PTB-Standard sind 5 s – ein kurzer Telegram-Hänger ließ am 14.11.2026
+        # einen Scheduler-Send mit TimedOut abbrechen, obwohl er ankam.
+        .connect_timeout(10)
+        .read_timeout(20)
+        .write_timeout(20)
         .post_init(post_init)
         .post_shutdown(post_shutdown)
         .concurrent_updates(zeitjobs._paar_update_prozessor())
