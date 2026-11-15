@@ -315,6 +315,7 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         kombi_vorlieben = schablonen._kombi_vorlieben_wahl(
             sklave_profile.get("vorlieben", []),
             dislikes=kategorie_logik.dislike_kategorien(sklave_profile),
+            volltexte=letzte_tiny_volltexte[:3],
         )
         if kombi_vorlieben:
             logger.info("Kombi-Impuls aktiv: %s + %s",

@@ -225,6 +225,11 @@ _ZUTATEN_MUSTER: list[tuple[str, re.Pattern, frozenset]] = [
     ("Jammern-Motiv",
      re.compile(r"jammer", re.I),
      frozenset()),
+    # Schauplatz als Zutat (Live-Befund 15.11.2026): derselbe Ort trug mehrere
+    # Vorschläge in einer Woche, obwohl Kategorien und Praktiken wechselten.
+    ("Dusche/Bad als Schauplatz",
+     re.compile(r"dusch|badewanne|wasserstrahl", re.I),
+     frozenset()),
 ]
 
 
@@ -267,13 +272,20 @@ def _vorlieben_cluster(text: str) -> set[int]:
     return cluster
 
 
-def _kombi_vorlieben_wahl(vorlieben: list, dislikes: list | None = None) -> list | None:
+def _kombi_vorlieben_wahl(vorlieben: list, dislikes: list | None = None,
+                          volltexte: list | None = None) -> list | None:
     """Zwei Freitext-Vorlieben für den KOMBI-IMPULS (Nutzer-Wunsch 06.09.):
     bevorzugt eine situative Zeile (Alltags-Ritual als Bühne) als Anker plus
     einen Partner aus einem ANDEREN Themen-Cluster – die Kategorie-Rotation
     erzeugt solche Querverbindungen sonst nie. Zeilen, die auf Dislike-
     Kategorien mappen, sind ausgeschlossen. Zeilen bleiben wörtlich erhalten
-    (Richtungs-/Bedingungs-Zusätze dürfen nicht abhandenkommen)."""
+    (Richtungs-/Bedingungs-Zusätze dürfen nicht abhandenkommen).
+
+    `volltexte` = die letzten Vorschläge: Zeilen, deren Zutat/Schauplatz dort
+    schon vorkam, setzen aus (Live-Befund 15.11.2026: es gab nur zwei situative
+    Zeilen, beide mit demselben Schauplatz – jeder Kombi-Tag spielte dort, und
+    die Kombi-Befreiung hebelte die Zutaten-Sperrliste gleich mit aus). Bleiben
+    so weniger als zwei Zeilen übrig, gilt die ungefilterte Liste."""
     dislikes_set = set(dislikes or [])
     kandidaten = [
         v for v in (vorlieben or [])
@@ -282,6 +294,11 @@ def _kombi_vorlieben_wahl(vorlieben: list, dislikes: list | None = None) -> list
     ]
     if len(kandidaten) < 2:
         return None
+    verbraucht = [rx for _, rx, _ in _ZUTATEN_MUSTER
+                  if any(rx.search(t or "") for t in (volltexte or []))]
+    frisch = [v for v in kandidaten if not any(rx.search(v) for rx in verbraucht)]
+    if len(frisch) >= 2:
+        kandidaten = frisch
     situativ = [v for v in kandidaten if _SITUATIV_RE.search(v)]
     anker = random.choice(situativ or kandidaten)
     anker_cluster = _vorlieben_cluster(anker)

@@ -1486,6 +1486,23 @@ def test_zutaten_und_kombi_helfer():
     kombi2 = schablonen._kombi_vorlieben_wahl(vorlieben, dislikes=["Spanking"])
     assert kombi2 and set(kombi2) == {"Wachs (nur die Domina gießt)", "Verbale Demütigung"}, kombi2
     assert schablonen._kombi_vorlieben_wahl(["nur eine Zeile"], dislikes=[]) is None
+    # Schauplatz der letzten Vorschläge setzt aus: die situative Zeile mit
+    # verbrauchtem Ort ist weder Anker noch Partner …
+    ort = ["Massage beim gemeinsamen Duschen", "Wachs (nur die Domina gießt)",
+           "Verbale Demütigung", "Vorlesen am Abend"]
+    letzte = ["Unter der Dusche stellt er sich an die Wand.", "Etwas ganz anderes."]
+    for _ in range(30):
+        k = schablonen._kombi_vorlieben_wahl(ort, dislikes=[], volltexte=letzte)
+        assert k and "Massage beim gemeinsamen Duschen" not in k, k
+        assert k[0] == "Vorlesen am Abend", k  # frische situative Zeile bleibt Anker
+    # … ohne passende Volltexte bleibt sie wählbar
+    assert any("Duschen" in schablonen._kombi_vorlieben_wahl(ort, dislikes=[], volltexte=[])[0]
+               for _ in range(60))
+    # … und bleibt nach dem Filter weniger als ein Paar, gilt die volle Liste
+    eng = ["Massage beim gemeinsamen Duschen", "Wachs unter der Dusche"]
+    assert set(schablonen._kombi_vorlieben_wahl(eng, dislikes=[], volltexte=letzte)) == set(eng)
+    # Der Schauplatz steht auch auf der Zutaten-Sperrliste
+    assert "Schauplatz" in " | ".join(schablonen._verbrauchte_zutaten(letzte, ["Dienst"]))
 
 
 def test_dossier_gekuerzt_satzgrenze():
