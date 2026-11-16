@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, punkte, kategorie_logik
-from bot.services import sticker_reaktionen
+from bot.services import sticker_reaktionen, kontext_pflege
 from bot.prompts import followup as fp
 from bot.prompts import sklave as sp
 from bot.messages import t
@@ -30,9 +30,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         state.set_mode(chat_id, "chat")
         return
     aufgabe = task.get("aufgabe", "")
+    # Die Frage, auf die er gerade antwortet (followup_response._handle_yes) –
+    # wird mit der Antwort gespeichert und geht in Reaktion, Analyse und Bericht.
+    frage = (s.pop("gefuehl_frage", "") or "").strip()
 
     # Gefühl und Status speichern
-    await qdrant.update_task(task_id, {"status": "erledigt", "gefuehl": text})
+    await qdrant.update_task(task_id, {"status": "erledigt", "gefuehl": text,
+                                       **({"gefuehl_frage": frage} if frage else {})})
 
     # State zurücksetzen — Reihenfolge wichtig: erst task_id löschen, dann Mode wechseln
     # (sonst kann followup_job einen neuen task_id setzen der hier gelöscht wird)
@@ -52,7 +56,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Persönliche Reaktion der Herrin auf die Gefühl-Antwort
     try:
-        reaktion = await grok.simple(fp.reaktion_auf_gefuehl(aufgabe, text), max_tokens=250)
+        reaktion = await grok.simple(fp.reaktion_auf_gefuehl(aufgabe, text, frage), max_tokens=250)
     except Exception as e:
         logger.error("Fehler bei Reaktion-auf-Gefühl: %s", e)
         reaktion = t("FALLBACK_GEFUEHL_REAKTION")
@@ -65,7 +69,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Persönlichkeitsprofil des Sklaven aktualisieren – VOR der Ketten-Freischaltung,
     # damit die klassifizierte Stimmung für die adaptive Kette verfügbar ist.
-    stimmung_result = await _update_sklave_persoenlichkeit(aufgabe, text, task)
+    stimmung_result = await _update_sklave_persoenlichkeit(aufgabe, text, task, frage=frage)
     aktuelle_stimmung = stimmung_result.get("stimmung") if stimmung_result else None
 
     # Klassifizierte Stimmung am Task festhalten – für Langeweile-Erkennung & Auswertungen.
@@ -82,36 +86,21 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if aktuelle_stimmung in ("langweilig", "überfordert", "abgelehnt"):
         await _streak_penalty_bei_negativ()
 
-    # Der komplette Domina-Nachlauf (Bericht + Coach-Feedback + Teaser +
-    # Bewertungs-Frage = bis zu 3 LLM-Calls, teils reasoning) als EIN
-    # sequenzieller Hintergrund-Task (D9/A2, Muster D8/N1): er hielt sonst den
-    # Paar-Lock 10-30 s, obwohl der Sklave seine Reaktion längst hat. EIN Task
-    # statt vier, damit die Nachrichten-Reihenfolge für die Domina erhalten
-    # bleibt; jeder Schritt mit eigenem Fangnetz.
+    # Der Domina-Nachlauf als EIN sequenzieller Hintergrund-Task (D9/A2, Muster
+    # D8/N1): er hielt sonst den Paar-Lock, obwohl der Sklave seine Reaktion
+    # längst hat. Seit Review D11 ist es EINE Nachricht: Bericht + ein Gedanke
+    # des Coachs + die Bewertungsfrage als Schlusszeile (vorher drei Nachrichten
+    # und zwei LLM-Texte zum selben Ereignis). Jeder Schritt mit eigenem Fangnetz.
     async def _domina_nachlauf() -> None:
         try:
-            await _sende_bericht_an_domina(context, task_id, aufgabe, text)
+            await _sende_bericht_an_domina(context, task_id, aufgabe, text,
+                                           level=level, erledigte=erledigte, frage=frage)
         except Exception:
             logger.exception("Bericht an Domina fehlgeschlagen")
-        try:
-            await _send_coach_feedback(context, aufgabe, text, level, erledigte)
-        except Exception:
-            logger.exception("Coach-Feedback fehlgeschlagen")
         try:
             await _check_level_teaser(context, profile=domina_profile, level=level)
         except Exception:
             logger.exception("Level-Teaser fehlgeschlagen")
-        # Domina zur Bewertung auffordern – Daten immer setzen, aber einen aktiven
-        # Domina-Flow nicht kapern: Bewertungs-Mode nur setzen, wenn sie frei ist.
-        try:
-            domina_chat = paare.dom_chat_id()
-            domina_state = state.get(domina_chat)
-            domina_state["bewertung_task_id"] = task_id
-            if state.get_mode(domina_chat) in ("chat", None):
-                state.set_mode(domina_chat, "aufgabe_bewertung")
-            await telegram_helper.send_domina(context.bot, t("GEFUEHL_BEWERTUNG_FRAGE"))
-        except Exception:
-            logger.exception("Bewertungs-Frage fehlgeschlagen")
 
     import asyncio as _asyncio
     _bg = _asyncio.create_task(_domina_nachlauf())
@@ -226,9 +215,12 @@ async def _streak_penalty_bei_negativ() -> None:
         logger.error("Fehler beim Streak-Penalty: %s", e)
 
 
-async def _sende_bericht_an_domina(context, task_id: str, aufgabe: str, gefuehl: str) -> None:
-    """Bericht über die erledigte Aufgabe an die Domina – mit den letzten
-    Gefühlen als Vergleichskontext."""
+async def _sende_bericht_an_domina(context, task_id: str, aufgabe: str, gefuehl: str,
+                                   level: int | None = None, erledigte: int | None = None,
+                                   frage: str = "") -> None:
+    """EINE Nachricht an die Domina über die erledigte Aufgabe: Bericht + ein
+    Gedanke des Coachs, die Bewertungsfrage als Schlusszeile. Die letzten
+    brauchbaren Rückmeldungen gehen als Vergleichskontext mit."""
     # Serverseitig sortiert + kleines Limit (Review D8/M4): ohne sort_by_datum
     # liefert der Scroll ab >100 erledigten Tasks eine willkürliche Teilmenge –
     # die "letzten Gefühle" als Vergleichskontext wären dann falsch.
@@ -239,25 +231,37 @@ async def _sende_bericht_an_domina(context, task_id: str, aufgabe: str, gefuehl:
         # muss auch bei Qdrant-Schluckauf noch rausgehen.
         logger.exception("Vergleichs-Gefühle nicht ladbar – Bericht ohne Kontext.")
         erledigt_tasks = []
-    erledigt_mit_gefuehl = [
-        t for t in erledigt_tasks
-        if t.get("gefuehl") and t.get("qdrant_point_id") != task_id
-    ]
-    vorherige_gefuehle = [t.get("gefuehl", "") for t in erledigt_mit_gefuehl[:3] if t.get("gefuehl")]
+    # Nur Rückmeldungen mit Aussage (keine Ziffern/Einwort-Füller, Review D10)
+    vorherige_gefuehle = kontext_pflege.brauchbare_gefuehle(
+        [x.get("gefuehl", "") for x in erledigt_tasks if x.get("qdrant_point_id") != task_id], limit=3)
 
-    prompt = fp.bericht_erledigt(aufgabe, gefuehl, vorherige_gefuehle=vorherige_gefuehle)
+    prompt = fp.bericht_erledigt(aufgabe, gefuehl, vorherige_gefuehle=vorherige_gefuehle,
+                                 gefuehl_frage=frage, level=level, erledigte=erledigte)
     try:
-        bericht = await grok.simple(prompt)
+        bericht = grok.clean_text(await grok.simple(prompt, reasoning=True))
+        if not bericht:
+            raise ValueError("leerer Bericht")
     except Exception as e:
         logger.error("Bericht-erledigt fehlgeschlagen, sende Roh-Meldung: %s", e)
         # Kein wörtliches Zitat des Gefühls an die Domina (schützt die Intimität –
         # der LLM-Bericht oben fasst bewusst nur zusammen). Zitiert wird die
         # AUFGABE, nicht seine Äußerung – der Satzbau muss das klar machen.
         bericht = f"✅ Er hat die Aufgabe „{aufgabe}“ erledigt und sich dazu geäußert."
-    await telegram_helper.send_domina(context.bot, bericht, parse_mode="Markdown")
+    # Domina zur Bewertung auffordern – Daten immer setzen, aber einen aktiven
+    # Domina-Flow nicht kapern: Bewertungs-Mode nur setzen, wenn sie frei ist.
+    try:
+        domina_chat = paare.dom_chat_id()
+        state.get(domina_chat)["bewertung_task_id"] = task_id
+        if state.get_mode(domina_chat) in ("chat", None):
+            state.set_mode(domina_chat, "aufgabe_bewertung")
+    except Exception:
+        logger.exception("Bewertungs-State konnte nicht gesetzt werden")
+    await telegram_helper.send_domina(
+        context.bot, f"{bericht}\n\n{t('GEFUEHL_BEWERTUNG_FRAGE')}", parse_mode="Markdown")
 
 
-async def _update_sklave_persoenlichkeit(aufgabe: str, gefuehl: str, task: dict) -> dict | None:
+async def _update_sklave_persoenlichkeit(aufgabe: str, gefuehl: str, task: dict,
+                                         frage: str = "") -> dict | None:
     """Analysiert Gefühl-Antwort und akkumuliert Persönlichkeitsmuster.
     Gibt das Analyse-Ergebnis zurück (stimmung, intensitaet, kategorie_reaktion) oder None bei Fehler."""
     import json
@@ -268,6 +272,10 @@ async def _update_sklave_persoenlichkeit(aufgabe: str, gefuehl: str, task: dict)
 
 WICHTIG: Im D/s-Kontext können negativ klingende Gefühle wie "erniedrigt", "demütig", "schwach" POSITIV gemeint sein
 – der Sklave GENIEßT diese Gefühle. Bewerte nur eindeutige Verweigerung oder Unbehagen als negativ.
+
+Steht eine gestellte Frage dabei, lies die Reaktion als Antwort auf GENAU diese Frage.
+Eine sehr knappe Antwort, eine Zahl oder eine Rückfrage ist für sich KEINE Ablehnung –
+im Zweifel "positiv" mit "neutral".
 
 Unterscheide 5 Stimmungs-Typen:
 - "begeistert": positiv, herausfordernd, will mehr davon
@@ -285,9 +293,14 @@ Antworte NUR mit einem JSON-Objekt ohne Markdown:
 
 Die JSON-Werte sind feste Daten-IDs – gib sie EXAKT so zurück (deutsch),
 unabhängig davon, in welcher Sprache die Reaktion formuliert ist."""
+    # Mit der gestellten Frage: eine Zahl, ein einzelnes Wort oder eine
+    # Rückfrage ist nur als Antwort auf sie deutbar (Review D11 – vorher wurde
+    # z. B. eine Rückfrage als Ablehnung der Kategorie gelesen).
+    frage_zeile = f"{fp.nutzer_text('Gestellte Frage', frage)}\n" if (frage or "").strip() else ""
     analyse_prompt = (
         f"Aufgabe-Kategorie: {kategorie}\n"
         f"Aufgabe: {aufgabe}\n"
+        f"{frage_zeile}"
         f"{fp.nutzer_text('Reaktion/Gefühl', gefuehl)}"
     )
 
@@ -418,39 +431,3 @@ async def _check_level_teaser(context, profile: dict, level: int) -> None:
             )
         except Exception as e:
             logger.error("Fehler beim Level-Teaser: %s", e)
-
-
-async def _send_coach_feedback(
-    context,
-    aufgabe: str,
-    gefuehl: str,
-    level: int,
-    erledigte: int,
-) -> None:
-    """Sendet Coach-Feedback und Lernpfad-Hinweis an die Domina."""
-    from bot.prompts import coach_persona
-    system = f"""Eine Aufgabe wurde gerade erledigt. Du sprichst jetzt mit der Domina darüber – wie eine vertraute Freundin, nicht wie ein Lehrer.
-
-{coach_persona.fuer_coach_prompt()}
-
-Inhaltlich soll deine Antwort drei Sachen leisten – aber NICHT als nummerierte Liste oder mit Überschriften wie "Feedback:". Lass es fließen wie ein normaler Chat-Beitrag:
-- Eine Beobachtung zur Aufgabe und seiner Reaktion (nicht mehr als 2 Sätze)
-- Ein konkreter nächster Schritt oder Gedanke für Level {level} (1-2 Sätze)
-- Wenn seine Reaktion klar positiv war: ein kurzer persönlicher Satz dazu was das über ihre Wirkung sagt – ohne Pathos, ohne "Du kannst stolz auf dich sein"
-
-Kein [AUFGABE: ...] Tag."""
-    prompt = (
-        f"Aufgabe: {aufgabe}\n"
-        f"{fp.nutzer_text('Gefühl des Sklaven', gefuehl)}\n"
-        f"Aktuelles Level der Domina: {level}\n"
-        f"Bisher erledigte Aufgaben gesamt: {erledigte}"
-    )
-    try:
-        feedback = await grok.simple(prompt, system=system, reasoning=True)
-        await telegram_helper.send_domina(
-            context.bot,
-            feedback,
-            parse_mode="Markdown",
-        )
-    except Exception:
-        logger.exception("Fehler beim Senden des Coach-Feedbacks")

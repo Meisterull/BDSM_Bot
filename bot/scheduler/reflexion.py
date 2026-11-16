@@ -247,7 +247,9 @@ ZUGRIFF ERLAUBT:
 - domina.interessen        (list_add – neue Interessen aus oft besprochenen Themen)
 - domina.ziele             (text_replace – nur wenn Ziele klar verschoben/verfeinert)
 - domina.erfahrungsstand   (text_replace – nur bei klarer Belegsignifikanz)
-- sklave.vorlieben         (list_add – aus 5-Sterne-Tasks oder positiven Reaktionen)
+- sklave.vorlieben         (list_add – NUR aus seinen eigenen ausdruecklichen Aeusserungen oder
+                            klar positiven Rueckmeldungen; die Sterne-Bewertungen der Domina sagen
+                            etwas ueber IHRE Zufriedenheit, nicht ueber seine Vorlieben)
 - sklave.wunsch_kategorien (list_add – nur wenn explizit gewuenscht im Chat)
 - sklave.persoenlichkeit_tags (list_add – z.B. "willig", "rebellisch", "kreativ")
 - sklave.erfahrungsstand   (text_replace)
@@ -422,7 +424,12 @@ async def coach_reflexion_job(bot: Bot) -> None:
         # vor, solange die Domina den letzten noch nicht beantwortet hat.
         aktive_regeln = (await qdrant.get_active_coach_regeln("domina")
                          + await qdrant.get_pending_coach_regeln("domina"))
-        existing_text = "\n".join(f"- {r.get('text','')}" for r in aktive_regeln) or "(keine)"
+        # Nur Regeln und Notizen: die Collection führt auch Protokollzeilen über
+        # Profil-Änderungen (typ=profil_update) – die standen hier als
+        # „geltende Regeln" im Prompt (Review D11).
+        existing_text = "\n".join(
+            f"- {r.get('text','')}" for r in aktive_regeln if r.get("typ") in ("regel", "notiz")
+        ) or "(keine)"
 
         rohtext_zeilen = []
         for e in entries:

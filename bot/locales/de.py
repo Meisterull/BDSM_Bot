@@ -1232,6 +1232,7 @@ MESSAGES = {
         "⚠️ Konnte keinen Grenzen-konformen Bestrafungsvorschlag generieren. "
         "Bitte erteile eine Strafe manuell."
     ),
+    "NICHT_ERLEDIGT_KOPF": "❌ *Nicht erledigt:* {aufgabe}",
     "BESTRAFUNG_LABEL_ESKALATION": "🚨 *Eskalation – Wiederholtes Muster:*",
     "BESTRAFUNG_LABEL_VORSCHLAG": "⚠️ *Bestrafungsvorschlag:*",
 

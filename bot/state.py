@@ -241,6 +241,24 @@ def set_followup_task(chat_id: str, task_id: str) -> bool:
     return True
 
 
+def aktives_rollenspiel(dom_chat_id: str | None = None) -> dict | None:
+    """Das laufende Rollenspiel des Paares (liegt im State der Dom-Seite) oder
+    None. Für alles, was an die Sub-Seite geht: vorher bekam sie nur die
+    Einleitung, danach wussten weder der Herrin-Chat noch die Aufgaben-
+    Formulierung vom Szenario (Review D11)."""
+    try:
+        if dom_chat_id is None:
+            from bot.services import paare   # lazy: state bleibt import-leicht
+            dom_chat_id = paare.dom_chat_id()
+        s = get(str(dom_chat_id))
+    except Exception:
+        return None
+    if not s.get("szenario_name"):
+        return None
+    return {"name": s.get("szenario_name") or "", "ton": s.get("szenario_ton") or "",
+            "intensitaet": s.get("rollenspiel_intensitaet") or ""}
+
+
 def set_gefuehl_pending(chat_id: str, task_id: str) -> None:
     s = get(chat_id)
     current_mode = s.get("mode", "chat")

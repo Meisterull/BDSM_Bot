@@ -143,28 +143,49 @@ async def _generiere_wissensfrage(thema: dict) -> tuple[str, str, str] | None:
 # ---------------------------------------------------------------------------
 
 async def _sklave_kontext() -> str:
-    """Belegbare Fakten über den Sklaven als Prompt-Block (Spiegel des
-    Sklave-Quiz). Bewusst inkl. seiner Grenzen: dass die Domina die kennt,
-    ist Sicherheits-Wissen – darum hier KEIN limits_check."""
+    """Belegbare Fakten über den Sklaven als Prompt-Block – NUR Wissen, das die
+    Dom-Seite ohnehin hat: seine Grenzen (Sicherheits-Wissen, darum auch KEIN
+    limits_check), die gemeinsam erlebten Aufgaben samt ihrer eigenen Bewertung
+    und sein Punktestand.
+
+    Vorlieben, Persönlichkeits-Tags, offene Fäden und Dossier bleiben draußen
+    (Review D11): das ist verdecktes Wissen aus seinem Kanal – als Quiz-Fakt
+    mit Auflösung hätte es die Tarnung unterlaufen, die alle Coach-Prompts
+    sonst einhalten."""
+    from bot.services import zeiten
     profil = await qdrant.get_user_profile("sklave") or {}
     teile = []
-    for feld, label in (("vorlieben", "Seine Vorlieben"), ("hard_limits", "Seine Grenzen"),
-                        ("persoenlichkeit_tags", "Persönlichkeit"),
-                        ("offene_faeden", "Offene Fäden")):
-        wert = profil.get(feld)
-        if isinstance(wert, list):
-            # DIV4-Analogon (Live-Befund 06.09., wie bei den Tiny-Tasks): die
-            # komplette Vorlieben-Liste ankert die Fragen auf denselben
-            # Top-Einträgen – subsampeln variiert den Fokus pro Quiz.
-            # Grenzen bleiben IMMER vollständig (Sicherheits-Wissen).
-            if feld == "vorlieben" and len(wert) > 8:
-                wert = random.sample(wert, 8)
-            wert = ", ".join(str(w) for w in wert)
-        if wert:
-            teile.append(f"- {label}: {wert}")
-    dossier = (profil.get("dossier") or "").strip()
-    if dossier:
-        teile.append(f"- Dossier über ihn:\n{dossier[:1200]}")
+    grenzen = profil.get("hard_limits") or []
+    if grenzen:
+        teile.append("- Seine Grenzen: " + ", ".join(str(g) for g in grenzen))
+    try:
+        erledigt = await qdrant.get_tasks_by_status(["erledigt"], limit=8, sort_by_datum=True)
+    except Exception:
+        logger.exception("Coach-Quiz: erledigte Aufgaben nicht ladbar (weiter ohne)")
+        erledigt = []
+    zeilen = []
+    for task in erledigt:
+        text = " ".join((task.get("aufgabe") or "").split())
+        if len(text) < 12:
+            continue
+        zeile = zeiten.mit_alter_label(text[:160], task.get("erteilt_am", ""))
+        if task.get("domina_bewertung"):
+            zeile += f" (deine Bewertung: {task['domina_bewertung']}★)"
+        zeilen.append(zeile)
+    # Subsampeln variiert den Fokus pro Quiz (DIV4-Analogon, Live-Befund 06.09.)
+    if len(zeilen) > 5:
+        zeilen = random.sample(zeilen, 5)
+    if zeilen:
+        teile.append("- Zuletzt von ihm erledigte Aufgaben:\n" + "\n".join(f"  • {z}" for z in zeilen))
+    stand = []
+    if profil.get("streak") is not None:
+        stand.append(f"aktueller Streak {profil.get('streak', 0)}")
+    if profil.get("streak_max"):
+        stand.append(f"längster Streak {profil['streak_max']}")
+    if profil.get("punkte") is not None:
+        stand.append(f"{profil.get('punkte', 0)} Punkte")
+    if stand:
+        teile.append("- Sein Stand: " + ", ".join(stand))
     return "\n".join(teile)
 
 

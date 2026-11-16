@@ -479,8 +479,11 @@ def format_verletzungen(treffer: list[dict]) -> str:
 def begriffe_zum_verbieten(treffer: list[dict]) -> list[str]:
     """Liste aller getroffenen Limit-Begriffe + ihrer Match-Phrasen zur
     Re-Generation. Dem LLM zu sagen 'verbiete X und alles thematisch Verwandte'."""
-    aus = set()
+    aus: dict[str, str] = {}
     for t in treffer:
-        aus.add(t["limit"])
-        aus.add(t["matched_via"])
-    return sorted(aus)
+        for begriff in (t["limit"], t["matched_via"]):
+            # Groß-/Klein-Doppel („Blut, blut") zusammenlegen – die erste
+            # Schreibweise (die des Limits) gewinnt.
+            if begriff:
+                aus.setdefault(str(begriff).lower(), str(begriff))
+    return sorted(aus.values())

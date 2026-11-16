@@ -152,11 +152,14 @@ def fuer_aufgaben_vorschlag() -> str:
     """Coach-Stil + Anti-Klischee-Block. Für alle Aufgaben-Vorschlags-Prompts."""
     # Der Stil-Block stammt aus dem Chat-Preset und empfiehlt dort eine Frage
     # zum Weiterreden – die Generator-Prompts verbieten Rückfragen. Der
-    # Widerspruch wird hier einmal aufgelöst (Review D10).
+    # Widerspruch wird hier einmal aufgelöst (Review D10). Ausnahme bleibt, was
+    # ein Auftrag ausdrücklich verlangt: der Straf-Vorschlag endet mit der Frage,
+    # ob sie die Strafe anordnen will – der Ablauf wartet auf ihr Ja/Nein.
     return (coach_stil() + _namen_block()
             + "\n\nFÜR DIESEN AUFTRAG: Du lieferst einen fertigen Vorschlag, kein Gespräch. "
-              "Die Stil-Regel zum Weiterreden gilt hier NICHT – der Text endet mit seinem Inhalt, "
-              "ohne Frage und ohne Anstoß zum Antworten."
+              "Die Stil-Regel zum Weiterreden gilt hier NICHT – keine angehängte Plauder-Frage und "
+              "kein Anstoß zum Antworten. Eine Abschlussfrage stellst du nur, wenn der Auftrag "
+              "unten sie ausdrücklich verlangt (dann genau diese eine)."
             + "\n\n" + _aufgaben_anti_klischee())
 
 

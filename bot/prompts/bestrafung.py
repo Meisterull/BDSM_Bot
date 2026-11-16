@@ -4,6 +4,12 @@ Bestrafungs-Prompts.
 from bot.prompts import coach_persona, rollen
 
 
+def _dossier_kurz(dossier: str, limit: int) -> str:
+    """Dossier an der Satzgrenze kürzen statt mitten im Wort (wie in den übrigen Generatoren)."""
+    from bot.prompts import coach_persona   # lokal: vermeidet Import-Zirkel
+    return coach_persona.dossier_gekuerzt(dossier, limit)
+
+
 def _strafen_kontext(
     sklave_hard_limits: list = None,
     sklave_vorlieben: list = None,
@@ -51,7 +57,7 @@ def _strafen_kontext(
         )
     dossier_str = ""
     if dossier:
-        dossier_str = f"\nWas du über {s['label_akk']} weißt (Dossier):\n{dossier[:600]}\n"
+        dossier_str = f"\nWas du über {s['label_akk']} weißt (Dossier):\n{_dossier_kurz(dossier, 600)}\n"
     # Inventar: Wissen + Verbot wie bei den Aufgaben-Generatoren, optional der
     # Ausstattungs-Impuls (eine Strafe mit vorhandenem Gerät statt erfundenem).
     inventar_str = coach_persona.inventar_block(perspektive="coach")
@@ -74,7 +80,7 @@ def bestrafungsvorschlag(
     streak_info = (
         f"{s['label_nom'][:1].upper()}{s['label_nom'][1:]} hatte einen Streak von {streak_vorher} Tagen – "
         f"dieser wurde durch die Nicht-Erledigung unterbrochen.\n"
-        if streak_vorher > 0
+        if streak_vorher > 1      # ein einzelner Tag ist kein Streak, der ins Gewicht fällt
         else ""
     )
     kontext = _strafen_kontext(sklave_hard_limits, sklave_vorlieben, kategorie_reaktionen,
@@ -153,7 +159,7 @@ def eskalations_vorschlag(
         )
     dossier_str = ""
     if dossier:
-        dossier_str = f"\nWas du über {s['label_akk']} weißt (Dossier):\n{dossier[:600]}\n"
+        dossier_str = f"\nWas du über {s['label_akk']} weißt (Dossier):\n{_dossier_kurz(dossier, 600)}\n"
     historie_str = ""
     if letzte_strafen:
         historie_str = (

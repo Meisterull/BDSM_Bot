@@ -396,33 +396,100 @@ def vorliebe_kategorien(text: str) -> set[str]:
     return {k for k in kats if k in pool}
 
 
-async def klassifiziere(text: str) -> str:
-    """Klassifiziert eine Aufgabe in eine Pool-Kategorie.
+# Folge-Klauseln einer Aufgabe: was auf diese Marker folgt, beschreibt die
+# angedrohte Strafe, die Belohnung oder eine Bedingung – nicht die Aufgabe.
+# Die Einsortierung richtete sich vorher nach dem ERSTEN Stichwort im ganzen
+# Text; stand das in der Folge-Klausel, landete die Aufgabe in der Kategorie
+# der Strafe statt in der ihrer Haupt-Handlung (Daten-Review 16.11.2026) – und
+# an der Kategorie hängen Reaktionen, gelernte Intensität, Abneigungen und die
+# Rotation.
+_FOLGE_RE = re.compile(
+    r"(?:\s*[,;:.–—\-(]\s*|\s+)(?:"
+    r"bei (?:unzufriedenheit|missfallen|missachtung|verst[oö](?:ß|ss)\w*|versagen|verlust|genuss|"
+    r"wiederholung|widerworten|widerstand|ungehorsam|patzern?|fehlern?)\b"
+    r"|verst[öo](?:ß|ss)e?\s*=|patzer\s*=|als belohnung\b|zur belohnung\b|belohnung(?: ist\b| gibt\b| dafür\b|:)"
+    r"|zur strafe\b|als strafe\b|sonst (?:gibt|setzt|folg)\w*|andernfalls\b|gewinnst du\b|verlierst du\b"
+    r"|wenn du das gut machst\b"
+    # Zähl-Strafen als Beiwerk: „… mit 5 Hieben pro Laut", „10 Schläge für jeden Fehler"
+    r"|(?:mit\s+)?\d+\s+\w*(?:hieb\w*|schl[aä]g\w*)\s+(?:pro|je|für jede[nsmr]?)\b"
+    r"|if (?:you|he|she) (?:fail|disobey|complain)\w*\b|as (?:a )?(?:reward|punishment)\b|otherwise\b"
+    r").*", re.I | re.S)
 
-    Erst Keyword-Match (schnell, kostenlos). Greift das nicht, klassifiziert Grok
-    gegen den Kategorien-Pool (Katalog + eigene Kategorien). Validiert das Ergebnis
-    hart gegen den Pool — niemals eine Phantom-Kategorie zurückgeben.
+# Verben, die den Hintern/Schoß der Dom-Seite zum Ziel haben (Anbetung, nicht Anal)
+_DOM_KOERPER_RE = re.compile(
+    r"(?:leck\w*|küss\w*|kuess\w*|anbet\w*|bete\w*|verwöhn\w*)\b.{0,40}\b(?:meine[nmr]?|deine[nmr]?|ihre[nmr]?)\s+(?:arsch|hintern|po)\b"
+    r"|\b(?:meine[nmr]?|deine[nmr]?|ihre[nmr]?)\s+(?:arsch|hintern|po)\b.{0,40}(?:leck|küss|kuess|anbet|bete)", re.I | re.S)
+
+
+def haupt_handlung(text: str) -> str:
+    """Aufgabentext ohne Folge-Klausel (Strafe/Belohnung/Bedingung). Bleibt
+    danach zu wenig übrig, gilt der ganze Text."""
+    kern = _FOLGE_RE.sub("", text or "").strip(" ,;:–—-(")
+    return kern if len(kern) >= 12 else (text or "")
+
+
+def _stichwort_kategorie(kern: str) -> str:
+    """Rückfall ohne LLM: erstes Stichwort der Haupt-Handlung (Tabellen-
+    Reihenfolge); der breite „Anal"-Treffer weicht, wenn der Text den Körper
+    der Dom-Seite zum Ziel hat."""
+    treffer = kategorien_in_text(kern)
+    if "Anal" in treffer and (_DOM_HINTERN_RE.search(kern) or _DOM_KOERPER_RE.search(kern)):
+        treffer.discard("Anal")
+        if "Arschanbetung" in keywords():
+            treffer.add("Arschanbetung")
+    for kat in keywords():
+        if kat in treffer:
+            return kat
+    return "allgemein"
+
+
+async def klassifiziere(text: str) -> str:
+    """Klassifiziert eine Aufgabe in eine Pool-Kategorie – nach ihrer
+    HAUPT-Handlung.
+
+    Das LLM entscheidet (temperature 0) über den Text ohne Folge-Klausel; die
+    Stichwort-Treffer gehen nur als Hinweis mit. Das Ergebnis wird hart gegen
+    den Pool (Katalog + eigene Kategorien) validiert – niemals eine Phantom-
+    Kategorie. Fällt das LLM aus oder antwortet unbrauchbar, entscheidet das
+    erste Stichwort der Haupt-Handlung.
     """
-    kat = keyword_match(text)
-    if kat != "allgemein":
-        return kat
     if not text or not text.strip():
         return "allgemein"
-
+    kern = haupt_handlung(text)
     pool = await alle_kategorien_async()
+    im_text = kategorien_in_text(kern)
+    hinweis = [k for k in keywords() if k in im_text]
+    regeln = [
+        "- Angedrohte Strafen, Belohnungen, Bedingungen und Wetteinsätze zählen NICHT – sie beschreiben "
+        "nur die Folge, nicht die Aufgabe. Auch Rahmen-Elemente (sich bedanken, knien, nackt sein, zählen) "
+        "bestimmen die Kategorie nicht, wenn daneben eine konkrete Praktik steht.",
+    ]
+    if "Anal" in pool and "Arschanbetung" in pool:
+        regeln.append(
+            "- Was am Hintern der Sub-Seite geschieht (fingern, dehnen, Plug, Strapon), gehört in die "
+            "Anal-Kategorien. Geht es um den Körper der Dom-Seite (ihren Hintern oder Schoß lecken, küssen, "
+            "anbeten, unter ihr liegen), ist das Arschanbetung, Muschianbetung oder Facesitting – nie \"Anal\".")
+    if "Dienst" in pool:
+        regeln.append(
+            "- Dienst nur, wenn Bedienen, Verwöhnen, Massieren, Haushalt oder das Einhalten von "
+            "Regeln/Anreden selbst die Haupt-Handlung ist.")
     kategorien_liste = "\n".join(f"- {k}" for k in pool)
     system = (
-        f"Ordne die folgende {modi.thema()}-Aufgabe GENAU EINER Kategorie aus der Liste zu.\n"
+        f"Ordne die folgende {modi.thema()}-Aufgabe GENAU EINER Kategorie aus der Liste zu – nach ihrer "
+        "HAUPT-Handlung: dem, was die Sub-Seite tatsächlich tut oder was mit ihr getan wird.\n"
+        + "\n".join(regeln) + "\n"
         "Antworte NUR mit dem exakten Kategorie-Namen aus der Liste (inkl. Unterstriche), "
         "sonst mit dem Wort allgemein. Keine Erklärung, kein Markdown.\n"
         "Die Kategorie-Namen sind feste Daten-IDs – exakt so zurückgeben, auch wenn "
         "die Aufgabe in einer anderen Sprache formuliert ist.\n\n"
         f"Kategorien:\n{kategorien_liste}"
     )
+    user = f"Aufgabe: {kern[:600]}"
+    if hinweis:
+        user += f"\n\nStichwort-Treffer im Text (nur Hinweis): {', '.join(hinweis)}"
     try:
         # temperature=0: Klassifikation soll deterministisch sein (gleiche Aufgabe -> gleiche Kategorie).
-        raw = (await grok.simple(f"Aufgabe: {text[:500]}", system=system, temperature=0)).strip().strip(".").strip()
-        # exakter Match
+        raw = (await grok.simple(user, system=system, temperature=0)).strip().strip(".").strip()
         if raw in pool:
             return raw
         # case-/whitespace-toleranter Match
@@ -430,9 +497,11 @@ async def klassifiziere(text: str) -> str:
         for k in pool:
             if k.lower() == norm:
                 return k
+        if norm != "allgemein":
+            logger.warning("Kategorie-Klassifikation: Antwort nicht im Pool – Stichwort-Rückfall.")
     except Exception:
-        logger.exception("Grok-Kategorie-Klassifikation fehlgeschlagen")
-    return "allgemein"
+        logger.exception("Grok-Kategorie-Klassifikation fehlgeschlagen – Stichwort-Rückfall")
+    return _stichwort_kategorie(kern)
 
 
 # ---------------------------------------------------------------------------

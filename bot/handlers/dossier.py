@@ -174,8 +174,8 @@ async def wunsch_kontext_hinweis(wuensche: list | None = None) -> str:
         return (
             f"Wünsche, die {s['label_nom']} mal angedeutet hat: {liste}.\n"
             f"Bring EINEN davon NUR ein, wenn er thematisch WIRKLICH zum aktuellen Thema passt – "
-            f"dann als deine eigene Idee, z.B. 'Was hältst du davon, wenn du {s['akk']} mal …? "
-            f"Vielleicht freut {s['nom']} sich ja darüber.' Verrate NIE, dass {s['nom']} sich das "
+            f"dann als deine eigene Idee, in deinen eigenen Worten und ohne Wink, dass es "
+            f"{s['akk']} freuen würde. Verrate NIE, dass {s['nom']} sich das "
             f"gewünscht oder angedeutet hat (kein 'wünscht sich', kein 'würde gern'). Im Zweifel oder "
             f"wenn nichts passt: gar nicht erwähnen, nicht erzwingen."
         )
@@ -388,7 +388,7 @@ async def erfasse_wunsch_aus_chat(text: str) -> str | None:
     system = (
         f"Hat {_s['label_nom']} in dieser Nachricht einen WUNSCH oder etwas geäußert, das "
         f"{_s['nom']} gern ausprobieren würde? Wenn ja, gib es als EINEN kurzen Stichpunkt "
-        f"zurück (max. 12 Wörter, aus {_s['poss']}r Perspektive, z.B. 'würde gern mal X "
+        f"zurück (max. 12 Wörter, aus {_s['poss']}er Perspektive, z.B. 'würde gern mal X "
         f"ausprobieren'). Hat die Praktik eine RICHTUNG (wer gibt, wer empfängt), benenne "
         f"sie ausdrücklich mit ('{_d['poss']}n …', '{_von_dom}', 'eigenen …') statt sie "
         f"wegzulassen – die Richtung entscheidet über Limits. "

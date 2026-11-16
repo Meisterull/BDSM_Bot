@@ -475,8 +475,10 @@ def wochenplan(dom_profil: dict, sub_profil: dict, thema: str = "",
         + f"\n{p['stil_fuss']}"
     )
     zeilen = [
-        f"Was {d['name']} mag: " + (", ".join(vorlieben(dom_profil, paare.ROLLE_DOM)) or "nicht angegeben"),
-        f"Was {s['name']} mag: " + (", ".join(vorlieben(sub_profil, paare.ROLLE_SUB)) or "nicht angegeben"),
+        # Je Zeile statt komma-verkettet: Einträge mit Klammer-/Bedingungs-Zusätzen
+        # („nur bei X, …") reißt eine flache Komma-Liste auseinander.
+        f"Was {d['name']} mag:" + ("".join(f"\n- {v}" for v in vorlieben(dom_profil, paare.ROLLE_DOM)) or " nicht angegeben"),
+        f"Was {s['name']} mag:" + ("".join(f"\n- {v}" for v in vorlieben(sub_profil, paare.ROLLE_SUB)) or " nicht angegeben"),
         f"No-Gos (NIEMALS): " + (", ".join(no_gos(dom_profil, paare.ROLLE_DOM) + no_gos(sub_profil, paare.ROLLE_SUB)) or "keine"),
     ]
     if thema:

@@ -31,12 +31,21 @@ def followup_frage(
             f"→ Bei positiver Stimmung: darf neugieriger, spielerischer sein.\n"
         )
     zeit_label = "heute" if tage_her <= 0 else "gestern" if tage_her == 1 else f"vor {tage_her} Tagen"
-    zeit_hinweis = (
-        f"ZEITBEZUG: Die Aufgabe war für {zeit_label} gedacht, du fragst RÜCKBLICKEND. "
-        f"Übernimm Zeitwörter aus dem Aufgabentext NICHT wörtlich – rechne sie um "
-        f"(z.B. 'heute Abend' im Aufgabentext → '{zeit_label} Abend'). "
-        f"Frag niemals im Präsens 'heute', wenn es {zeit_label} war.\n"
-    )
+    if tage_her <= 0:
+        # Nachfrage am selben Tag: nichts umzurechnen. Der Umrechnungs-Satz
+        # unten ergab hier „'heute Abend' → 'heute Abend'" und „frag niemals
+        # 'heute', wenn es heute war" (Review D11).
+        zeit_hinweis = (
+            "ZEITBEZUG: Die Aufgabe ist von heute, du fragst am selben Tag nach. "
+            "Zeitwörter aus dem Aufgabentext ('heute Abend') stimmen noch.\n"
+        )
+    else:
+        zeit_hinweis = (
+            f"ZEITBEZUG: Die Aufgabe war für {zeit_label} gedacht, du fragst RÜCKBLICKEND. "
+            f"Übernimm Zeitwörter aus dem Aufgabentext NICHT wörtlich – rechne sie um "
+            f"(z.B. 'heute Abend' im Aufgabentext → '{zeit_label} Abend'). "
+            f"Frag niemals im Präsens 'heute', wenn es {zeit_label} war.\n"
+        )
     system = (
         f"{bausteine._du_bist_dom()}. Frag {bausteine._sub_mit_poss('dein', 'akk')} jetzt – in der Ich-Form – ob {s['nom']} die Aufgabe erledigt hat.\n"
         f"Eine Frage, ein bis zwei Sätze, klar genug für Ja/Nein.\n"
@@ -54,10 +63,21 @@ def followup_frage(
 
 def aufgabe_an_sklaven(aufgabe: str, rollenspiel_ton: str = "") -> tuple[str, str]:
     s = rollen.sub()
+    if not rollenspiel_ton:
+        # Kein Aufrufer reichte den Ton je durch – ein laufendes Rollenspiel
+        # färbte die Aufgaben deshalb nie (Review D11). Zentral nachschlagen.
+        try:
+            from bot import state
+            rs = state.aktives_rollenspiel()
+            if rs and rs.get("ton"):
+                rollenspiel_ton = rs["ton"] + (f" (Intensität: {rs['intensitaet']})" if rs.get("intensitaet") else "")
+        except Exception:
+            rollenspiel_ton = ""
     ton_hinweis = f"\nZusätzlicher Ton-Modus (Rollenspiel): {rollenspiel_ton}\n" if rollenspiel_ton else ""
     system = (
         f"{bausteine._du_bist_dom()}. Verwandle die folgende Aufgabe in einen Befehl von dir persönlich – Ich-Form, direkt an {s['akk']}.\n"
-        f"Ein bis drei Sätze. Keine Einleitung, keine Erklärung, kein Coach-Ton.\n\n"
+        f"Ein bis drei Sätze. Keine Einleitung, keine Erklärung, kein Coach-Ton.\n"
+        f"Zeiten, Zahlen, Bedingungen und angekündigte Folgen der Aufgabe bleiben vollständig erhalten – nichts weglassen, nichts dazuerfinden.\n\n"
         f"{persona.fuer_sklaven_prompt()}{ton_hinweis}"
     )
     user = f"Aufgabe (Kontext, formuliere sie als deinen eigenen Befehl, nicht wörtlich): {aufgabe}"
@@ -171,7 +191,7 @@ def strafe_fuer_ablehnung(strafe: str) -> tuple[str, str]:
     return system, user
 
 
-def reaktion_auf_gefuehl(aufgabe: str, gefuehl: str) -> tuple[str, str]:
+def reaktion_auf_gefuehl(aufgabe: str, gefuehl: str, frage: str = "") -> tuple[str, str]:
     """Kurze, persönliche Reaktion der Herrin auf die Gefühl-Antwort des Sklaven."""
     s = rollen.sub()
     system = (
@@ -180,8 +200,13 @@ def reaktion_auf_gefuehl(aufgabe: str, gefuehl: str) -> tuple[str, str]:
         f"Keine generischen Lobesfloskeln, keine Verabschiedung wie 'gut gemacht' oder 'Bericht erstattet'.\n\n"
         f"{persona.fuer_sklaven_prompt()}"
     )
+    # Deine eigene Frage als Kontext: eine knappe Antwort („alles", eine Zahl)
+    # ist ohne sie nicht zu deuten.
+    frage_zeile = (f"{bausteine.nutzer_text('Deine Frage an ' + s['akk'] + ' war', frage)}\n"
+                   if (frage or "").strip() else "")
     user = (
         f"Aufgabe (Kontext): {aufgabe}\n"
+        f"{frage_zeile}"
         f"{bausteine.nutzer_text(bausteine._gross(s['poss']) + 'e Antwort', gefuehl)}"
     )
     return system, user

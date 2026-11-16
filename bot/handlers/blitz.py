@@ -52,7 +52,12 @@ async def _generiere_blitz(domina_profile: dict, sklave_profile: dict) -> tuple[
     import random
     pool = kategorie_logik.alle_kategorien(sklave_profile)
     dislikes = kategorie_logik.dislike_kategorien(sklave_profile)
-    verfuegbar = [k for k in pool if k not in dislikes] or pool
+    # Eine Blitzaufgabe erledigt er SOFORT und ALLEIN – Kategorien, die ohne
+    # die Dom-Seite körperlich nicht stattfinden können, scheiden aus (vorher
+    # wurde aus allen gewürfelt, Review D11).
+    from bot.handlers.herrin_versaeumnis import _HERRIN_KATEGORIEN  # lazy: zirkelfrei
+    verfuegbar = ([k for k in pool if k not in dislikes and k not in _HERRIN_KATEGORIEN]
+                  or [k for k in pool if k not in dislikes] or pool)
     kategorie = random.choice(verfuegbar)
 
     system = (
@@ -62,6 +67,8 @@ async def _generiere_blitz(domina_profile: dict, sklave_profile: dict) -> tuple[
         f"{coach_persona.fuer_aufgaben_vorschlag()}\n\n"
         "Die Aufgabe soll:\n"
         "- Klein, konkret und sofort umsetzbar sein\n"
+        "- ALLEIN machbar sein: die Dom-Seite ist nicht dabei und tut nichts – nichts, "
+        "wofür er sie, ihren Körper oder ihre Mitwirkung braucht\n"
         "- Ein Kribbeln haben (Überraschungsmoment nutzen)\n"
         "- Aus der vorgegebenen Kategorie stammen\n"
         "- Zu IHM passen – nicht generisch\n\n"

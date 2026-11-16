@@ -163,7 +163,7 @@ async def generiere_storyline(
         f"Du baust eine zusammenhängende Storyline aus {anzahl} Aufgaben zum vorgegebenen Thema.\n\n"
         f"{coach_persona.fuer_aufgaben_vorschlag()}\n\n"
         f"Verfügbare Kategorien (jede Aufgabe muss aus einer dieser stammen):\n"
-        f"{', '.join(kategorie_logik.alle_kategorien(sklave_profile))}\n\n"
+        f"{', '.join(kategorie_logik.waehlbare_kategorien(sklave_profile))}\n\n"
         f"{bogen}\n"
         f"Jede Aufgabe muss konkret zu IHM passen – kein generischer 101-Task ('20 Kniebeugen', 'kalt duschen').\n\n"
         f"Antworte NUR als JSON-Array mit genau {anzahl} Objekten in dieser Form:\n"

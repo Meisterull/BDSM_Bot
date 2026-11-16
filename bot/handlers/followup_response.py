@@ -103,6 +103,9 @@ async def _handle_yes(
     except Exception as e:
         logger.error("Gefühl-Frage fehlgeschlagen, sende Fallback: %s", e)
         frage = t("FALLBACK_GEFUEHL_FRAGE")
+    # Die tatsächlich gestellte Frage merken: seine Antwort wird später MIT ihr
+    # gespeichert und ausgewertet (eine knappe Antwort ist ohne sie nicht deutbar).
+    s["gefuehl_frage"] = grok.clean_text(frage)[:400]
     await message.reply_text(frage)
 
 
@@ -167,14 +170,11 @@ async def malus_kette(
     domina_chat = paare.dom_chat_id()
     state.set_reaktion_pending(domina_chat, task_id)
 
-    # Bericht an Domina
-    prompt = fp.bericht_nicht_erledigt(aufgabe)
-    try:
-        bericht = await grok.simple(prompt)
-    except Exception as e:
-        logger.error("Bericht-nicht-erledigt fehlgeschlagen, sende Roh-Meldung: %s", e)
-        bericht = f"❌ Er hat die Aufgabe nicht erledigt: „{aufgabe}“"
-    await telegram_helper.send_domina(context.bot, bericht, parse_mode="Markdown")
+    # EINE Nachricht an die Domina (Review D11): die Tatsache als Kopfzeile, der
+    # Straf-Vorschlag darunter. Vorher ging erst ein eigener LLM-Bericht mit
+    # Rückfrage raus und danach der Vorschlag mit einer zweiten Rückfrage.
+    kopf = t("NICHT_ERLEDIGT_KOPF", aufgabe=telegram_helper.md_einbett_sicher(aufgabe))
+    informiert = False
 
     # Eskalation oder normaler Bestrafungsvorschlag an Domina
     strafe_id = None
@@ -222,7 +222,9 @@ async def malus_kette(
         if vorschlag is None:
             # Kein Grenzen-konformer Vorschlag: Domina informieren, aber NICHT
             # zurückkehren – der Sklave bekommt unten trotzdem seine Reaktion.
-            await telegram_helper.send_domina(context.bot, t("BESTRAFUNG_KEIN_VORSCHLAG"))
+            await telegram_helper.send_domina(
+                context.bot, f"{kopf}\n\n{t('BESTRAFUNG_KEIN_VORSCHLAG')}", parse_mode="Markdown")
+            informiert = True
         else:
             # Strafe VOR dem Send speichern: die Punkte-Abzug-Buttons (Währung ⭐)
             # hängen an der Strafe-Kennung – einmal pro Vorschlag.
@@ -238,12 +240,24 @@ async def malus_kette(
             waehrung_h.abzug_anbieten(str(strafe_id))
             await telegram_helper.send_domina(
                 context.bot,
-                f"{label}\n\n{vorschlag}",
+                f"{kopf}\n\n{label}\n\n{vorschlag}",
                 parse_mode="Markdown",
                 reply_markup=waehrung_h.abzug_buttons(str(strafe_id)),
             )
+            informiert = True
     except Exception as e:
         logger.error("Fehler bei Bestrafungsvorschlag: %s", e)
+
+    # Fangnetz: kam oben nichts bei ihr an (Fehler im Vorschlags-Pfad), erfährt
+    # sie es trotzdem – als kurzer Bericht mit der Frage, ob sie ihm etwas
+    # ausrichten möchte.
+    if not informiert:
+        try:
+            bericht = await grok.simple(fp.bericht_nicht_erledigt(aufgabe))
+        except Exception as e:
+            logger.error("Bericht-nicht-erledigt fehlgeschlagen, sende Roh-Meldung: %s", e)
+            bericht = kopf
+        await telegram_helper.send_domina(context.bot, bericht, parse_mode="Markdown")
 
     # Strafe-ID im Domina-State speichern
     if strafe_id:

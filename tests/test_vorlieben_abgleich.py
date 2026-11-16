@@ -435,6 +435,47 @@ def test_vorlieben_kuerzel_und_richtung():
     assert "Anal" in kl.vorliebe_kategorien("mein Hintern wird gedehnt")
 
 
+async def test_einsortierung_nach_haupt_handlung():
+    """Die Kategorie folgt der Haupt-Handlung, nicht der Folge-Klausel; das LLM
+    entscheidet, Stichworte sind Hinweis und Rückfall."""
+    kl = kategorie_logik
+    assert kl.haupt_handlung("Den Flur wischen – bei Unzufriedenheit zehn Hiebe mit dem Paddle.") \
+        == "Den Flur wischen"
+    assert kl.haupt_handlung("Jeden Morgen das Bett machen, Verstöße = Strafe") == "Jeden Morgen das Bett machen"
+    assert kl.haupt_handlung("Abends aufräumen; Belohnung ist ein freier Abend") == "Abends aufräumen"
+    assert kl.haupt_handlung("Gemeinsame Session am Abend mit 5 Hieben pro Laut und danach Ruhe") \
+        == "Gemeinsame Session am Abend"
+    assert kl.haupt_handlung("Kurz") == "Kurz"                      # nichts abzutrennen
+    assert kl.haupt_handlung("Sonst gibt es nichts") == "Sonst gibt es nichts"   # zu wenig Rest → ganzer Text
+    orig = kl.grok.simple
+    try:
+        gesehen = {}
+
+        async def llm(user, **kw):
+            gesehen["user"], gesehen["system"] = user, kw.get("system", "")
+            return "Dienst"
+        kl.grok.simple = llm
+        assert await kl.klassifiziere("Den Flur wischen – bei Unzufriedenheit zehn Hiebe mit dem Paddle.") == "Dienst"
+        # Die Folge-Klausel geht weder als Text noch als Stichwort-Hinweis ans LLM
+        assert "Paddle" not in gesehen["user"] and "HAUPT-Handlung" in gesehen["system"], gesehen
+        # LLM-Ausfall → erstes Stichwort der Haupt-Handlung, nicht der Folge
+        async def kaputt(user, **kw):
+            raise RuntimeError("x")
+        kl.grok.simple = kaputt
+        assert await kl.klassifiziere("Den Plug tragen – bei Unzufriedenheit zehn Hiebe mit dem Paddle.") == "Buttplug_Tragen"
+        assert await kl.klassifiziere("Heute brav sein – bei Unzufriedenheit Paddle.") == "allgemein"
+        # Körper der Dom-Seite: Anbetung statt Anal
+        assert await kl.klassifiziere("Zehn Minuten lang meinen Hintern küssen.") == "Arschanbetung"
+        assert await kl.klassifiziere("Sein Hintern bekommt heute den Finger.") == "Anal"
+        # Phantom-Antwort → Rückfall
+        async def phantom(user, **kw):
+            return "Erfundenes"
+        kl.grok.simple = phantom
+        assert await kl.klassifiziere("Den Plug tragen bis zum Abend.") == "Buttplug_Tragen"
+    finally:
+        kl.grok.simple = orig
+
+
 def _run():
     test_dislikes_aus_tags()
     test_dislike_treffer()
@@ -453,6 +494,7 @@ def _run():
     asyncio.run(test_rollenspiel_szenarien_filter())
     test_selten_statt_nie()
     test_vorlieben_kuerzel_und_richtung()
+    asyncio.run(test_einsortierung_nach_haupt_handlung())
     print("✅ Alle Vorlieben-Abgleich-Tests bestanden")
 
 

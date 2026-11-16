@@ -8,12 +8,17 @@ from bot.prompts import persona, rollen
 from bot.prompts.followup import bausteine
 
 
+# Nur offene Fragen nach dem ERLEBEN. Die früheren Varianten „Skala 1-5",
+# „Würdest du das nochmal machen?" und „Was würdest du dir stattdessen
+# wünschen?" lieferten Ziffern, Ja/Nein und Rückfragen – gespeichert und
+# ausgewertet wurden sie trotzdem als „Gefühl", ohne die Frage dazu
+# (Review D11: Ursache der unbrauchbaren Rückmeldungen).
 _GEFUEHL_FRAGEN = [
     "Wie hat es sich angefühlt?",
     "Was war das Beste daran?",
-    "Würdest du das nochmal machen?",
-    "Wie herausfordernd war das auf einer Skala 1-5?",
-    "Was würdest du dir stattdessen wünschen?",
+    "Was ging dir dabei durch den Kopf?",
+    "Welcher Moment ist dir am stärksten geblieben?",
+    "Was hat es mit dir gemacht?",
 ]
 
 
@@ -152,29 +157,46 @@ def gefuehl_abfragen(aufgabe: str) -> tuple[str, str]:
     return system, user
 
 
-def bericht_erledigt(aufgabe: str, gefuehl: str, vorherige_gefuehle: list = None) -> tuple[str, str]:
+def bericht_erledigt(aufgabe: str, gefuehl: str, vorherige_gefuehle: list = None,
+                     gefuehl_frage: str = "", level: int | None = None,
+                     erledigte: int | None = None) -> tuple[str, str]:
+    """EINE Nachricht an die Dom-Seite nach einer erledigten Aufgabe: was
+    passiert ist plus ein Gedanke dazu. Vorher gingen dafür zwei LLM-Texte zum
+    selben Ereignis raus (Bericht + Coach-Feedback) und danach die Bewertungs-
+    frage als dritte Nachricht (Review D11) – die hängt der Aufrufer jetzt an."""
     from bot.prompts import coach_persona
     s, d = rollen.sub(), rollen.dom()
     vergleich = ""
     if vorherige_gefuehle:
-        # Auch die FRÜHEREN Gefühle sind roher Sklaven-Freitext → Delimiter
-        # (das aktuelle Gefühl unten läuft bereits über nutzer_text).
+        # Auch die FRÜHEREN Rückmeldungen sind roher Sklaven-Freitext → Delimiter
+        # (die aktuelle unten läuft bereits über nutzer_text). Es sind die
+        # letzten Rückmeldungen zu ANDEREN Aufgaben – kein Urteil über „ähnliche".
         gefuehle_str = ", ".join(vorherige_gefuehle)
         vergleich = (
-            f"{bausteine.nutzer_text('Frühere Reaktionen ' + s['label_gen'] + ' auf ähnliche Aufgaben', gefuehle_str)}\n"
-            f"→ Wenn relevant: nimm Bezug darauf, hat {s['nom']} sich diesmal anders gefühlt?\n"
+            f"{bausteine.nutzer_text('Letzte Rückmeldungen ' + s['label_gen'] + ' zu anderen Aufgaben', gefuehle_str)}\n"
+            f"→ Nur erwähnen, wenn ein klarer Unterschied zu heute auffällt.\n"
         )
+    level_hinweis = f" – passend zu Level {level}" if level else ""
     system = (
-        f"Du berichtest {d['real_dat']} kurz was gerade passiert ist – wie eine Freundin, die {d['dat']} Bescheid gibt.\n"
-        f"Zwei bis drei Sätze, locker. Kein Bericht-Format, kein 'Status: Erledigt'.\n\n"
+        f"Du gibst {d['real_dat']} Bescheid, dass die Aufgabe erledigt ist – wie eine Freundin, die kurz erzählt, wie es gelaufen ist.\n"
+        f"Drei bis fünf Sätze in EINER Nachricht, locker. Kein Bericht-Format, kein 'Status: Erledigt', keine Überschriften:\n"
+        f"- zuerst, was passiert ist und wie es {s['dat']} damit ging;\n"
+        f"- dann EIN eigener Gedanke dazu: eine Beobachtung oder ein konkreter nächster Schritt{level_hinweis}. "
+        f"Nur wenn die Reaktion klar positiv war, darf ein kurzer Satz dazu, was das über {d['poss']} Wirkung sagt – ohne Pathos.\n"
+        f"Keine Frage am Schluss: die Bitte um {d['poss']} Bewertung hängt der Bot selbst an.\n\n"
         f"WICHTIG: Fasse das Gefühl {s['label_gen']} ZUSAMMEN, zitiere es NICHT wörtlich. "
         f"Schreibe z.B. '{s['nom']} fand es spannend' statt '{s['nom']} schrieb: ich fand es spannend'. "
         f"Schütze die Intimität {s['label_gen']}.\n\n"
         f"{coach_persona.fuer_coach_prompt()}"
     )
+    frage_zeile = (f"{bausteine.nutzer_text('Gestellte Frage an ' + s['akk'], gefuehl_frage)}\n"
+                   if (gefuehl_frage or "").strip() else "")
+    stand = f"Bisher erledigte Aufgaben gesamt: {erledigte}\n" if erledigte else ""
     user = (
         f"Aufgabe: {aufgabe}\n"
-        f"{bausteine.nutzer_text('Stimmung ' + s['label_gen'], gefuehl)}\n"
+        f"{frage_zeile}"
+        f"{bausteine.nutzer_text('Antwort ' + s['label_gen'], gefuehl)}\n"
+        f"{stand}"
         f"{vergleich}"
     )
     return system, user

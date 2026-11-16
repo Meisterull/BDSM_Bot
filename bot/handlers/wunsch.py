@@ -231,7 +231,17 @@ async def _entscheidung_speichern(context, wunsch_id: str, entscheidung: str, ko
             f"Du bist die Herrin. Dein Sklave hat einen Wunsch eingereicht und du hast ihn angenommen. "
             f"Reagiere direkt an ihn – ein bis drei Sätze, Ich-Form.\n\n"
             f"{persona.fuer_sklaven_prompt()}\n\n"
-            f"Mach in deinen Worten klar, unter welchen Bedingungen das gilt oder wofür er das bekommt. Keine generische Floskel.\n"
+            + (
+                # Mit Kommentar: der legt fest, was gilt. Ohne (Annahme per Knopf)
+                # gibt es KEINE Bedingungen – vorher sollte die Herrin trotzdem
+                # „klar machen, unter welchen Bedingungen das gilt" und erfand
+                # welche im Namen der echten Dom-Seite (Review D11).
+                "Dein Kommentar unten legt fest, was gilt – gib ihn in deinen Worten weiter, erfinde nichts dazu. "
+                if kommentar else
+                "Sag ihm in deinen Worten, dass du den Wunsch annimmst. Du hast KEINE Bedingungen, Termine oder "
+                "Gegenleistungen festgelegt – erfinde keine; wann und wie es passiert, bleibt bei dir. "
+            )
+            + "Keine generische Floskel.\n"
             f"Kein [AUFGABE: ...] Tag."
         )
     else:

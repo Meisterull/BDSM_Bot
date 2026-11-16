@@ -159,6 +159,11 @@ async def lernkurve_job(bot: Bot) -> None:
         logger.info("Lernkurve-Job übersprungen – keine Task-Aktivität im Zeitraum.")
         return
 
+    # Ohne Bewertungen stand hier „0★" – das Modell kommentierte dann einen
+    # Durchschnitt, den es nicht gibt (Review D11).
+    kategorien_str = ", ".join(f"{k} {n}×" for k, n in (daten.get("kategorien") or {}).items()) or "keine"
+    bewertung_str = f"{daten['avg_bewertung']}★" if daten.get("avg_bewertung") else "noch keine Bewertungen abgegeben"
+
     system = f"""Du schaust mit der Domina auf die letzten 2 Wochen – wie eine vertraute Freundin, die ihr ehrliches Feedback gibt.
 
 {coach_persona.fuer_coach_prompt()}
@@ -169,8 +174,8 @@ Erledigte Tasks: {daten['erledigt']}
 Nicht erledigte Tasks (lag am Sklaven): {daten['nicht_erledigt']}
 An der Domina selbst hängen geblieben (keine Zeit – zählt nicht gegen den Sklaven):
 {versaeumt_str or 'nichts'}
-Kategorien: {daten['kategorien']}
-Durchschnittliche Bewertung: {daten['avg_bewertung']}★
+Kategorien: {kategorien_str}
+Durchschnittliche Bewertung: {bewertung_str}
 Beispiel-Tasks: {', '.join(daten['task_details'])}"""
 
     try:

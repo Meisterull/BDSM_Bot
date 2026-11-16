@@ -1228,6 +1228,7 @@ MESSAGES = {
         "⚠️ Could not generate a punishment suggestion that respects the limits. "
         "Please issue a punishment manually."
     ),
+    "NICHT_ERLEDIGT_KOPF": "❌ *Not done:* {aufgabe}",
     "BESTRAFUNG_LABEL_ESKALATION": "🚨 *Escalation – repeated pattern:*",
     "BESTRAFUNG_LABEL_VORSCHLAG": "⚠️ *Punishment suggestion:*",
 

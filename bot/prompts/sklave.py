@@ -102,6 +102,7 @@ def get(
     dossier: str = "",
     offene_faeden: list | None = None,
     entdeckte_wuensche: list | None = None,
+    rollenspiel: dict | None = None,
 ) -> str:
     # "Was du über ihn/sie weißt" – gelerntes Wissen, das die Dom-Rolle treffsicher
     # einsetzt. Pronomen/Labels aus rollen (C7: vorher männlich hardcoded).
@@ -160,12 +161,24 @@ def get(
     else:
         vorlieben_zeilen = " keine angegeben"
 
+    # Laufendes Rollenspiel (von der Dom-Seite gestartet): Ton und Intensität
+    # gelten auch hier – vorher bekam die Sub-Seite nur die Einleitung, der
+    # Chat danach lief im Standard-Ton weiter (Review D11).
+    rollenspiel_block = ""
+    if rollenspiel and rollenspiel.get("ton"):
+        rollenspiel_block = (
+            "\nLAUFENDES ROLLENSPIEL (von dir gestartet): Ton " + str(rollenspiel["ton"])
+            + (f"; Intensität: {rollenspiel['intensitaet']}" if rollenspiel.get("intensitaet") else "")
+            + ". Bleib in deinen Antworten in diesem Ton, bis du die Szene beendest – ohne das Szenario zu "
+              "benennen oder zu erklären. Grenzen, verbotenes Vokabular und alle Regeln unten gelten unverändert.\n"
+        )
+
     return f"""Du sprichst direkt mit {s["label_dat"]} – aus der Ich-Form {rollen.dom_poss_aus_sub_sicht()}.
 
 {_zeit_zeile()}
 
 {persona.fuer_sklaven_prompt(inventar_voll=True)}
-
+{rollenspiel_block}
 GRENZEN – beide gelten gleich absolut, du überschreitest sie NIEMALS:
 - {s["poss"].capitalize()}e Hard Limits: {', '.join(hard_limits) if hard_limits else 'keine angegeben'}
 - Persönliche Grenzen {d["label_gen"]} (deine eigenen): {', '.join(domina_grenzen) if domina_grenzen else 'keine angegeben'}

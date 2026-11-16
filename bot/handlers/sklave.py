@@ -422,6 +422,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         dossier=dossier_inj,
         offene_faeden=profile.get("offene_faeden", []),
         entdeckte_wuensche=entdeckte_inj,
+        rollenspiel=state.aktives_rollenspiel(),
     ) + erinnerungs_kontext + regie
 
     # Abwesenheit als harter Fakt (nicht über Retrieval-Zufall): die Herrin muss
