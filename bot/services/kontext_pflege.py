@@ -103,3 +103,24 @@ def verlauf_bereinigt(entries: list[dict], max_alter_tage: int | None = None,
 
 def behauptet_profil_aenderung(text: str) -> bool:
     return bool(_PROFIL_BEHAUPTUNG_RE.search(text or ""))
+
+
+async def letzte_aufgaben(limit: int = 5, max_tage: int = 45, quelle: str | None = None) -> list[str]:
+    """Die zuletzt gestellten Aufgaben als „vor N Tagen: Text"-Zeilen für einen
+    Generator-Prompt (Abwechslung). Nur Aufgaben der letzten `max_tage`;
+    best-effort – bei DB-Fehler eine leere Liste."""
+    try:
+        from bot.services import qdrant, zeiten   # lazy: das Modul bleibt sonst ohne DB-Abhängigkeit
+        tasks = await qdrant.get_tasks_by_status(
+            ["erledigt", "offen", "gefragt", "nicht_erledigt"], limit=limit, sort_by_datum=True,
+            **({"quelle": quelle} if quelle else {}))
+    except Exception:
+        return []
+    zeilen = []
+    for task in tasks:
+        text = " ".join((task.get("aufgabe") or "").split())
+        tage = alter_tage(task.get("erteilt_am", ""))
+        if len(text) < 8 or (tage is not None and tage > max_tage):
+            continue
+        zeilen.append(zeiten.mit_alter_label(text[:90], task.get("erteilt_am", "")))
+    return zeilen

@@ -524,6 +524,23 @@ def reaktions_spitzen(sklave_profil: dict) -> str:
     return ", ".join(spitzen)
 
 
+# Kategorien, deren Praktik ohne die Dom-Seite nicht stattfinden kann (sie
+# schlägt, benutzt, fesselt, gibt oder ist selbst das Ziel). Für Generatoren,
+# deren Aufgabe die Sub-Seite ALLEIN erledigt – Blitzaufgabe, Adventskalender.
+# Eigene (frei angelegte) Kategorien sind unbekannt und bleiben erlaubt; der
+# Prompt verlangt dort zusätzlich „allein machbar".
+NUR_ZU_ZWEIT = frozenset({
+    "Strap_on", "Pegging", "Muschianbetung", "Arschanbetung", "Facesitting", "Smothering", "Gesichtsfick",
+    "Spanking", "Impact", "Peitsche", "Paddle_Training", "Fisting", "Toiletten_Sklave", "Piss_Play",
+    "Enema_Play", "Creampie_Cleanup", "Speichelspiel", "Klassische_Fesselspiele", "Objektifizierung",
+})
+
+
+def allein_machbar(kategorien: list[str]) -> list[str]:
+    """Die Kategorien ohne die, die die Dom-Seite brauchen (Reihenfolge bleibt)."""
+    return [k for k in (kategorien or []) if k not in NUR_ZU_ZWEIT]
+
+
 # „Selten statt nie" (Owner-Entscheidung 16.11.2026): eine Kategorie, die die
 # Sub-Seite wenig mag, die Dom-Seite aber selbst gern vergibt, war für
 # Vorschläge an die Dom-Seite komplett gesperrt – der Bot schlug nie vor, was

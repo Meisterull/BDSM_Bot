@@ -111,6 +111,38 @@ async def test_quiz_ueber_sub_ohne_verdecktes_wissen():
     assert "kurz" not in k.split("erledigte Aufgaben")[-1].split("Sein Stand")[0], k
 
 
+def test_profil_block_mit_dom_seite_und_letzten_aufgaben():
+    from bot.prompts import coach_persona
+    profil = {"vorlieben": ["Vorlesen"], "hard_limits": []}
+    ohne = coach_persona.sklaven_kontext_block(profil, ["Nadeln"])
+    assert "Interessen" not in ohne and "Zuletzt gestellte Aufgaben" not in ohne and "Kinder" not in ohne
+    dom = {"interessen": ["Rituale", "klare Ansagen"], "kinderfreie_zeiten": ["ab 20:00"]}
+    mit = coach_persona.sklaven_kontext_block(profil, ["Nadeln"], domina_profile=dom,
+                                              letzte_aufgaben=["vor 2 Tagen: Den Flur wischen"])
+    assert "Rituale; klare Ansagen" in mit and "Geschmack" in mit, mit
+    assert "Kinderfreie Zeiten: ab 20:00" in mit and "vor 2 Tagen: Den Flur wischen" in mit, mit
+    assert mit.index("Zuletzt gestellte Aufgaben") < mit.index("Persönliche Grenzen"), mit
+    # Kinder-Zeile: keine Kinder / nichts bekannt → leer; Kinder ohne freie Zeiten → Diskret-Hinweis
+    assert coach_persona.kinder_zeile({"kind_anzahl": 0, "kinderfreie_zeiten": ["ab 20:00"]}) == ""
+    assert coach_persona.kinder_zeile({}) == "" and coach_persona.kinder_zeile(None) == ""
+    assert "diskret" in coach_persona.kinder_zeile({"kind_anzahl": 2})
+
+
+def test_allein_machbare_kategorien():
+    from bot.services import kategorie_logik as kl
+    assert kl.allein_machbar(["Pegging", "Buttplug_Tragen", "Spanking", "Psycho", "Eigene_Idee"]) \
+        == ["Buttplug_Tragen", "Psycho", "Eigene_Idee"]
+    # jede gelistete Kategorie existiert im Katalog (Tippfehler-Schutz)
+    assert kl.NUR_ZU_ZWEIT <= set(kl.config.AUFGABEN_KATEGORIEN), kl.NUR_ZU_ZWEIT - set(kl.config.AUFGABEN_KATEGORIEN)
+
+
+def test_advent_finale_alltagstauglich():
+    from bot.handlers import advent
+    finale = advent._intensitaet(24)
+    assert "Heiligabend" in finale and "intensiv" not in finale, finale
+    assert "sanft" in advent._intensitaet(1) and "intensiver" in advent._intensitaet(18)
+
+
 def test_verbotsbegriffe_ohne_doppel():
     begriffe = limits_check.begriffe_zum_verbieten([
         {"limit": "Blut", "matched_via": "blut"}, {"limit": "Nadeln", "matched_via": "Nadelspiel"}])
@@ -124,5 +156,8 @@ if __name__ == "__main__":
     test_nachfrage_am_selben_tag()
     test_rollenspiel_erreicht_die_sub_seite()
     asyncio.run(test_quiz_ueber_sub_ohne_verdecktes_wissen())
+    test_profil_block_mit_dom_seite_und_letzten_aufgaben()
+    test_allein_machbare_kategorien()
+    test_advent_finale_alltagstauglich()
     test_verbotsbegriffe_ohne_doppel()
     print("✅ Alle Review-D11-Tests bestanden")

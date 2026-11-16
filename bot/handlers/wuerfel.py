@@ -15,6 +15,7 @@ from telegram.ext import ContextTypes
 
 from bot import config, state
 from bot.services import paare
+from bot.services import kontext_pflege
 from bot.services import qdrant, grok, telegram_helper, limits_check, kategorie_logik
 from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
@@ -76,7 +77,7 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
     prompt = (
         f"Pflicht-Kategorie: {kategorie}\n"
-        f"{coach_persona.sklaven_kontext_block(sklave_profile, domina_grenzen)}"
+        f"{coach_persona.sklaven_kontext_block(sklave_profile, domina_grenzen, domina_profile=domina_profile, letzte_aufgaben=await kontext_pflege.letzte_aufgaben())}"
     )
     # Ausstattungs-Impuls (Inventar): gelegentlich ein vorhandenes Gerät tragend
     # einbauen – kategorie_gebunden: passt es nicht zur Pflicht-Kategorie, weglassen.

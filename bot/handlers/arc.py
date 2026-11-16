@@ -17,6 +17,7 @@ from telegram.ext import ContextTypes
 
 from bot import config
 from bot.services import paare
+from bot.services import kontext_pflege
 from bot.services import qdrant, grok, telegram_helper, embeddings, kategorie_logik
 from qdrant_client import models as qm
 from bot.services.qdrant import client
@@ -141,6 +142,12 @@ async def generiere_storyline(
     from bot.services import limits_check
     sk_hl = sklave_profile.get('hard_limits', []) or []
     do_gr = domina_profile.get('grenzen', []) or []
+    # Das Beispiel-JSON nannte fest "level":3 – das Modell übernahm die 3
+    # unabhängig vom Stand der Dom-Seite (Review D11).
+    try:
+        level = max(1, min(5, int(domina_profile.get("aktuelles_level") or 3)))
+    except (TypeError, ValueError):
+        level = 3
 
     if event_hinweis:
         bogen = (
@@ -167,12 +174,14 @@ async def generiere_storyline(
         f"{bogen}\n"
         f"Jede Aufgabe muss konkret zu IHM passen – kein generischer 101-Task ('20 Kniebeugen', 'kalt duschen').\n\n"
         f"Antworte NUR als JSON-Array mit genau {anzahl} Objekten in dieser Form:\n"
-        f"[{{\"titel\":\"...\",\"aufgabe\":\"...\",\"kategorie\":\"...\",\"level\":3}},...]\n"
+        f"[{{\"titel\":\"...\",\"aufgabe\":\"...\",\"kategorie\":\"...\",\"level\":{level}}},...]\n"
+        f"\"level\" ist die Schwierigkeit von 1 bis 5 – richte dich nach {coach_persona.level_zeile(level)}; "
+        f"der Einstieg darf eine Stufe darunter liegen.\n"
         f"Kein Text außerhalb des JSON. Keine Markdown-Codeblöcke."
     )
     prompt = (
         f"Thema der Storyline: '{thema}'\n\n"
-        f"{coach_persona.sklaven_kontext_block(sklave_profile, do_gr)}"
+        f"{coach_persona.sklaven_kontext_block(sklave_profile, do_gr, domina_profile=domina_profile, letzte_aufgaben=await kontext_pflege.letzte_aufgaben())}"
     )
     # Kategorie wählt das LLM erst beim Generieren → alle vorhandenen Wissens-Briefe beilegen.
     skill_block = await coach_persona.skill_kontext_block()

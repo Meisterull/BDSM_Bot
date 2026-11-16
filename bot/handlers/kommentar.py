@@ -55,8 +55,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Kommentar in Qdrant speichern – mit eigenem Zeitstempel: die wöchentliche
     # Kommentar-Analyse filtert nach kommentar_am, nicht nach erteilt_am (sonst
     # fallen Kommentare zu >7 Tage alten Aufgaben für immer durch, Trace 06.07.)
+    # `domina_kommentar` ist die umformulierte Nachricht, die die Sub-Seite
+    # bekommen hat; die Worte der Dom-Seite selbst stehen in
+    # `domina_kommentar_original`. Vorher ging das Original verloren und die
+    # Wochen-Analyse wertete die Formulierungen des Bots aus (Review D11).
     await qdrant.update_task(task_id, {
         "domina_kommentar": kommentartext,
+        "domina_kommentar_original": text[:1000],
         "kommentar_am": datetime.now(timezone.utc).isoformat(),
     })
 

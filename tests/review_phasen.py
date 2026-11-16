@@ -549,3 +549,69 @@ async def alle(h, phase, w):
         await h.send(S, "Ziemlich müde, aber zufrieden.")
         await persona_config.set_modus("bdsm")
     await phase(h, "41 Vanilla-Modus", p41)
+
+    # ------------------------------------------------ 42 Kommentar der Dom-Seite + Wochen-Analyse
+    async def p42():
+        await aufraeumen()
+        await schliesse_offene()
+        for aufgabe, gefuehl, sterne, kommentar in (
+            ("Er soll heute Abend das Schlafzimmer herrichten.", "Es hat mir gefallen, alles für dich vorzubereiten.",
+             "4", "Das Zimmer war ordentlich, aber die Kerzen haben gefehlt."),
+            ("Er soll mir einen Kaffee ans Bett bringen.", "Ich war nervös, ob alles passt.",
+             "5", "Genau so, pünktlich und ohne Aufforderung."),
+        ):
+            await neue_aufgabe(aufgabe)
+            await faellig()
+            if not await h.press(S, "followup:ja"):
+                await h.send(S, "ja")
+            await h.send(S, gefuehl)
+            await h.send(D, sterne)
+            await h.send(D, kommentar)
+            await h.press(D, "coachregel:nein")
+            await schliesse_offene()
+        await aufraeumen()
+        vor = w.ZAEHLER["n"]
+        await h.job("kommentar_analyse_job", tagesjobs.kommentar_analyse_job)
+        print(f"   kommentar_analyse_job: {w.ZAEHLER['n'] - vor} Prompts")
+        from bot.services.db import kern
+        pts, _ = kern.client.scroll(collection_name="tasks", limit=300, with_payload=True)
+        print("   gespeicherte Kommentare:", [p.payload.get("domina_kommentar", "")[:60] for p in pts if p.payload.get("domina_kommentar")][-3:])
+    await phase(h, "42 Kommentar + Kommentar-Analyse", p42)
+
+    # ------------------------------------------------ 43 Adventskalender
+    async def p43():
+        from datetime import date
+        from bot.handlers import advent
+        await aufraeumen()
+        await schliesse_offene()
+        await h.send(D, "/adventskalender Vorfreude")
+        await h.send(D, "/adventskalender")
+        jahr = advent._ziel_jahr()
+        for tag in (3, 12, 18, 24):
+            advent._heute = lambda tag=tag: date(jahr, 12, tag)
+            vor = w.ZAEHLER["n"]
+            await advent.oeffne_tuerchen(h.bot)
+            print(f"   Türchen {tag}: {w.ZAEHLER['n'] - vor} Prompts")
+        await h.send(D, "/adventskalender stop")
+    await phase(h, "43 Adventskalender", p43)
+
+    # ------------------------------------------------ 44 Event-Storyline
+    async def p44():
+        import json as _json
+        await aufraeumen()
+        await schliesse_offene()
+        ziel = datetime.now() + timedelta(days=2)
+        await h.send(D, f"/event {ziel.day}.{ziel.month}. 3 Unser Jahrestag")
+        await h.send(D, "/event")
+        w.OVERRIDES.append((r"Storyline", _json.dumps([
+            {"titel": f"Tag {i}", "aufgabe": f"Platzhalter-Aufgabe für Tag {i} der Storyline.", "kategorie": "Psycho", "level": 3}
+            for i in (1, 2, 3)], ensure_ascii=False)))
+        vor = w.ZAEHLER["n"]
+        await h.job("event_check_job", impulse.event_check_job)
+        print(f"   event_check_job: {w.ZAEHLER['n'] - vor} Prompts | {modi()}")
+        vor = w.ZAEHLER["n"]
+        await h.job("tiny_task_vorschlag_job", tiny_task.tiny_task_vorschlag_job)
+        print(f"   Storyline-Tag über tiny_task_vorschlag_job: {w.ZAEHLER['n'] - vor} Prompts")
+        await h.send(D, "/arc")
+        await h.send(D, "/arc_beenden")
+    await phase(h, "44 Event-Storyline", p44)

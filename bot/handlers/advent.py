@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, telegram_helper, limits_check, kategorie_logik, embeddings
+from bot.services import kontext_pflege
 from bot.prompts import followup as fp
 from bot.prompts import coach_persona
 from qdrant_client import models as qm
@@ -119,7 +120,10 @@ async def command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def _intensitaet(tuer: int) -> str:
     if tuer >= 24:
-        return "das FINALE – Höhepunkt des ganzen Kalenders, besonders und intensiv"
+        # Der 24. ist Heiligabend: ein Finale mit Bedeutung statt Härte, das sich
+        # diskret und ohne großen Aufwand in den Tag fügt (Review D11).
+        return ("das FINALE des Kalenders – etwas Besonderes mit Bedeutung statt Härte; es ist "
+                "Heiligabend, also diskret und ohne großen Aufwand machbar")
     if tuer >= 17:
         return "deutlich intensiver – die letzte Woche vor dem Finale"
     if tuer >= 9:
@@ -155,24 +159,53 @@ async def oeffne_tuerchen(bot) -> None:
     do_gr = domina_profile.get("grenzen", []) or []
 
     import random
-    pool = kategorie_logik.alle_kategorien(sklave_profile)
-    dislikes = kategorie_logik.dislike_kategorien(sklave_profile)
-    kategorie = random.choice([k for k in pool if k not in dislikes] or pool)
+
+    # Bisherige Türchen dieses Kalenders: für die Abwechslung der Kategorien
+    # und als „nicht wiederholen"-Liste im Prompt (vorher kannte kein Türchen
+    # die vorigen, Review D11).
+    try:
+        bisher = [
+            x for x in await qdrant.get_tasks_by_status(
+                ["erledigt", "offen", "gefragt", "nicht_erledigt"], limit=24, sort_by_datum=True, quelle="advent")
+            if (kontext_pflege.alter_tage(x.get("erteilt_am", "")) or 0) <= 30
+        ]
+    except Exception:
+        logger.exception("Advent: bisherige Türchen nicht ladbar (weiter ohne)")
+        bisher = []
+    bisher_zeilen = [" ".join((x.get("aufgabe") or "").split())[:90] for x in bisher if x.get("aufgabe")][:12]
+
+    # Kategorie gewichtet wie beim Tages-Vorschlag (Vorlieben, „selten", zuletzt
+    # Bedientes gedämpft) statt blind aus allen gewürfelt – und nur Kategorien,
+    # die er ALLEIN umsetzen kann: das Türchen geht morgens direkt an ihn.
+    kandidaten = kategorie_logik.gewichtete_auswahl(
+        sklave_profile, [x.get("kategorie") for x in bisher if x.get("kategorie")], count=6,
+        domina_praeferenzen=domina_profile.get("kategorie_praeferenzen", {}) or {})
+    allein = kategorie_logik.allein_machbar(kandidaten)
+    if not allein:
+        pool = kategorie_logik.alle_kategorien(sklave_profile)
+        gesperrt = set(kategorie_logik.dislike_kategorien(sklave_profile))
+        allein = [random.choice(kategorie_logik.allein_machbar([k for k in pool if k not in gesperrt]) or pool)]
+    kategorie = allein[0]
 
     system = (
         f"Du öffnest Türchen {tuer} von 24 im Adventskalender für ihren Sklaven "
         f"(Thema: {plan.get('thema', 'Adventskalender')}).\n\n"
         f"{coach_persona.fuer_aufgaben_vorschlag()}\n\n"
-        f"Das heutige Türchen soll {_intensitaet(tuer)} sein, im Laufe des Tages "
-        f"machbar, aus der vorgegebenen Kategorie, konkret zu IHM passend.\n"
+        f"Intensität heute: {_intensitaet(tuer)}.\n"
+        f"Das Türchen ist im Laufe des Tages machbar, stammt aus der vorgegebenen Kategorie und passt konkret zu IHM.\n"
+        f"ALLEIN machbar: die Dom-Seite ist tagsüber nicht dabei und muss nichts tun – nichts, wofür er sie, "
+        f"ihren Körper oder ihre Mitwirkung braucht (kontrollieren darf sie später).\n"
         f"Ein dezenter Advents-/Winterbezug ist willkommen, aber kein Kitsch-Zwang.\n\n"
         f"Antworte NUR mit dem reinen Aufgaben-Text (1-3 Sätze), keine Einleitung, "
         f"kein Markdown, keine Anführungszeichen."
     )
     prompt = (
         f"Pflicht-Kategorie: {kategorie}\n"
-        f"{coach_persona.sklaven_kontext_block(sklave_profile, do_gr)}"
+        f"{coach_persona.sklaven_kontext_block(sklave_profile, do_gr, domina_profile=domina_profile)}"
     )
+    if bisher_zeilen:
+        prompt += ("\nBisherige Türchen dieses Kalenders (NICHT wiederholen, auch keine Variation):\n"
+                   + "\n".join(f"- {z}" for z in bisher_zeilen))
     try:
         text = await limits_check.generate_mit_limit_retry(prompt, sk_hl, do_gr, system=system)
         if not text:

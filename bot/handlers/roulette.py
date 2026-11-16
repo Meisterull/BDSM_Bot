@@ -88,7 +88,7 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Antworte NUR mit dem reinen Strafen-Text (1-3 Sätze), keine Einleitung, "
         f"kein Markdown, keine Anführungszeichen."
     )
-    prompt = coach_persona.sklaven_kontext_block(sklave_profile, do_gr)
+    prompt = coach_persona.sklaven_kontext_block(sklave_profile, do_gr, domina_profile=domina_profile)
 
     try:
         strafe = await limits_check.generate_mit_limit_retry(prompt, sk_hl, do_gr, system=system)

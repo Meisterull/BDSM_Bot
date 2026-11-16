@@ -22,6 +22,7 @@ from telegram.ext import ContextTypes
 
 from bot import config, state
 from bot.services import paare
+from bot.services import kontext_pflege
 from bot.services import qdrant, grok, telegram_helper, limits_check, kategorie_logik, punkte
 from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
@@ -55,8 +56,7 @@ async def _generiere_blitz(domina_profile: dict, sklave_profile: dict) -> tuple[
     # Eine Blitzaufgabe erledigt er SOFORT und ALLEIN – Kategorien, die ohne
     # die Dom-Seite körperlich nicht stattfinden können, scheiden aus (vorher
     # wurde aus allen gewürfelt, Review D11).
-    from bot.handlers.herrin_versaeumnis import _HERRIN_KATEGORIEN  # lazy: zirkelfrei
-    verfuegbar = ([k for k in pool if k not in dislikes and k not in _HERRIN_KATEGORIEN]
+    verfuegbar = (kategorie_logik.allein_machbar([k for k in pool if k not in dislikes])
                   or [k for k in pool if k not in dislikes] or pool)
     kategorie = random.choice(verfuegbar)
 
@@ -77,7 +77,7 @@ async def _generiere_blitz(domina_profile: dict, sklave_profile: dict) -> tuple[
     )
     prompt = (
         f"Pflicht-Kategorie: {kategorie}\n"
-        f"{coach_persona.sklaven_kontext_block(sklave_profile, domina_profile.get('grenzen', []) or [])}"
+        f"{coach_persona.sklaven_kontext_block(sklave_profile, domina_profile.get('grenzen', []) or [], domina_profile=domina_profile, letzte_aufgaben=await kontext_pflege.letzte_aufgaben())}"
     )
     # Ausstattungs-Impuls (Inventar): sofort greifbares Gerät gelegentlich
     # tragend einbauen; passt es nicht zur Pflicht-Kategorie, weglassen.

@@ -5,6 +5,8 @@ Eingebettet in domina_coach.py sowie in alle anderen Prompts, die Output an die
 Domina erzeugen (Bestrafungsvorschlag, Coach-Feedback, Wochenplan etc.).
 Konsistente Stimme über alle Pfade hinweg.
 """
+import random
+
 from bot.prompts import rollen
 
 
@@ -255,7 +257,25 @@ def selten_hinweis() -> str:
             "Dom-Seite, nie als Belohnung und nicht mehrfach hintereinander)")
 
 
-def sklaven_kontext_block(sklave_profile: dict, domina_grenzen: list | None = None) -> str:
+def kinder_zeile(domina_profile: dict | None) -> str:
+    """Hinweis auf Kinder im Haus und kinderfreie Zeiten – für Generatoren, deren
+    Aufgaben über den Tag verteilt sind. Leer, wenn keine Kinder (kind_anzahl=0)
+    oder nichts bekannt ist."""
+    profil = domina_profile or {}
+    if profil.get("kind_anzahl") == 0:
+        return ""
+    zeiten = [z for z in (profil.get("kinderfreie_zeiten") or []) if z]
+    if zeiten:
+        return (f"Kinder im Haus. Kinderfreie Zeiten: {', '.join(zeiten)} – alles Hörbare oder Sichtbare "
+                "gehört in diese Zeiten, sonst nur Diskretes.")
+    if profil.get("kind_anzahl"):
+        return "Kinder im Haus – alles muss diskret, leise und kinderfrei bleiben."
+    return ""
+
+
+def sklaven_kontext_block(sklave_profile: dict, domina_grenzen: list | None = None,
+                          domina_profile: dict | None = None,
+                          letzte_aufgaben: list | None = None) -> str:
     """Einheitlicher Persönlichkeits-Kontext des Sklaven für alle Aufgaben-Generatoren
     (Würfel, Wochenplan, Inspiration, Arc, …) – das Daten-Gegenstück zu
     fuer_aufgaben_vorschlag(): Vorlieben, Grenzen, Reaktionsmuster, Charakter-Tags,
@@ -317,6 +337,23 @@ def sklaven_kontext_block(sklave_profile: dict, domina_grenzen: list | None = No
     dossier = dossier_gekuerzt(sklave_profile.get("dossier") or "")
     if dossier:
         zeilen.append(f"Was du über {s['akk']} weißt (Dossier):\n{dossier}")
+    # Der Anti-Klischee-Block verlangt von jedem Generator, die Interessen der
+    # Dom-Seite und vergangene Aufgaben einzubeziehen – Würfel, Roulette, Blitz,
+    # Adventskalender und Storyline bekamen beides nie mitgeliefert (Review D11).
+    if domina_profile:
+        interessen = [i.strip() for i in (domina_profile.get("interessen") or [])
+                      if isinstance(i, str) and i.strip()]
+        if len(interessen) > 6:      # DIV4-Analogon: subsampeln variiert den Fokus
+            interessen = random.sample(interessen, 6)
+        if interessen:
+            zeilen.append(f"Interessen {d['real_gen']} ({d['poss'][:-1]} Geschmack – gern einbeziehen): "
+                          + "; ".join(interessen))
+        kinder = kinder_zeile(domina_profile)
+        if kinder:
+            zeilen.append(kinder)
+    if letzte_aufgaben:
+        zeilen.append("Zuletzt gestellte Aufgaben (nicht wiederholen, höchstens anknüpfen):\n"
+                      + "\n".join(f"  - {a}" for a in letzte_aufgaben[:6]))
     if domina_grenzen is not None:
         zeilen.append(
             f"Persönliche Grenzen {d['real_gen']} (NIEMALS überschreiten): "
