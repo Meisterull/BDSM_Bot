@@ -267,7 +267,7 @@ _SITUATIV_RE = re.compile(
 def _vorlieben_cluster(text: str) -> set[int]:
     """Themen-Cluster-Indizes, die eine Freitext-Vorliebe berührt."""
     cluster: set[int] = set()
-    for k in kategorie_logik.kategorien_in_text(text):
+    for k in kategorie_logik.vorliebe_kategorien(text):
         cluster |= kategorie_logik.zu_cluster().get(k, set())
     return cluster
 

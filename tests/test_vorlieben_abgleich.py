@@ -408,6 +408,22 @@ def test_selten_statt_nie():
     assert any(z.strip().startswith("Selten") and "Dienst" in z for z in block.splitlines()), block
 
 
+def test_vorlieben_kuerzel_und_richtung():
+    """Kürzel in Vorlieben-Zeilen treffen ihre Kategorie – aber nur als ganzes
+    Wort und nur über vorliebe_kategorien, nicht im allgemeinen Stichwort-Abgleich."""
+    kl = kategorie_logik
+    assert kl.vorliebe_kategorien("NS") == {"Piss_Play"}
+    assert kl.vorliebe_kategorien("Milking") == {"Prostatamassage"}
+    assert kl.vorliebe_kategorien("lecken") == {"Arschanbetung", "Muschianbetung"}
+    assert "Toiletten_Sklave" in kl.vorliebe_kategorien("KV")
+    # keine Substring-Falle: „uns", „Konsequenz", „ablecken" sind keine Kürzel
+    assert kl.vorliebe_kategorien("Zeit für uns beide") == set()
+    assert "Piss_Play" not in kl.kategorien_in_text("NS") and "Piss_Play" not in kl.kategorien_in_text("eine Konsequenz für uns")
+    # Hintern der Dom-Seite → Anbetung statt Anal; der eigene bleibt Anal
+    assert kl.vorliebe_kategorien("Obst vom Hintern der Herrin naschen") == {"Arschanbetung"}
+    assert "Anal" in kl.vorliebe_kategorien("mein Hintern wird gedehnt")
+
+
 def _run():
     test_dislikes_aus_tags()
     test_dislike_treffer()
@@ -425,6 +441,7 @@ def _run():
     asyncio.run(test_ablehnung_nur_auf_belegte_kategorien())
     asyncio.run(test_rollenspiel_szenarien_filter())
     test_selten_statt_nie()
+    test_vorlieben_kuerzel_und_richtung()
     print("✅ Alle Vorlieben-Abgleich-Tests bestanden")
 
 

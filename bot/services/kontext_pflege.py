@@ -73,7 +73,9 @@ def gefuehl_brauchbar(text) -> bool:
     kern = re.sub(r"[^\wäöüß ]", "", t.lower()).strip()
     if kern in _GEFUEHL_LEER or re.sub(r"^\d+\s*", "", kern) in _GEFUEHL_LEER | {""}:
         return False
-    return len(kern.split()) >= 2
+    # Ein einzelnes Wort zählt, wenn es ein richtiges Wort ist („langweilig",
+    # „erniedrigt") – nur Füller und Kürzel fallen raus.
+    return len(kern.split()) >= 2 or len(kern) >= 8
 
 
 def brauchbare_gefuehle(texte, limit: int | None = None) -> list[str]:

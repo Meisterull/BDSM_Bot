@@ -35,7 +35,8 @@ def test_steuer_tags():
 def test_gefuehl_brauchbar():
     for leer in ("1", "2", "Alles", "Wie bitte?", "ok", "", None, "   ", "👍"):
         assert not kp.gefuehl_brauchbar(leer), leer
-    for gut in ("Das Warten war das Schwerste daran", "Sehr gerne", "2 das können wir öfter machen"):
+    for gut in ("Das Warten war das Schwerste daran", "Sehr gerne", "2 das können wir öfter machen",
+                "Langweilig", "Anstrengend"):
         assert kp.gefuehl_brauchbar(gut), gut
     assert kp.brauchbare_gefuehle(["1", "Sehr gerne", "Alles", "War mir zu lang"], limit=1) == ["Sehr gerne"]
 

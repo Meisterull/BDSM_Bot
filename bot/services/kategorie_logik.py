@@ -363,6 +363,39 @@ def kategorien_in_text(text: str) -> set[str]:
             if any(kw in text_lower for kw in kws)}
 
 
+# Kürzel und Einzelwörter, wie sie in Freitext-VORLIEBEN stehen. Bewusst NICHT
+# in _KEYWORDS: dort ist das Matching ein reines `in` über beliebige Texte –
+# zweibuchstabige Kürzel oder ein nacktes „lecken" würden Aufgaben reihenweise
+# falsch einsortieren. Hier mit Wortgrenzen und nur für Vorlieben-Zeilen.
+# (Daten-Review 16.11.2026: mehrere Vorlieben trafen kein Stichwort und fehlten
+# damit in der Basis der Kategorie-Auswahl.)
+_VORLIEBEN_ALIASE: list[tuple[re.Pattern, tuple[str, ...]]] = [
+    (re.compile(r"\b(ns|natursekt|golden shower)\b", re.I), ("Piss_Play",)),
+    (re.compile(r"\b(kv|kaviar|scat)\b", re.I), ("Toiletten_Sklave",)),
+    (re.compile(r"\b(milking|melken|gemolken|abmelken)\b", re.I), ("Prostatamassage",)),
+    (re.compile(r"\b(lecken|oral verwöhnen)\b", re.I), ("Arschanbetung", "Muschianbetung")),
+]
+# „Arsch/Hintern DER Dom-Seite" meint nicht die Anal-Kategorie (die beschreibt,
+# was an der Sub-Seite geschieht), sondern Anbetung/Dienst an ihr.
+_DOM_HINTERN_RE = re.compile(
+    r"(arsch|hintern|po)\s+(der|des|meiner|meines|von der|vom)\s+(domina|herrin|dom|herrn|meister\w*)", re.I)
+
+
+def vorliebe_kategorien(text: str) -> set[str]:
+    """Kategorien einer Freitext-VORLIEBE: Stichwort-Treffer plus Kürzel-Aliase;
+    nennt die Zeile den Hintern der Dom-Seite, wird der breite „Anal"-Treffer
+    durch „Arschanbetung" ersetzt."""
+    kats = set(kategorien_in_text(text))
+    for rx, ziele in _VORLIEBEN_ALIASE:
+        if rx.search(text or ""):
+            kats |= set(ziele)
+    if "Anal" in kats and _DOM_HINTERN_RE.search(text or ""):
+        kats.discard("Anal")
+        kats.add("Arschanbetung")
+    pool = set(keywords())
+    return {k for k in kats if k in pool}
+
+
 async def klassifiziere(text: str) -> str:
     """Klassifiziert eine Aufgabe in eine Pool-Kategorie.
 
@@ -891,7 +924,7 @@ def gewichtete_auswahl(
     # die Vorschläge täglich auf dieselben Wünsche fest (Nutzer-Feedback 02.07.).
     vorlieben_kats: set[str] = set()
     for v in (sklave_profil or {}).get("vorlieben") or []:
-        vorlieben_kats |= kategorien_in_text(v)
+        vorlieben_kats |= vorliebe_kategorien(v)
     # Wunsch-Einträge können veraltet sein → gegen den Pool schneiden
     basis = (wunsch | tops | vorlieben_kats) & set(pool) - dislikes
     exploration = (_nachbarn_von(basis) & set(pool)) - basis - dislikes
