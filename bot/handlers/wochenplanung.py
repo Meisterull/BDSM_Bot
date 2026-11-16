@@ -161,6 +161,26 @@ async def _generiere_wochenplan(
 
     from bot.prompts import coach_persona
 
+    # Review D10: gesperrte Kategorien nicht erst anbieten und dann verbieten;
+    # das Vorschlags-Feedback der Dom-Seite und die kinderfreien Zeiten fehlten
+    # dem Wochenplan ganz.
+    gesperrt = set(kategorie_logik.dislike_kategorien(sklave_profile))
+    gern, ungern = kategorie_logik.domina_praeferenz_rangliste(
+        domina_profile.get("kategorie_praeferenzen", {}) or {})
+    feedback_teile = ([f"gern übernommen: {', '.join(gern)}"] if gern else []) + \
+                     ([f"eher abgelehnt: {', '.join(ungern)}"] if ungern else [])
+    feedback_zeile = ("Ihr Feedback auf frühere Vorschläge (ihre Vorlieben): "
+                      + "; ".join(feedback_teile) + "\n") if feedback_teile else ""
+    kinderfrei = domina_profile.get("kinderfreie_zeiten", []) or []
+    kind_anzahl = domina_profile.get("kind_anzahl")
+    if kind_anzahl == 0:
+        kinder_zeile = ""
+    elif kinderfrei:
+        kinder_zeile = (f"Kinder im Haus. Kinderfreie Zeiten: {', '.join(kinderfrei)} – "
+                        "alles Hörbare oder Sichtbare gehört in diese Zeiten, tagsüber nur Diskretes.\n")
+    else:
+        kinder_zeile = "Kinder im Haus – alle Aufgaben müssen diskret, leise und kinderfrei bleiben.\n"
+
     system = f"""Du erstellst der Domina einen Wochenplan für ihren Sklaven – Mo bis So, eine Aufgabe pro Tag.
 
 {coach_persona.fuer_aufgaben_vorschlag()}
@@ -182,7 +202,7 @@ Kein [AUFGABE: ...] Tag – das sind Vorschläge, keine automatischen Aufgaben.
 Maximale Länge: {config.WOCHENPLAN_WORTLIMIT} Wörter.
 
 [Kategorie] AUSSCHLIESSLICH exakt aus dieser Liste wählen (genau so geschrieben, mit Unterstrich; nicht übersetzen, nicht erfinden):
-{', '.join(kategorie_logik.katalog_kategorien())}
+{', '.join(k for k in kategorie_logik.katalog_kategorien() if k not in gesperrt)}
 
 Logische Schlüssigkeit ist PFLICHT – jede Aufgabe muss in sich stimmig sein UND wirklich zur gewählten Kategorie passen:
 - Man kann nur reinigen/aufnehmen, was vorher real entstanden ist. "Creampie_Cleanup" verlangt eine ECHTE Ejakulation IN die zu reinigende Öffnung – ein Strapon/Dildo erzeugt KEINEN Creampie. Also niemals "Sperma aus dem Arsch lecken" nach Strapon-Pegging o. Ä.
@@ -196,7 +216,7 @@ sowie die Zeilen-Präfixe "Aufgabe:" und "Warum:". Nur die Inhalte dahinter folg
 Interessen der Domina: {', '.join(interessen) if interessen else 'nicht angegeben'}
 Letzte Aufgaben-Kategorien (zur Abwechslung): {', '.join(letzte_kategorien) if letzte_kategorien else 'keine'}
 Was der Domina gut gefiel: {bewertungs_kontext if bewertungs_kontext else 'keine Daten'}
-{coach_persona.sklaven_kontext_block(sklave_profile, domina_grenzen)}"""
+{feedback_zeile}{kinder_zeile}{coach_persona.sklaven_kontext_block(sklave_profile, domina_grenzen)}"""
     # Ausstattungs-Impuls (Inventar): an EINEM Tag der Woche ein vorhandenes
     # Gerät tragend einbauen – nicht die ganze Woche damit bestücken.
     from bot.services import inventar

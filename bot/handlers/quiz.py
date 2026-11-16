@@ -43,14 +43,18 @@ async def _wissens_kontext() -> str:
             wert = ", ".join(wert)
         if wert:
             teile.append(f"- {label}: {wert}")
-    dossier = (profil.get("domina_dossier") or "").strip()
-    if dossier:
-        teile.append(f"- Dossier über sie:\n{dossier[:1200]}")
+    # Das Domina-Dossier bleibt DRAUSSEN (Review D10): es ist das interne
+    # Profil für ihren Coach samt Unsicherheiten und Coach-Hinweisen – eine
+    # Quizfrage daraus trüge Coach-Wissen über sie zur Sub-Seite.
     try:
         regeln = await qdrant.get_active_coach_regeln("domina", limit=15)
         # Feld heißt "text" (qdrant.save_coach_regel) – "regel" war immer leer
         # (Hermes-Review H11: Regeln fehlten dadurch still im Quiz).
-        regel_texte = [r.get("text", "") for r in regeln if r.get("text")]
+        # Nur echte Regeln: die Collection führt auch Protokollzeilen über
+        # Profil-Änderungen (typ=profil_update) und Coach-Notizen – das sind
+        # keine „verbindlichen Regeln" der Dom-Seite.
+        regel_texte = [r.get("text", "") for r in regeln
+                       if r.get("text") and r.get("typ") == "regel"]
         if regel_texte:
             teile.append("- Ihre verbindlichen Regeln:\n" + "\n".join(f"  • {r}" for r in regel_texte))
     except Exception:

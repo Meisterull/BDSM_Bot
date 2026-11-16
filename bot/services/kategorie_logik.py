@@ -422,6 +422,14 @@ def reaktions_spitzen(sklave_profil: dict) -> str:
     return ", ".join(spitzen)
 
 
+def waehlbare_kategorien(sklave_profil: dict | None = None) -> list[str]:
+    """alle_kategorien OHNE die wiederholt abgelehnten – für Prompts, die dem
+    Modell eine Auswahl-Liste geben. Vorher stand eine gesperrte Kategorie als
+    wählbar in der Liste und ein paar Zeilen später unter NIEMALS (Review D10)."""
+    gesperrt = set(dislike_kategorien(sklave_profil or {}))
+    return [k for k in alle_kategorien(sklave_profil) if k not in gesperrt]
+
+
 def dislike_kategorien(sklave_profil: dict, schwelle: int = 2) -> list[str]:
     """Kategorien, die der Sklave wiederholt negativ erlebt (≥ schwelle negativ
     UND mehr negativ als positiv) – plus gelernte `mag_nicht_<Kategorie>`-Tags.

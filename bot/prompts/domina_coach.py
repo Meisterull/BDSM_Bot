@@ -178,7 +178,9 @@ def get(
 
     # Langzeit-Wissen-Block (Lerntagebuch)
     lerntagebuch_block = (
-        f"Verdichtetes Langzeit-Wissen (Wochen-Lerntagebuch):\n{lerntagebuch_context}\n\n"
+        "Verdichtetes Langzeit-Wissen (Wochen-Lerntagebuch – RÜCKBLICK auf frühere Wochen, kein "
+        "Auftrag: dort beschriebene Gewohnheiten und Standard-Abläufe nicht von dir aus fortschreiben):\n"
+        f"{lerntagebuch_context}\n\n"
         if lerntagebuch_context else ""
     )
     # Aus dem Coach-Quiz gelerntes Fachwissen – darf beiläufig referenziert
@@ -302,10 +304,13 @@ def format_context(entries: list[dict]) -> str:
     """
     if not entries:
         return ""
+    from bot.services import kontext_pflege
     lines = []
-    for entry in entries:
-        datum = entry.get("datum", "")[:10]
-        zusammenfassung = entry.get("zusammenfassung", "")
+    # Chronologisch, ohne Doppelte; Steuer-Tags und Doppelstern-Markdown alter
+    # Antworten raus; ältere Einträge tragen ihren Abstand (Review D10).
+    for entry in kontext_pflege.verlauf_bereinigt(entries):
+        datum = entry.get("datum", "")[:10] + kontext_pflege.alters_hinweis(entry.get("datum", ""))
+        zusammenfassung = kontext_pflege.ohne_steuer_tags(entry.get("zusammenfassung", ""))
         wichtige_punkte = entry.get("wichtige_punkte", [])
         # Neues Feld 'themen' (Liste); Fallback auf altes 'thema'
         themen = entry.get("themen") or ([entry["thema"]] if entry.get("thema") else [])
@@ -325,15 +330,27 @@ def format_context(entries: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
+LERNTAGEBUCH_MAX_TAGE = 60
+
+
 def format_lerntagebuch(entries: list[dict]) -> str:
     """Formatiert verdichtete Wochen-Zusammenfassungen (Lerntagebuch)."""
     if not entries:
         return ""
+    from bot.services import kontext_pflege
     blocks = []
+    # Höchstens die zwei jüngsten und nur aus den letzten LERNTAGEBUCH_MAX_TAGE:
+    # monatealte Wochenberichte beschrieben eine längst vergangene Phase als
+    # „aktuell" und füllten ein Fünftel des Prompts (Review D10).
     for e in entries:
+        tage = kontext_pflege.alter_tage(e.get("erstellt_am", ""))
+        if tage is not None and tage > LERNTAGEBUCH_MAX_TAGE:
+            continue
         zeitraum = e.get("zeitraum", "")
-        inhalt = e.get("inhalt", "")
+        inhalt = kontext_pflege.ohne_steuer_tags(e.get("inhalt", ""))
         blocks.append(f"📓 Lerntagebuch ({zeitraum}):\n{inhalt}")
+        if len(blocks) == 2:
+            break
     return "\n\n".join(blocks)
 
 

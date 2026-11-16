@@ -9,7 +9,7 @@ from telegram.ext import ContextTypes
 
 from bot import config, state
 from bot.services import paare
-from bot.services import qdrant, grok, telegram_helper
+from bot.services import qdrant, grok, telegram_helper, kontext_pflege, zeiten
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,8 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # (Review D8/M4: sonst ab >100 Tasks willkürliche Teilmenge)
     letzte_tasks_sorted = await qdrant.get_tasks_by_status(["erledigt"], limit=5, sort_by_datum=True)
     aufgaben_str = "\n".join(
-        f"- {t.get('aufgabe', '')} (Gefühl: {t.get('gefuehl', 'unbekannt')})"
+        "- " + zeiten.mit_alter_label(t.get('aufgabe', ''), t.get('erteilt_am', ''))
+        + (f" (Gefühl: {t.get('gefuehl')})" if kontext_pflege.gefuehl_brauchbar(t.get('gefuehl')) else "")
         for t in letzte_tasks_sorted
     ) or "Noch keine Aufgaben erledigt."
 

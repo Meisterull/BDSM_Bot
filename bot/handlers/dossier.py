@@ -21,9 +21,12 @@ from telegram.ext import ContextTypes
 from bot import config
 from bot.services import paare
 from bot.services import qdrant, grok, embeddings as emb, kategorie_logik, persona_config
+from bot.services import kontext_pflege
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
+
+FAEDEN_MAX_TAGE = 14
 
 
 def _stimmung_mit_alter(entry: dict | None) -> str:
@@ -86,7 +89,7 @@ async def _baue_dossier_text() -> str | None:
         # ein späterer t("…")-Aufruf in dieser Funktion gäbe UnboundLocalError.
         for task in erledigt[:8]:
             g = (task.get("gefuehl") or "").strip()
-            if g:
+            if kontext_pflege.gefuehl_brauchbar(g):
                 kat = task.get("kategorie", "")
                 gefuehle.append(f"{kat}: {g[:120]}" if kat else g[:120])
     except Exception as e:
@@ -196,12 +199,15 @@ async def aktualisiere_offene_faeden() -> list[str]:
         # (Muster: "X bleibt, bis ich Y sage") als 'offene Fäden', die dann per
         # Prompt wieder eingespielt wurden: Themen-Feedback-Schleife (Befund 02.07.).
         import re as _re
-        for e in entries:
+        # „Jüngste" Gespräche wörtlich nehmen: die Hybrid-Suche liefert auch
+        # monatealte Treffer, und Bot-Kommandos sind keine Äußerungen – aus
+        # beidem wurden „offene Fäden" (Review D10).
+        for e in kontext_pflege.verlauf_bereinigt(entries, max_alter_tage=FAEDEN_MAX_TAGE):
             text = (e.get("sklave_nachricht") or "").strip()
             if not text:
                 z = e.get("zusammenfassung", "")
                 text = _re.split(r"\n?\s*Herrin:", z)[0].removeprefix("Sklave:").strip()
-            if text:
+            if text and not kontext_pflege.ist_kommando(text):
                 gespraeche.append(text[:250])
     except Exception as e:
         logger.error("Offene Fäden: Gespräche laden fehlgeschlagen: %s", e)
@@ -210,7 +216,7 @@ async def aktualisiere_offene_faeden() -> list[str]:
     try:
         for task in (await qdrant.get_tasks_by_status(["erledigt"], sort_by_datum=True))[:5]:
             g = (task.get("gefuehl") or "").strip()
-            if g:
+            if kontext_pflege.gefuehl_brauchbar(g):
                 gefuehle.append(g[:120])
     except Exception as e:
         logger.error("Offene Fäden: Gefühle laden fehlgeschlagen: %s", e)

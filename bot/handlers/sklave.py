@@ -12,6 +12,7 @@ from telegram.ext import ContextTypes
 
 from bot import state
 from bot.services import qdrant, grok, embeddings as emb, kategorie_logik, telegram_helper, lokal_llm, paare
+from bot.services import kontext_pflege
 from bot.services import waehrung
 from bot.handlers import waehrung as waehrung_h
 from bot.services import limits_check
@@ -20,6 +21,10 @@ from bot.handlers import onboarding
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
+
+# Ältere Gespräche sind für den laufenden Herrin-Chat kein „früheres Gespräch"
+# mehr, sondern ein Anker auf eine vergangene Phase.
+ERINNERUNG_MAX_TAGE = 60
 
 _THEMEN = {
     "gefühl": ["fühl", "gefühl", "angst", "freude", "schäm", "stolz", "geil", "erregt", "traurig"],
@@ -288,9 +293,16 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             entries = await qdrant.get_hybrid_conversation_context("sklave", query_vector, limit=6,
                                                                     felder=qdrant.KONTEXT_FELDER)
             lines = []
-            for e in entries[:6]:
-                datum = (e.get("datum") or "")[:10]
-                z = e.get("zusammenfassung", "")[:300]
+            # Chronologisch, ohne Doppelte, höchstens ERINNERUNG_MAX_TAGE alt –
+            # und OHNE alte Antworten, die heutige Regeln verletzen („ist
+            # notiert/verankert"): als Verlaufs-Beispiel schlagen sie die Regel
+            # (Review D10; Lernmuster „Prompt-Regeln verlieren gegen History").
+            for e in kontext_pflege.verlauf_bereinigt(entries[:6], max_alter_tage=ERINNERUNG_MAX_TAGE):
+                datum = (e.get("datum") or "")[:10] + kontext_pflege.alters_hinweis(e.get("datum", ""))
+                z = e.get("zusammenfassung", "")
+                if kontext_pflege.behauptet_profil_aenderung(z):
+                    continue
+                z = z[:300]
                 if z:
                     lines.append(f"[{datum}] {z}")
             if lines:
@@ -307,7 +319,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             erledigt = await qdrant.get_tasks_by_status(["erledigt"], limit=10, sort_by_datum=True)
             for task in erledigt:
                 g = (task.get("gefuehl") or "").strip()
-                if g:
+                if kontext_pflege.gefuehl_brauchbar(g):
                     kat = task.get("kategorie", "")
                     gefuehle.append(f"{kat}: {g[:70]}" if kat else g[:70])
                 if len(gefuehle) == 3:

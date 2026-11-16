@@ -73,6 +73,14 @@ def stimmung_richtungen() -> list[str]:
     return list(_STIMMUNG_RICHTUNGEN)
 
 
+def _anrede() -> str:
+    try:
+        from bot.services import persona_config
+        return (persona_config.sklave_anrede() or "").strip()
+    except Exception:
+        return ""
+
+
 def stimmung_abfragen(vermeiden: list[str] | None = None,
                       richtung: str | None = None) -> tuple[str, str]:
     """Frisch formulierte Stimmungs-Frage in der Stimme der Herrin – statt Tag
@@ -91,8 +99,17 @@ def stimmung_abfragen(vermeiden: list[str] | None = None,
         letzte = "\n".join(f"- {v}" for v in vermeiden if v)
         vermeiden_block = (
             "So hast du zuletzt gefragt – formuliere heute DEUTLICH anders "
-            f"(anderer Satzanfang, andere Wörter, anderes Bild):\n{letzte}\n"
+            f"(anderer Satzanfang, andere Wörter):\n{letzte}\n"
         )
+        # Review D10: der Zwang zu immer „anderen Bildern" schraubte die Fragen
+        # hoch, und die Anrede stand in jeder der letzten Fragen.
+        vermeiden_block += (
+            "Anders heißt NICHT kunstvoller: eine schlichte, direkte Frage, die man in einem "
+            "Atemzug beantworten kann – höchstens ein Bild, keine verschachtelten Entweder-oder-Sätze.\n"
+        )
+        anrede = _anrede()
+        if anrede and sum(1 for v in vermeiden if v and anrede.lower() in v.lower()) >= 2:
+            vermeiden_block += "Die Anrede stand zuletzt in fast jeder Frage – diesmal OHNE Anrede, nur „du\".\n"
         # Die Satzanfänge NOCH EINMAL einzeln und wörtlich: der Detektor in
         # handlers/stimmung verwirft jede Frage, die mit denselben drei Wörtern
         # beginnt wie eine der letzten. Die Liste oben allein reicht nicht – die

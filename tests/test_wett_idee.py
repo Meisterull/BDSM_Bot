@@ -423,7 +423,13 @@ def test_verlauf_im_prompt():
     assert "[gestern, er hat verloren] Er trägt die Schürze" in system
     assert "[vor 5 Tagen, er hat die Wette abgelehnt]" in system and "[heute, er hat sich nicht gemeldet" in system
     assert "er hat die Wette abgelehnt" in system and "zählt als verloren" in system
-    assert "zähl die Wetten nie auf" in system
+    assert "Erwähne die früheren Wetten und ihren Ausgang in deinem Text nicht" in system
+    # Zähl-Wetten in Serie → andere Messlatte verlangen (nur dann)
+    assert "KEINE Zähl-Wette" not in system
+    system2, _ = fp.wett_idee(["Kaffee ans Bett"], [], [], [], heute=date(2026, 9, 17), letzte_wetten=[
+        {"datum": "2026-09-15", "ergebnis": "verloren", "idee": "Er schafft es viermal, die Tür aufzuhalten."},
+        {"datum": "2026-09-16", "ergebnis": "gewonnen", "idee": "Er senkt 10-mal den Blick."}])
+    assert "KEINE Zähl-Wette" in system2
     # Der Generator reicht den Verlauf aus dem Sub-Profil durch
     w = _Welt([GUT]).install()
     w.profile["sklave"]["herrin_wetten_verlauf"] = [

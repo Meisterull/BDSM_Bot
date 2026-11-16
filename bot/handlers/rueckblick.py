@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from bot import config
 from bot.services import paare
-from bot.services import qdrant, grok, telegram_helper
+from bot.services import qdrant, grok, telegram_helper, kontext_pflege, zeiten
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
@@ -42,11 +42,15 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         kategorien[kat] = kategorien.get(kat, 0) + 1
 
     # Gefühle sammeln
-    gefuehle = [t.get("gefuehl", "") for t in erledigte_sorted if t.get("gefuehl")][:10]
+    # Nur Rückmeldungen mit Aussage (keine Ziffern/Einwort-Füller, Review D10)
+    gefuehle = kontext_pflege.brauchbare_gefuehle(
+        [t.get("gefuehl", "") for t in erledigte_sorted], limit=10)
 
     # Aufgaben-Text für Prompt
     aufgaben_str = "\n".join(
-        f"- {t.get('aufgabe', '')} | Gefühl: {t.get('gefuehl', 'unbekannt')} | Kat: {t.get('kategorie', 'allgemein')}"
+        "- " + zeiten.mit_alter_label(t.get('aufgabe', ''), t.get('erteilt_am', ''))
+        + (f" | Gefühl: {t.get('gefuehl')}" if kontext_pflege.gefuehl_brauchbar(t.get('gefuehl')) else "")
+        + f" | Kat: {t.get('kategorie', 'allgemein')}"
         for t in erledigte_sorted[:10]
     ) or "Keine erledigten Aufgaben."
 

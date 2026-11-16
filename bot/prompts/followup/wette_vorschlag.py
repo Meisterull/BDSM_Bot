@@ -3,10 +3,15 @@ Wettvorschlag des Coachs.
 
 Herausgelöst aus bot/prompts/followup.py (Wartbarkeits-Umbau 05.11.2026). Öffentlicher Zugriff weiterhin über bot.prompts.followup.
 """
+import re
+
 from bot import config
 from bot.prompts import rollen
 
 
+
+# Zähl-Wette: „er schafft es viermal/zehnmal/5-mal …"
+_ZAEHL_WETTE_RE = re.compile(r"\b(\d+\s*-?\s*mal|(zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|zwölf)mal)\b", re.I)
 
 _WETT_AUSGANG = {"gewonnen": "er hat gewonnen", "verloren": "er hat verloren",
                  "verfallen": "er hat sich nicht gemeldet, zählt als verloren",
@@ -64,12 +69,21 @@ def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
             datum = _wie_lange_her(e.get("datum", ""), heute)
             ausgang = _WETT_AUSGANG.get(e.get("ergebnis", ""), e.get("ergebnis", ""))
             zeilen.append(f"  • [{datum}, {ausgang}] {str(e.get('idee', ''))[:220]}")
+        # Review D10: die Einladung, sich „locker auf den letzten Ausgang zu
+        # beziehen", erzeugte einen festen Meta-Einstieg („… also diesmal was
+        # anderes"), und die Bedingungen waren reihenweise Zähl-Wetten.
+        zaehl = sum(1 for e in letzte_wetten[-3:] if _ZAEHL_WETTE_RE.search(str(e.get("idee", ""))))
+        zaehl_hinweis = (
+            "Die letzten Wetten hatten fast alle dieselbe Bauart (er schafft etwas N-mal). "
+            "Diesmal KEINE Zähl-Wette – nimm eine andere Messlatte: eine Zeitspanne, ein "
+            "einmaliges Ereignis, ein Entweder-oder, etwas, das DU beobachtest.\n"
+        ) if zaehl >= 2 else ""
         verlauf_str = (
-            "\nLETZTE WETTEN (mit Ausgang): Bedingung UND Einsatz sollen diesmal andere sein – "
-            "nicht dieselbe Messlatte in neuer Verpackung. Auf den letzten Ausgang darfst du dich "
-            "locker beziehen (ein Halbsatz, Zeitangabe nur wie hier vermerkt), aber zähl die "
-            "Wetten nie auf:\n"
-            + "\n".join(zeilen) + "\n"
+            "\nLETZTE WETTEN (mit Ausgang) – nur damit du dich NICHT wiederholst: Bedingung UND "
+            "Einsatz sollen diesmal andere sein, nicht dieselbe Messlatte in neuer Verpackung. "
+            "Erwähne die früheren Wetten und ihren Ausgang in deinem Text nicht und beginne "
+            "nicht damit, dass es „diesmal etwas anderes\" gibt:\n"
+            + "\n".join(zeilen) + "\n" + zaehl_hinweis
         )
     schwerpunkt_str = ""
     if schwerpunkt:

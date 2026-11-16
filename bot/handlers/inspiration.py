@@ -14,10 +14,13 @@ from qdrant_client import models as qm
 from bot import config, state
 from bot.services import paare
 from bot.services import qdrant, grok, embeddings as emb, synonyme, kategorie_logik, telegram_helper, zeiten
+from bot.services import kontext_pflege
 from bot.messages import t
 
 logger = logging.getLogger(__name__)
 
+
+ABWECHSLUNG_MAX_TAGE = 45
 
 def _zeit_kontext(kinderfreie_zeiten: list, kind_anzahl: int | None = None) -> str:
     """Erstellt Zeitkontext für den Prompt."""
@@ -162,7 +165,7 @@ def _baue_vorschlags_prompt(
             f"{liste}\n"
             f"Wiederholungen des gleichen Themas sind NICHT akzeptabel.\n"
             f"Die 3 Vorschläge müssen aus verschiedenen Kategorien stammen "
-            f"(verfügbar: {', '.join(kategorie_logik.alle_kategorien(sklave_profile))}).\n"
+            f"(verfügbar: {', '.join(kategorie_logik.waehlbare_kategorien(sklave_profile))}).\n"
         )
 
     kontext_str = ""
@@ -192,7 +195,7 @@ def _baue_vorschlags_prompt(
 {coach_persona.fuer_aufgaben_vorschlag()}
 
 Die 3 Ideen sollen:
-- Aus unterschiedlichen Kategorien stammen (verfügbar: {', '.join(kategorie_logik.alle_kategorien(sklave_profile))})
+- Aus unterschiedlichen Kategorien stammen (verfügbar: {', '.join(kategorie_logik.waehlbare_kategorien(sklave_profile))})
 - Zum Level {level} und zur aktuellen Uhrzeit passen
 - Konkret und direkt umsetzbar sein
 - Jeweils einen kurzen "Warum gut" Hinweis haben, der nicht generisch ist: was die Idee mit ihm macht oder warum sie gerade jetzt sitzt – aus Beobachtbarem oder als deine Vermutung, NIE als Abgleich mit seinen Vorlieben/Wünschen ("er wünscht sich", "trifft seine Vorliebe", "er steht auf")
@@ -338,9 +341,16 @@ async def _lade_letzte_aufgaben_kontext() -> list[str]:
     )
     # Mit Zeitabstand – undatierte Listen verleiten das Modell zu erfundenen
     # Zeitbezügen ("gestern" über 4 Tage alte Aufgaben), s. zeiten.alter_label.
+    # Nur die letzten ABWECHSLUNG_MAX_TAGE: eine Monate alte Aufgabe ist kein
+    # Grund, heute ein Themenfeld zu meiden (Review D10 – die Liste reichte
+    # über ein halbes Jahr zurück).
+    def _frisch(datum) -> bool:
+        tage = kontext_pflege.alter_tage(datum)
+        return tage is None or tage <= ABWECHSLUNG_MAX_TAGE
+
     letzte = [
         zeiten.mit_alter_label(t.get("aufgabe", "")[:80], t.get("erteilt_am", ""))
-        for t in tasks if t.get("aufgabe")
+        for t in tasks if t.get("aufgabe") and _frisch(t.get("erteilt_am", ""))
     ]
 
     abgelehnte_results, _ = await qdrant.run_io(
@@ -360,8 +370,10 @@ async def _lade_letzte_aufgaben_kontext() -> list[str]:
     )
     abgelehnte = [r.payload for r in abgelehnte_results]
     letzte += [
-        zeiten.mit_alter_label(p.get("inhalt", "")[:80], p.get("erstellt_am", ""))
-        for p in abgelehnte if p.get("inhalt")
+        zeiten.mit_alter_label(
+            " ".join(kontext_pflege.ohne_steuer_tags(p.get("inhalt", "")).split())[:80],
+            p.get("erstellt_am", ""))
+        for p in abgelehnte if p.get("inhalt") and _frisch(p.get("erstellt_am", ""))
     ]
     return letzte
 

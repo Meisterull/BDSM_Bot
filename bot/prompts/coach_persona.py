@@ -70,7 +70,9 @@ def _namen_block() -> str:
     sprache = persona_config.sprache()
     if sprache:
         zeilen.append(f"- SPRACHE: Antworte ausschließlich auf {sprache}.")
-    return ("\n" + "\n".join(zeilen)) if zeilen else ""
+    # Eigene Überschrift: ohne sie hingen Name, Anrede und Setup als weitere
+    # Bullets direkt unter der Verbots-Liste des Stil-Presets.
+    return ("\n\nRAHMEN (Namen, Anrede, Setup – das gilt):\n" + "\n".join(zeilen)) if zeilen else ""
 
 
 # Nur für den freien Coach-Chat: der Coach darf das ECHTE Liebesleben des Paares
@@ -148,7 +150,14 @@ def _aufgaben_anti_klischee() -> str:
 
 def fuer_aufgaben_vorschlag() -> str:
     """Coach-Stil + Anti-Klischee-Block. Für alle Aufgaben-Vorschlags-Prompts."""
-    return coach_stil() + _namen_block() + "\n\n" + _aufgaben_anti_klischee()
+    # Der Stil-Block stammt aus dem Chat-Preset und empfiehlt dort eine Frage
+    # zum Weiterreden – die Generator-Prompts verbieten Rückfragen. Der
+    # Widerspruch wird hier einmal aufgelöst (Review D10).
+    return (coach_stil() + _namen_block()
+            + "\n\nFÜR DIESEN AUFTRAG: Du lieferst einen fertigen Vorschlag, kein Gespräch. "
+              "Die Stil-Regel zum Weiterreden gilt hier NICHT – der Text endet mit seinem Inhalt, "
+              "ohne Frage und ohne Anstoß zum Antworten."
+            + "\n\n" + _aufgaben_anti_klischee())
 
 
 # Inventar 🧰 (services/inventar.py): Wissen + Verbot für alle Prompts, die auch den
