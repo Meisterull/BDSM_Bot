@@ -400,6 +400,17 @@ def test_selten_statt_nie():
                 zaehler[k] += 1
     assert zaehler["Spanking"] == 0, zaehler
     assert 0 < zaehler["Dienst"] < zaehler["Psycho"] * 0.8, zaehler
+    # Auch eine Nicht-Abneigung lässt sich dämpfen: bleibt wählbar und ohne
+    # „Selten"-Hinweis im Prompt, wird aber seltener gezogen
+    assert kl.gedaempfte_kategorien(profil) == ["Dienst", "Facesitting"]
+    frei = {"selten_kategorien": ["Psycho"]}
+    z2 = {"Psycho": 0, "Demütigung": 0}
+    for _ in range(2000):
+        for k in kl.gewichtete_auswahl(frei, [], count=3):
+            if k in z2:
+                z2[k] += 1
+    assert 0 < z2["Psycho"] < z2["Demütigung"] * 0.8, z2
+    assert kl.selten_kategorien(frei) == [] and "Psycho" in kl.waehlbare_kategorien(frei)
     # Prompt: als „Selten" markiert, nicht unter NIEMALS
     from bot.prompts import coach_persona
     block = coach_persona.sklaven_kontext_block(profil)

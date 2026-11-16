@@ -477,6 +477,15 @@ def selten_kategorien(sklave_profil: dict | None) -> list[str]:
     return [k for k in erlaubt if k in dislikes]
 
 
+def gedaempfte_kategorien(sklave_profil: dict | None) -> list[str]:
+    """ALLE Kategorien aus `selten_kategorien` – auch solche, die keine Abneigung
+    der Sub-Seite sind (z. B. ein Themenfeld, das die Dom-Seite nicht reizt und
+    das die Auswahl trotzdem häufiger zog als die eigentlichen Vorlieben). Sie
+    bleiben wählbar, bekommen aber das gedämpfte Auswahl-Gewicht. Der Prompt-
+    Hinweis „Selten" gilt nur für die Abneigungen darunter (selten_kategorien)."""
+    return [k for k in ((sklave_profil or {}).get(FELD_SELTEN) or []) if isinstance(k, str)]
+
+
 def gesperrte_kategorien(sklave_profil: dict | None) -> list[str]:
     """dislike_kategorien ohne die „selten"-Ausnahmen – für Vorschläge an die Dom-Seite."""
     selten = set(selten_kategorien(sklave_profil))
@@ -906,7 +915,7 @@ def gewichtete_auswahl(
 
     wunsch = set(sklave_profil.get("wunsch_kategorien", []) or []) if sklave_profil else set()
     dislikes = set(gesperrte_kategorien(sklave_profil))
-    selten = set(selten_kategorien(sklave_profil))
+    selten = set(gedaempfte_kategorien(sklave_profil))
     tops = set(top_kategorien(sklave_profil))
     erlebt = set(reaktionen.keys())
     # count*4 statt count*2: bei 3 Vorschlägen/Tag deckte das alte Fenster nur
