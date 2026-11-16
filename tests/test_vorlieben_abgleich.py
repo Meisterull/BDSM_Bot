@@ -317,6 +317,18 @@ async def test_ablehnung_nur_auf_belegte_kategorien():
             kl.grok.simple = kaputt
             assert await kl.kategorien_im_text_belegt(text, etiketten) == ["Peitsche"]
         # ohne Text nichts zu prüfen → Etiketten unverändert, kein LLM-Call
+        # Der Kosename der Sub-Seite geht neutralisiert an den Prüfer (auch
+        # gebeugt) – ein bildhafter Name soll keine Kategorie „belegen".
+        from bot.services import persona_config as _pc
+        orig_anrede = _pc.sklave_anrede
+        _pc.sklave_anrede = lambda: "Braver Kater"
+        try:
+            kl.grok.simple = AsyncMock(return_value="KEINE")
+            await kl.kategorien_im_text_belegt("Der Brave Kater zählt, dem Braven Kater reicht das.", etiketten)
+            gesendet = kl.grok.simple.call_args.args[0]
+            assert "Kater" not in gesendet and gesendet.count("die Sub-Seite") == 2, gesendet
+        finally:
+            _pc.sklave_anrede = orig_anrede
         kl.grok.simple = AsyncMock()
         assert await kl.kategorien_im_text_belegt("", etiketten) == etiketten
         assert await kl.kategorien_im_text_belegt(text, []) == []

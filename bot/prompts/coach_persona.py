@@ -283,6 +283,15 @@ def sklaven_kontext_block(sklave_profile: dict, domina_grenzen: list | None = No
             f"  Offene Fäden aus {s['poss']}en Gesprächen (kann die Aufgabe aufgreifen): "
             + "; ".join(f[:80] for f in faeden[:5])
         )
+    # Angedeutete Wünsche als EIGENE markierte Zeile statt im Dossier-Fließtext
+    # (dort waren sie von offen Bekanntem nicht zu unterscheiden).
+    wuensche = [w for w in (sklave_profile.get("entdeckte_wuensche") or []) if isinstance(w, str) and w.strip()]
+    if wuensche:
+        zeilen.append(
+            f"  VERTRAULICH angedeutete Wünsche (höchstens EINEN als eigenen Einfall einbauen, "
+            f"nie als {s['poss']}en Wunsch benennen, nicht erzwingen): "
+            + "; ".join(w.strip()[:120] for w in wuensche[-6:])
+        )
     dossier = dossier_gekuerzt(sklave_profile.get("dossier") or "")
     if dossier:
         zeilen.append(f"Was du über {s['akk']} weißt (Dossier):\n{dossier}")

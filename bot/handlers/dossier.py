@@ -12,6 +12,7 @@ Trigger:
 - Manuell: /dossier (Domina)
 """
 import logging
+import re
 from datetime import datetime, timezone
 
 from telegram import Update
@@ -55,13 +56,20 @@ def _reaktionen_str(profile: dict) -> str:
 
 
 async def _baue_dossier_text() -> str | None:
-    """Erzeugt den Dossier-Text via Grok. None bei Fehler/zu wenig Daten."""
+    """Erzeugt den Dossier-Text via Grok. None bei Fehler/zu wenig Daten.
+
+    Live-Befund 15.11.2026: Das Dossier geht in jeden Aufgaben-Prompt ein. Der
+    Führungs-Satz nannte feste Praktiken samt „wiederholt setzen" (arbeitete
+    gegen Rotation und Sperrlisten), angedeutete Wünsche standen ununterscheidbar
+    neben offenen im Fließtext, und Wörter aus einer einzelnen Stimmungs-Antwort
+    lasen sich als Charakterzug. Darum: Führung nur als Stil, Wünsche gar nicht
+    mehr im Dossier (eigene markierte Zeile in sklaven_kontext_block bzw.
+    wunsch_kontext_hinweis), Stimmung als Momentaufnahme markiert."""
     profile = await qdrant.get_user_profile("sklave") or {}
 
     vorlieben = profile.get("vorlieben", []) or []
     tags = profile.get("persoenlichkeit_tags", []) or []
     wunsch = profile.get("wunsch_kategorien", []) or []
-    entdeckte = profile.get("entdeckte_wuensche", []) or []
     reaktionen_str = _reaktionen_str(profile)
 
     # Intensitäts-Level je Kategorie
@@ -105,15 +113,17 @@ async def _baue_dossier_text() -> str | None:
     system = """Erstelle eine knappe, einfühlsame Charakteristik des Sklaven – als internes Profil für seine Herrin, damit sie ihn wirklich kennt und gezielt führen kann.
 
 Schreibe 4–6 Sätze Fließtext, Deutsch, KEINE Aufzählung, kein Markdown, keine Anführungszeichen.
-Beschreibe: was ihn antreibt und erregt, worauf er positiv bzw. negativ reagiert, seine (heimlichen) Wünsche, sein emotionales Muster und wie man ihn am besten führt.
+Beschreibe: was ihn antreibt und erregt, worauf er positiv bzw. negativ reagiert, sein emotionales Muster und in welchem STIL man ihn am besten führt.
+- FÜHRUNG = nur Stil und Haltung (Ton, Tempo, Nähe oder Strenge, wie viel Ansage). Nenne dort KEINE konkreten Praktiken, Spielzeuge oder Kategorien und empfiehl keine Wiederholung ("immer wieder", "fest setzen") – welche Praktik wann dran ist, regelt die Aufgaben-Auswahl getrennt.
+- KEINE einzelnen Wünsche oder Fantasien aufzählen – die stehen getrennt und vertraulich im Profil.
+- EMOTIONALES MUSTER = nur, was in mehreren Einträgen wiederkehrt. Tagesform und einzelne Zustandswörter aus einer einzelnen Antwort (Stimmung, Erregung, Energie) sind Momentaufnahmen und gehören nicht in den Text.
 NUR aus den Daten unten – erfinde nichts dazu."""
     prompt = f"""Vorlieben: {', '.join(vorlieben) if vorlieben else 'keine'}
 Charakter-Muster (Tags): {', '.join(tags) if tags else 'keine'}
 Kategorie-Reaktionen: {reaktionen_str}
 Wunsch-Kategorien: {', '.join(wunsch) if wunsch else 'keine'}
-Im Gespräch geäußerte Wünsche / zum Ausprobieren: {'; '.join(entdeckte) if entdeckte else 'keine'}
 Gelernte Intensität je Kategorie: {level_str}
-{stimmung_zeile}
+Momentaufnahme, keine Eigenschaft – {stimmung_zeile}
 Letzte Gefühls-Antworten (seine eigenen Worte):
 {gefuehle_str}
 Aus früheren Gesprächen:
@@ -250,6 +260,24 @@ Letzte Gefühle:
     return faeden
 
 
+# Einträge der Grenzen-Liste, die nur Desinteresse ausdrücken („… (langweilig)").
+# In den Generator-Prompts bleiben sie Grenzen (nie vorschlagen) – nur das
+# Dossier soll Tabu und Geschmack nicht gleichsetzen.
+_UNLUST_RE = re.compile(r"langweil|\böde\b|kein interesse|reizt (mich|sie) nicht|mag (ich|sie) nicht", re.I)
+
+
+def _grenzen_und_unlust(grenzen: list) -> tuple[list, list]:
+    """Teilt die Grenzen-Liste in harte Grenzen und bloßes Desinteresse; der
+    Klammer-Zusatz fällt bei Letzterem weg („X (langweilig)" → „X")."""
+    hart, unlust = [], []
+    for g in grenzen or []:
+        if isinstance(g, str) and _UNLUST_RE.search(g):
+            unlust.append(re.sub(r"\s*\([^)]*\)\s*", " ", g).strip() or g)
+        else:
+            hart.append(g)
+    return hart, unlust
+
+
 async def aktualisiere_domina_dossier() -> str | None:
     """Erzeugt/aktualisiert eine Charakteristik der DOMINA – internes Profil für den
     Coach (beste Freundin), damit er sie als Herrin gut kennt. Speichert als
@@ -282,15 +310,21 @@ async def aktualisiere_domina_dossier() -> str | None:
     except Exception as e:
         logger.error("Domina-Dossier: Gespräche laden fehlgeschlagen: %s", e)
 
+    grenzen, unlust = _grenzen_und_unlust(grenzen)
+
     system = """Erstelle eine knappe, warmherzige Charakteristik der Domina – als internes Profil für ihren Coach (eine vertraute beste Freundin), damit er sie als Herrin wirklich kennt und gezielt begleiten kann.
 
 Schreibe 4–6 Sätze Fließtext, Deutsch, KEINE Aufzählung, kein Markdown, keine Anführungszeichen.
-Beschreibe: ihren Stil als Herrin, was sie reizt und interessiert, wie sie führt (sanft/streng/spielerisch …), ihre Ziele und ihre Entwicklung, und worauf der Coach bei ihr achten sollte. NUR aus den Daten – nichts erfinden."""
+Beschreibe: ihren Stil als Herrin, was sie reizt und interessiert, wie sie führt (sanft/streng/spielerisch …), ihre Ziele und ihre Entwicklung, und worauf der Coach bei ihr achten sollte.
+- COACH-HINWEIS = wie er sie unterstützt (Zuspruch, Formulierungshilfe, Tempo). Dort KEINE Liste konkreter Praktiken und keine Empfehlung, bestimmte Praktiken gezielt zu wiederholen.
+- Harte Grenzen und bloßes Desinteresse NIE in einem Atemzug nennen: Grenzen sind Tabus, „reizt sie nicht" ist nur Geschmack.
+NUR aus den Daten – nichts erfinden."""
     prompt = f"""Erfahrungsstand: {erfahrung or 'unbekannt'}
 Level: {level}
 Interessen: {', '.join(interessen) if interessen else 'keine'}
 Ziele: {ziele or 'keine'}
-Persönliche Grenzen: {', '.join(grenzen) if grenzen else 'keine'}
+Harte Grenzen (Tabu): {', '.join(grenzen) if grenzen else 'keine'}
+Reizt sie nicht / findet sie langweilig (kein Tabu, nur Geschmack): {', '.join(unlust) if unlust else 'nichts bekannt'}
 Was ihr an Aufgaben gut gefiel: {bewertungs_kontext or 'keine Daten'}
 Zuletzt vergebene Kategorien: {', '.join(letzte_kategorien) if letzte_kategorien else 'keine'}
 Aus früheren Coach-Gesprächen:

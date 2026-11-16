@@ -44,6 +44,19 @@ async def _arc_tag_anpassen(aufgabe: str, stimmung: str, sklave_profile: dict, d
         return None
 
 
+async def _belegte_kategorien(vorschlag: str, gewaehlt: list[str]) -> list[str]:
+    """Von den gewählten Kategorien nur die, die der Vorschlagstext wirklich
+    umsetzt (Live-Befund 16.11.2026: ein Ausstattungs-Impuls bestimmte die
+    Szene, gespeichert wurden trotzdem alle gewählten Etiketten – die Rotation
+    hielt eine Kategorie für „gerade dran gewesen", die im Text nicht vorkam).
+    Gleiche Prüfung wie bei der Feedback-Buchung; bei Fehler die Auswahl."""
+    try:
+        return await kategorie_logik.kategorien_im_text_belegt(vorschlag, list(gewaehlt or []))
+    except Exception:
+        logger.exception("Kategorie-Beleg beim Speichern fehlgeschlagen – speichere die Auswahl.")
+        return list(gewaehlt or [])
+
+
 async def _save_tiny_task(vorschlag: str, kategorien: list[str]) -> None:
     """Speichert einen gesendeten TinyTask-Vorschlag in der knowledge_base."""
     point_id = str(uuid.uuid4())
@@ -651,11 +664,13 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
         if basis._nach_llm_verworfen(paare.dom_chat_id(), "Tiny-Task-Vorschlag"):
             return
         await telegram_helper.send_domina(bot, t(nachricht_key, vorschlag=vorschlag), parse_mode="Markdown")
-        await _save_tiny_task(vorschlag, gewaehlte_kategorien)
+        belegt = await _belegte_kategorien(vorschlag, gewaehlte_kategorien)
+        await _save_tiny_task(vorschlag, belegt)
         # Privileg jetzt erst verbrauchen – der Vorschlag ist raus.
         if wunsch_aktiv and sklave_profile.get("wunsch_kategorien"):
             await privileg_effekte.verbrauche_wirkung("naechste_aus_wunsch")
-        logger.info("Task Vorschlag gesendet (%s, Kategorien: %s).", "ausführlich" if ist_wochenende else "tiny", gewaehlte_kategorien)
+        logger.info("Task Vorschlag gesendet (%s, Kategorien gewählt: %s, im Text belegt: %s).",
+                    "ausführlich" if ist_wochenende else "tiny", gewaehlte_kategorien, belegt)
     except Exception as e:
         logger.exception("Fehler beim Task Vorschlag")
 

@@ -470,6 +470,21 @@ async def test_dossier_build():
     db_profile.patch_profile_fields = fake_patch
     txt = await _dossier.aktualisiere_dossier()
     assert txt == "Er ist hingebungsvoll." and cap.get("dossier") == txt
+    # Angedeutete Wünsche gehen NICHT in die Dossier-Synthese, die Stimmung
+    # ist als Momentaufnahme markiert, der Führungs-Satz ist auf Stil begrenzt.
+    db_profile.get_user_profile = _aw(lambda u: {
+        "vorlieben": ["lob"], "entdeckte_wuensche": ["würde gern mal XYZWUNSCH"]})
+    await _dossier.aktualisiere_dossier()
+    aufruf = _dossier.grok.simple.call_args
+    prompt, system = aufruf.args[0], aufruf.kwargs["system"]
+    assert "XYZWUNSCH" not in prompt and "Momentaufnahme" in prompt, prompt
+    assert "KEINE konkreten Praktiken" in system and "heimlich" not in system, system
+    # … sie stehen dafür als eigene markierte Zeile im gemeinsamen Kontext-Block
+    from bot.prompts import coach_persona as _cp
+    block = _cp.sklaven_kontext_block({"entdeckte_wuensche": ["würde gern mal XYZWUNSCH"],
+                                       "dossier": "Er ist hingebungsvoll."})
+    assert "VERTRAULICH" in block and "XYZWUNSCH" in block, block
+    assert block.index("VERTRAULICH") < block.index("Dossier"), block
 
     db_profile.get_user_profile = _aw(lambda u: {})
     db_tasks.get_tasks_by_status = _aw(lambda s, sort_by_datum=False: [])
@@ -513,6 +528,23 @@ async def test_offene_faeden():
     assert cap.get("offene_faeden") == faeden
 
 
+async def test_tiny_task_speichert_nur_belegte_kategorien():
+    """Gespeichert werden nur die Kategorien, die der Text umsetzt; schlägt die
+    Prüfung fehl, bleibt es bei der Auswahl."""
+    from bot.scheduler import tiny_task as _tt
+    orig = _tt.kategorie_logik.kategorien_im_text_belegt
+    try:
+        _tt.kategorie_logik.kategorien_im_text_belegt = _aw(lambda inhalt, kats: [k for k in kats if k != "B"])
+        assert await _tt._belegte_kategorien("Text", ["A", "B", "C"]) == ["A", "C"]
+
+        async def kaputt(inhalt, kats):
+            raise RuntimeError("x")
+        _tt.kategorie_logik.kategorien_im_text_belegt = kaputt
+        assert await _tt._belegte_kategorien("Text", ["A", "B"]) == ["A", "B"]
+    finally:
+        _tt.kategorie_logik.kategorien_im_text_belegt = orig
+
+
 async def test_domina_dossier():
     _dossier.emb.get_embedding = AsyncMock(return_value=[0.1] * 768)
     db_profile.get_user_profile = _aw(lambda u: {"interessen": ["X"], "ziele": "Y", "erfahrungsstand": "Z", "aktuelles_level": 3})
@@ -528,6 +560,13 @@ async def test_domina_dossier():
     _dossier.grok.simple = AsyncMock(return_value="Sie führt streng.")
     dt = await _dossier.aktualisiere_domina_dossier()
     assert dt == "Sie führt streng." and cap.get("domina_dossier") == dt
+    # Harte Grenzen und bloßes Desinteresse stehen getrennt im Prompt
+    db_profile.get_user_profile = _aw(lambda u: {
+        "interessen": ["X"], "grenzen": ["Nadeln", "Vorlesen (langweilig)"]})
+    await _dossier.aktualisiere_domina_dossier()
+    prompt = _dossier.grok.simple.call_args.args[0]
+    assert "Harte Grenzen (Tabu): Nadeln\n" in prompt, prompt
+    assert "nur Geschmack): Vorlesen\n" in prompt, prompt
 
 
 async def test_wunsch_erfassung():
@@ -1754,6 +1793,7 @@ def _run():
     test_decay_reaktionen()
     asyncio.run(test_offene_faeden())
     asyncio.run(test_domina_dossier())
+    asyncio.run(test_tiny_task_speichert_nur_belegte_kategorien())
     asyncio.run(test_wunsch_erfassung())
     asyncio.run(test_apply_profile_patch_limit_add())
     asyncio.run(test_praeferenz_detektor())

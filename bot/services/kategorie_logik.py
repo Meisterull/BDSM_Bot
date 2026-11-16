@@ -681,6 +681,23 @@ def domina_praeferenz_rangliste(praeferenzen: dict, jetzt=None) -> tuple[list[st
     return gern, ungern
 
 
+def _anrede_neutral(text: str) -> str:
+    """Ersetzt den Kosenamen der Sub-Seite durch eine neutrale Bezeichnung –
+    samt gebeugter Formen. Ein bildhafter Kosename (Tier, Gegenstand …) ließ den
+    Beleg-Prüfer sonst die dazu passende Kategorie als „im Text umgesetzt"
+    werten, obwohl nur der Name fiel (Live-Befund 16.11.2026)."""
+    try:
+        from bot.services import persona_config  # lazy: zirkelfrei
+        anrede = (persona_config.sklave_anrede() or "").strip()
+    except Exception:
+        anrede = ""
+    woerter = [w for w in anrede.split() if w]
+    if not woerter:
+        return text
+    muster = r"\b" + r"\s+".join(re.escape(w[:max(4, len(w) - 2)]) + r"\w*" for w in woerter) + r"\b"
+    return re.sub(muster, "die Sub-Seite", text, flags=re.I)
+
+
 async def kategorien_im_text_belegt(inhalt: str, kategorien: list) -> list[str]:
     """Welche der ETIKETT-Kategorien eines Vorschlags kommen in seinem Text
     wirklich vor? Die Etiketten stammen aus der Auswahl VOR der Generierung; der
@@ -698,11 +715,13 @@ async def kategorien_im_text_belegt(inhalt: str, kategorien: list) -> list[str]:
         f"Du prüfst einen {modi.thema()}-Aufgabenvorschlag gegen eine Liste von Kategorien.\n"
         "Nenne die Kategorien aus der Liste, deren Praktik im Text tatsächlich stattfindet – "
         "auch als Teilaspekt und auch wenn das Wort selbst nicht fällt (umschrieben zählt). "
-        "Nicht nennen: Kategorien, deren Praktik im Text gar nicht vorkommt.\n"
+        "Nicht nennen: Kategorien, deren Praktik im Text gar nicht vorkommt. Eine Anrede, ein "
+        "Kosename oder ein einzelnes bildhaftes Wort belegt keine Kategorie – es zählt nur, "
+        "was die Beteiligten im Text tatsächlich TUN.\n"
         "Antworte mit den exakten Kategorie-Namen, durch Komma getrennt, sonst NUR mit KEINE. "
         "Keine Erklärung."
     )
-    prompt = "Kategorien: " + ", ".join(kategorien) + f"\n\nVorschlag:\n{inhalt[:1200]}"
+    prompt = "Kategorien: " + ", ".join(kategorien) + f"\n\nVorschlag:\n{_anrede_neutral(inhalt)[:1200]}"
     try:
         raw = grok.clean_text(await grok.simple(prompt, system=system, temperature=0)) or ""
         teile = [x.strip().strip(".").lower().replace(" ", "_") for x in re.split(r"[,\n;]", raw) if x.strip()]
