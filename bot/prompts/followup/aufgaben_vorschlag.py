@@ -33,6 +33,7 @@ def _aufgaben_kontext(
     sklave_vorlieben: list,
     sklave_hard_limits: list,
     sklave_dislike_kategorien: list = None,
+    sklave_selten_kategorien: list = None,
     letzte_aufgaben: list = None,
     letzte_tiny_tasks: list = None,
     verbrauchte_anfaenge: list = None,
@@ -306,6 +307,12 @@ def _aufgaben_kontext(
             f"\nKategorien die {s['label_nom']} wiederholt ablehnt (NIEMALS vorschlagen):\n"
             + "\n".join(f"❌ {k}" for k in dislike_rest)
             + "\n"
+        )
+    if sklave_selten_kategorien:
+        from bot.prompts import coach_persona as _cp
+        dislike_str += (
+            f"\nSelten {_cp.selten_hinweis()}:\n"
+            + "\n".join(f"◽ {k}" for k in sklave_selten_kategorien) + "\n"
         )
     # Persönlichkeits-Kontext: der Prompt verlangt Personalisierung („nur für IHN
     # formulierbar“) – dafür braucht der Generator Dossier, Reaktionsmuster und Fäden.

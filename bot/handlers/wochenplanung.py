@@ -164,7 +164,7 @@ async def _generiere_wochenplan(
     # Review D10: gesperrte Kategorien nicht erst anbieten und dann verbieten;
     # das Vorschlags-Feedback der Dom-Seite und die kinderfreien Zeiten fehlten
     # dem Wochenplan ganz.
-    gesperrt = set(kategorie_logik.dislike_kategorien(sklave_profile))
+    gesperrt = set(kategorie_logik.gesperrte_kategorien(sklave_profile))
     gern, ungern = kategorie_logik.domina_praeferenz_rangliste(
         domina_profile.get("kategorie_praeferenzen", {}) or {})
     feedback_teile = ([f"gern übernommen: {', '.join(gern)}"] if gern else []) + \

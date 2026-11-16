@@ -245,6 +245,13 @@ def dossier_gekuerzt(dossier: str, limit: int = 1200) -> str:
     return cut.rsplit(" ", 1)[0] + " …"
 
 
+def selten_hinweis() -> str:
+    """Einheitliche Erklärung der „selten statt nie"-Kategorien (kategorie_logik.FELD_SELTEN)."""
+    s = rollen.sub()
+    return (f"(mag {s['nom']} wenig – höchstens GELEGENTLICH und dann als bewusste Forderung der "
+            "Dom-Seite, nie als Belohnung und nicht mehrfach hintereinander)")
+
+
 def sklaven_kontext_block(sklave_profile: dict, domina_grenzen: list | None = None) -> str:
     """Einheitlicher Persönlichkeits-Kontext des Sklaven für alle Aufgaben-Generatoren
     (Würfel, Wochenplan, Inspiration, Arc, …) – das Daten-Gegenstück zu
@@ -279,9 +286,12 @@ def sklaven_kontext_block(sklave_profile: dict, domina_grenzen: list | None = No
     wunsch = sklave_profile.get("wunsch_kategorien") or []
     if wunsch:
         zeilen.append(f"  Wunsch-Kategorien (bevorzugen, wenn es passt): {', '.join(wunsch)}")
-    dislikes = kategorie_logik.dislike_kategorien(sklave_profile)
+    dislikes = kategorie_logik.gesperrte_kategorien(sklave_profile)
     if dislikes:
         zeilen.append(f"  Kategorien, die {s['nom']} wiederholt ablehnt (NIEMALS vorschlagen): {', '.join(dislikes)}")
+    selten = kategorie_logik.selten_kategorien(sklave_profile)
+    if selten:
+        zeilen.append(f"  Selten {selten_hinweis()}: {', '.join(selten)}")
     # Inventar (Fakten über den Haushalt) nach den Profil-Zeilen, vor Fäden/Dossier
     inventar_teil = inventar_block(perspektive="coach")
     if inventar_teil:

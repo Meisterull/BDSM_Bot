@@ -380,6 +380,34 @@ async def test_rollenspiel_szenarien_filter():
     assert await tagesjobs._szenarien_erlaubt(eng, {"persoenlichkeit_tags": ["mag_nicht_Dienst"]}, [], []) == []
 
 
+def test_selten_statt_nie():
+    """Abneigung mit „selten"-Ausnahme: für Vorschläge an die Dom-Seite nicht
+    gesperrt, aber stark gedämpft; überall sonst bleibt sie eine Abneigung."""
+    kl = kategorie_logik
+    basis = {"persoenlichkeit_tags": ["mag_nicht_Dienst", "mag_nicht_Spanking"]}
+    assert kl.selten_kategorien(basis) == [] and set(kl.gesperrte_kategorien(basis)) == {"Dienst", "Spanking"}
+    profil = dict(basis, selten_kategorien=["Dienst", "Facesitting"])
+    # Nur echte Abneigungen können „selten" sein; dislike_kategorien bleibt unverändert
+    assert kl.selten_kategorien(profil) == ["Dienst"]
+    assert kl.gesperrte_kategorien(profil) == ["Spanking"]
+    assert set(kl.dislike_kategorien(profil)) == {"Dienst", "Spanking"}
+    assert "Dienst" in kl.waehlbare_kategorien(profil) and "Spanking" not in kl.waehlbare_kategorien(profil)
+    # Auswahl: Spanking nie, Dienst deutlich seltener als eine neutrale Kategorie
+    zaehler = {"Dienst": 0, "Spanking": 0, "Psycho": 0}
+    for _ in range(2000):
+        for k in kl.gewichtete_auswahl(profil, [], count=3):
+            if k in zaehler:
+                zaehler[k] += 1
+    assert zaehler["Spanking"] == 0, zaehler
+    assert 0 < zaehler["Dienst"] < zaehler["Psycho"] * 0.8, zaehler
+    # Prompt: als „Selten" markiert, nicht unter NIEMALS
+    from bot.prompts import coach_persona
+    block = coach_persona.sklaven_kontext_block(profil)
+    niemals = next(z for z in block.splitlines() if "NIEMALS vorschlagen" in z)
+    assert "Spanking" in niemals and "Dienst" not in niemals, niemals
+    assert any(z.strip().startswith("Selten") and "Dienst" in z for z in block.splitlines()), block
+
+
 def _run():
     test_dislikes_aus_tags()
     test_dislike_treffer()
@@ -396,6 +424,7 @@ def _run():
     test_wett_fenster_ausserhalb_kinderfrei()
     asyncio.run(test_ablehnung_nur_auf_belegte_kategorien())
     asyncio.run(test_rollenspiel_szenarien_filter())
+    test_selten_statt_nie()
     print("✅ Alle Vorlieben-Abgleich-Tests bestanden")
 
 

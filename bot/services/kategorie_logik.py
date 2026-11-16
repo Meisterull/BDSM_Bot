@@ -422,11 +422,39 @@ def reaktions_spitzen(sklave_profil: dict) -> str:
     return ", ".join(spitzen)
 
 
+# „Selten statt nie" (Owner-Entscheidung 16.11.2026): eine Kategorie, die die
+# Sub-Seite wenig mag, die Dom-Seite aber selbst gern vergibt, war für
+# Vorschläge an die Dom-Seite komplett gesperrt – der Bot schlug nie vor, was
+# sie am häufigsten tut. Kategorien im Profil-Feld `selten_kategorien` bleiben
+# eine Abneigung, dürfen in Vorschlägen an die Dom-Seite aber gelegentlich
+# vorkommen (stark gedämpftes Auswahl-Gewicht, im Prompt als „selten" markiert).
+# Alle Pfade, die direkt an die Sub-Seite gehen oder eine Pflicht-Kategorie
+# würfeln, nutzen weiter dislike_kategorien und sperren sie ganz.
+FELD_SELTEN = "selten_kategorien"
+_W_SELTEN_FAKTOR = 0.5
+
+
+def selten_kategorien(sklave_profil: dict | None) -> list[str]:
+    """Abgelehnte Kategorien, die laut Profil trotzdem selten vorkommen dürfen."""
+    profil = sklave_profil or {}
+    erlaubt = [k for k in (profil.get(FELD_SELTEN) or []) if isinstance(k, str)]
+    if not erlaubt:
+        return []
+    dislikes = set(dislike_kategorien(profil))
+    return [k for k in erlaubt if k in dislikes]
+
+
+def gesperrte_kategorien(sklave_profil: dict | None) -> list[str]:
+    """dislike_kategorien ohne die „selten"-Ausnahmen – für Vorschläge an die Dom-Seite."""
+    selten = set(selten_kategorien(sklave_profil))
+    return [k for k in dislike_kategorien(sklave_profil or {}) if k not in selten]
+
+
 def waehlbare_kategorien(sklave_profil: dict | None = None) -> list[str]:
-    """alle_kategorien OHNE die wiederholt abgelehnten – für Prompts, die dem
-    Modell eine Auswahl-Liste geben. Vorher stand eine gesperrte Kategorie als
-    wählbar in der Liste und ein paar Zeilen später unter NIEMALS (Review D10)."""
-    gesperrt = set(dislike_kategorien(sklave_profil or {}))
+    """alle_kategorien OHNE die gesperrten – für Prompts, die dem Modell eine
+    Auswahl-Liste geben. Vorher stand eine gesperrte Kategorie als wählbar in
+    der Liste und ein paar Zeilen später unter NIEMALS (Review D10)."""
+    gesperrt = set(gesperrte_kategorien(sklave_profil or {}))
     return [k for k in alle_kategorien(sklave_profil) if k not in gesperrt]
 
 
@@ -844,7 +872,8 @@ def gewichtete_auswahl(
     domina_praeferenzen = domina_praeferenzen or {}
 
     wunsch = set(sklave_profil.get("wunsch_kategorien", []) or []) if sklave_profil else set()
-    dislikes = set(dislike_kategorien(sklave_profil))
+    dislikes = set(gesperrte_kategorien(sklave_profil))
+    selten = set(selten_kategorien(sklave_profil))
     tops = set(top_kategorien(sklave_profil))
     erlebt = set(reaktionen.keys())
     # count*4 statt count*2: bei 3 Vorschlägen/Tag deckte das alte Fenster nur
@@ -896,6 +925,8 @@ def gewichtete_auswahl(
                 w += anteil
             elif netto < 0:
                 w = max(1.0, w - anteil)
+        if kat in selten:
+            w *= _W_SELTEN_FAKTOR
         return float(w)
 
     buckets = {

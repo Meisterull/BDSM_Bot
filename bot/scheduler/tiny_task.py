@@ -327,7 +327,7 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     if not wunsch_aktiv and random.random() < config.KOMBI_IMPULS_CHANCE:
         kombi_vorlieben = schablonen._kombi_vorlieben_wahl(
             sklave_profile.get("vorlieben", []),
-            dislikes=kategorie_logik.dislike_kategorien(sklave_profile),
+            dislikes=kategorie_logik.gesperrte_kategorien(sklave_profile),
             volltexte=letzte_tiny_volltexte[:3],
         )
         if kombi_vorlieben:
@@ -375,7 +375,8 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         sklave_vorlieben=vorlieben_anzeige,
         sklave_hard_limits=sklave_profile.get("hard_limits", []),
         # Kategorie-Dislikes aus Persönlichkeitsprofil (zentrale Logik)
-        sklave_dislike_kategorien=kategorie_logik.dislike_kategorien(sklave_profile),
+        sklave_dislike_kategorien=kategorie_logik.gesperrte_kategorien(sklave_profile),
+        sklave_selten_kategorien=kategorie_logik.selten_kategorien(sklave_profile),
         letzte_aufgaben=letzte_aufgaben,
         letzte_tiny_tasks=letzte_tiny_tasks,
         verbrauchte_anfaenge=verbrauchte_anfaenge,
