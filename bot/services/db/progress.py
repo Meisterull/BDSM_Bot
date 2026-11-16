@@ -96,8 +96,10 @@ async def get_completed_count_by_kategorie(user_id: str, kategorie: str) -> int:
 # knowledge_base
 # ---------------------------------------------------------------------------
 
-async def save_training(user_id: str, data: dict) -> str:
-    point_id = str(uuid.uuid4())
+async def save_training(user_id: str, data: dict, point_id: str | None = None) -> str:
+    """Legt einen Trainings-Eintrag ab. `point_id` vorgeben, wenn die ID schon
+    vor dem Speichern gebraucht wird (Knopf unter der Übung trägt sie)."""
+    point_id = point_id or str(uuid.uuid4())
     text = data.get("zusammenfassung", "")
     vector = await emb.get_embedding(text)
 
@@ -117,6 +119,34 @@ async def save_training(user_id: str, data: dict) -> str:
         )],
     )
     return point_id
+
+
+async def get_training_by_id(point_id: str, user_id: str = "domina") -> dict | None:
+    """Ein Trainings-Eintrag per ID. None, wenn es ihn nicht gibt oder er einem
+    anderen Paar gehört (die ID kommt aus callback_data, also von außen)."""
+    try:
+        results = await kern._aio(kern.client.retrieve,
+            collection_name="training",
+            ids=[point_id],
+            with_payload=True,
+            with_vectors=False,
+        )
+    except Exception as e:
+        logger.error("Fehler beim Laden des Trainings %s: %s", point_id, e)
+        return None
+    payload = (results[0].payload or {}) if results else {}
+    if not payload or payload.get("user_id") != kern.mandanten_key(user_id):
+        return None
+    return payload
+
+
+async def update_training(point_id: str, updates: dict) -> None:
+    """Ergänzt einen Trainings-Eintrag (Antwort + Rückmeldung kommen später als die Übung)."""
+    await kern._aio(kern.client.set_payload,
+        collection_name="training",
+        payload=updates,
+        points=[point_id],
+    )
 
 
 async def get_training_entries(user_id: str, limit: int = 10) -> list[dict]:

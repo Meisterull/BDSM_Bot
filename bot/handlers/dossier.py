@@ -316,6 +316,16 @@ async def aktualisiere_domina_dossier() -> str | None:
     except Exception as e:
         logger.error("Domina-Dossier: Gespräche laden fehlgeschlagen: %s", e)
 
+    # Was sie im Psycho-Training selbst geschrieben hat: ihre eigenen Worte über
+    # sich – bisher wurden die Antworten nur abgelegt und nie wieder gelesen.
+    training_antworten = []
+    try:
+        from bot.prompts import training as training_prompt
+        training_antworten = training_prompt.antwort_zeilen(
+            await qdrant.get_training_entries("domina", limit=30))
+    except Exception as e:
+        logger.error("Domina-Dossier: Trainings-Antworten laden fehlgeschlagen: %s", e)
+
     grenzen, unlust = _grenzen_und_unlust(grenzen)
 
     system = """Erstelle eine knappe, warmherzige Charakteristik der Domina – als internes Profil für ihren Coach (eine vertraute beste Freundin), damit er sie als Herrin wirklich kennt und gezielt begleiten kann.
@@ -324,6 +334,7 @@ Schreibe 4–6 Sätze Fließtext, Deutsch, KEINE Aufzählung, kein Markdown, kei
 Beschreibe: ihren Stil als Herrin, was sie reizt und interessiert, wie sie führt (sanft/streng/spielerisch …), ihre Ziele und ihre Entwicklung, und worauf der Coach bei ihr achten sollte.
 - COACH-HINWEIS = wie er sie unterstützt (Zuspruch, Formulierungshilfe, Tempo). Dort KEINE Liste konkreter Praktiken und keine Empfehlung, bestimmte Praktiken gezielt zu wiederholen.
 - Harte Grenzen und bloßes Desinteresse NIE in einem Atemzug nennen: Grenzen sind Tabus, „reizt sie nicht" ist nur Geschmack.
+- Stehen unten eigene Aussagen aus dem Training, wiegen sie schwerer als Rückschlüsse aus Aufgaben und Kategorien – es sind ihre Worte über sich. Gib sie sinngemäß wieder, nicht als Zitat; ältere Aussagen können überholt sein.
 NUR aus den Daten – nichts erfinden."""
     prompt = f"""Erfahrungsstand: {erfahrung or 'unbekannt'}
 Level: {level}
@@ -335,6 +346,9 @@ Was ihr an Aufgaben gut gefiel: {bewertungs_kontext or 'keine Daten'}
 Zuletzt vergebene Kategorien: {', '.join(letzte_kategorien) if letzte_kategorien else 'keine'}
 Aus früheren Coach-Gesprächen:
 {chr(10).join('  • ' + g for g in gespraeche) or '  (keine)'}"""
+    if training_antworten:
+        prompt += ("\nWas sie im Training über sich geschrieben hat (eigene Worte, mit Alter):\n"
+                   + "\n".join("  • " + a for a in training_antworten))
 
     try:
         text = grok.clean_text(await grok.simple(prompt, system=system + persona_config.sprache_anweisung(), reasoning=True))

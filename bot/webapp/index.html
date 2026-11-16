@@ -186,7 +186,7 @@ window.onerror = function (msg, src, zeile) {
         <button id="psycho-holen" class="primaer">🧠 Übung holen</button>
       </div>
       <div id="psycho-uebung" class="anleitung" style="display:none"></div>
-      <textarea id="psycho-eingabe" style="display:none; margin-top:10px" placeholder="Deine Antwort an den Coach…"></textarea>
+      <textarea id="psycho-eingabe" style="display:none; margin-top:10px" placeholder="Wenn du magst: deine Gedanken dazu…"></textarea>
       <div class="aktionen" id="psycho-aktion" style="display:none">
         <button id="psycho-senden" class="primaer">Antworten</button>
       </div>
@@ -698,10 +698,11 @@ el("training-erstellen").addEventListener("click", async () => {
   } catch (e) { m.textContent = "Fehler: " + e.message; }
   el("training-erstellen").disabled = false;
 });
-// --- Psycho-Training (Übung -> Antwort -> Feedback, Ablage serverseitig) ----
-const PSYCHO_TYPEN = [["", "automatisch"], ["mindset", "Mindset"], ["situation", "Situation"],
-                      ["reflexion", "Reflexion"], ["challenge", "Challenge"]];
-let psychoAktuell = null; // {typ, uebung}
+// --- Psycho-Training (Übung steht für sich; Antwort freiwillig -> Feedback, Ablage serverseitig) ----
+const PSYCHO_TYPEN = [["", "automatisch"], ["mindset", "Auftreten"], ["situation", "Situation"],
+                      ["reflexion", "Reflexion"], ["challenge", "Challenge"],
+                      ["worte", "Worte für die Szene"]];
+let psychoAktuell = null; // {typ, uebung, id}
 el("psycho-typ").addEventListener("click", () => {
   pickerZeigen(PSYCHO_TYPEN, el("psycho-typ").dataset.wert, (wert) => {
     el("psycho-typ").dataset.wert = wert;
@@ -719,7 +720,8 @@ el("psycho-holen").addEventListener("click", async () => {
     const d = await r.json();
     if (!r.ok) throw new Error(d.fehler || r.status);
     psychoAktuell = d;
-    el("psycho-uebung").textContent = `🧠 ${d.typ.charAt(0).toUpperCase() + d.typ.slice(1)}:\n\n${d.uebung.replace(/\*\*?/g, "")}`;
+    const typName = PSYCHO_TYPEN.find((p) => p[0] === d.typ)?.[1] || d.typ;
+    el("psycho-uebung").textContent = `🧠 ${typName}\n\n${d.uebung.replace(/\*\*?/g, "")}`;
     el("psycho-uebung").style.display = "";
     el("psycho-eingabe").style.display = "";
     el("psycho-eingabe").value = "";
@@ -736,11 +738,13 @@ el("psycho-senden").addEventListener("click", async () => {
   el("psycho-senden").disabled = true;
   try {
     const r = await hole("/api/psycho_antwort", { method: "POST", body: JSON.stringify({
-      typ: psychoAktuell.typ, uebung: psychoAktuell.uebung, antwort }) });
+      typ: psychoAktuell.typ, uebung: psychoAktuell.uebung, antwort, id: psychoAktuell.id || "" }) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.fehler || r.status);
-    el("psycho-feedback").textContent = "💬 " + d.feedback.replace(/\*\*?/g, "");
-    el("psycho-feedback").style.display = "";
+    if (d.feedback) {
+      el("psycho-feedback").textContent = "💬 " + d.feedback.replace(/\*\*?/g, "");
+      el("psycho-feedback").style.display = "";
+    }
     el("psycho-eingabe").style.display = "none";
     el("psycho-aktion").style.display = "none";
     m.textContent = "✅ Abgelegt.";

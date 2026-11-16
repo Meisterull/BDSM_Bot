@@ -231,6 +231,7 @@ async def alle(h, phase, w):
         await aufraeumen()
         config.TRAINING_ENABLED = True
         await h.send(D, "/training")
+        await h.press(D, "training:antwort")     # Antworten geht nur noch über den Knopf
         await h.send(D, "Ich würde ruhig bleiben, ihn ansehen und die Anweisung einmal knapp wiederholen.")
     await phase(h, "17 Training", p17)
 
@@ -615,3 +616,48 @@ async def alle(h, phase, w):
         await h.send(D, "/arc")
         await h.send(D, "/arc_beenden")
     await phase(h, "44 Event-Storyline", p44)
+
+    # ------------------------------------------------ 45 Psycho-Training (alle Arten, Job, Knopf, Dossier, Mini-App)
+    async def p45():
+        from bot.handlers import dossier, training
+        from bot.services import paare
+        from bot.services.miniapp import training as mt
+        config.TRAINING_ENABLED = True
+        await aufraeumen()
+        await schliesse_offene()
+        # 1) jede Übungsart einmal rendern (ohne Versand)
+        for typ in training.TRAINING_TYPEN:
+            await training.neue_uebung(typ)
+        # 2) Zeit-Job: die Übung kommt an, ohne den Chat zu belegen
+        vor = w.ZAEHLER["n"]
+        await h.job("training_job", tagesjobs.training_job)
+        print(f"   training_job: {w.ZAEHLER['n'] - vor} Prompts | {modi()} | Knöpfe D: {w.kn(h, D)}")
+        # 3) ein Auftrag direkt danach bleibt ein Auftrag
+        await h.send(D, "Gib ihm bitte folgende Aufgabe: Er soll heute Abend die Küche aufräumen.")
+        print(f"   nach Auftrag: {modi()}")
+        await dialog()
+        await aufraeumen()
+        await schliesse_offene()
+        # 4) freie Nachricht ohne Knopf: der Coach kennt die Übung aus dem Verlauf
+        await h.send(D, "Das mit der Übung probiere ich morgen aus.")
+        # 5) Knopf → Antwort → Rückmeldung am selben Eintrag
+        gedrueckt = await h.press(D, "training:antwort")
+        print(f"   Knopf gedrückt: {gedrueckt} | {modi()}")
+        await h.send(D, "Mir ist aufgefallen, dass ich zu schnell nachgebe, wenn er bettelt.")
+        print(f"   nach Antwort: {modi()}")
+        eintraege = await qdrant.get_training_entries("domina", limit=3)
+        print("   jüngste Einträge (typ, Antwort?, Rückmeldung?, quelle):",
+              [(e.get("typ"), bool(e.get("antwort")), bool(e.get("feedback")), e.get("quelle")) for e in eintraege])
+        # 6) Übung auf Abruf
+        await h.send(D, "/training")
+        print(f"   nach /training: {modi()}")
+        # 7) Dossier der Dom-Seite – jetzt mit ihrer Trainings-Antwort
+        await dossier.aktualisiere_domina_dossier()
+        # 8) Mini-App: Übung, Antwort am selben Eintrag, Kategorie-Training
+        pid = paare.alle_paare()[0].paar_id
+        r = await mt._psycho_uebung(pid, "")
+        print("   Mini-App-Übung:", r.get("typ"), "| ID dabei:", bool(r.get("id")))
+        await mt._psycho_antwort(pid, r["typ"], r["uebung"], "Das nehme ich mir für Samstag vor.", r.get("id", ""))
+        await mt._training_erstellen(pid, "Spanking")
+        config.TRAINING_ENABLED = False
+    await phase(h, "45 Psycho-Training", p45)

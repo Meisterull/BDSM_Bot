@@ -1122,14 +1122,24 @@ MESSAGES = {
     "SERIE_HINWEIS_TAEGLICH": "täglich",
 
     # --- Training ------------------------------------------------------------------
-    "TRAINING_WARTE": "🧠 *Psycho-Training – {typ}*\n\nEinen Moment...",
-    "TRAINING_UEBUNG": "🧠 {typ}:\n\n{uebung}\n\nSchreibe deine Gedanken oder Antwort. /abbrechen zum Beenden.",
-    "TRAINING_BEENDET": "✅ Training beendet.",
-    "TRAINING_FEEDBACK_PREFIX": "💬 *Coach-Feedback:*\n\n{feedback}",
-    "TRAINING_TAEGLICH": (
-        "🧠 Tägliches Training – {typ}:\n\n{uebung}\n\n"
-        "Schreibe deine Gedanken oder /abbrechen zum Überspringen."
+    # Die Übung steht für sich: kein „schreib deine Antwort" – wer antworten
+    # will, nimmt den Knopf darunter (erst der öffnet den Antwort-Mode).
+    "TRAINING_NACHRICHT": "🧠 Training – {typ}\n\n{uebung}",
+    "TRAINING_KNOPF_ANTWORT": "💬 Antworten",
+    "TRAINING_ANTWORT_BITTE": (
+        "Schreib einfach drauflos – deine nächste Nachricht zählt als Antwort auf die Übung. "
+        "/abbrechen, wenn du es dir anders überlegst."
     ),
+    "TRAINING_GERADE_BELEGT": "Gerade läuft noch etwas anderes – schließ das erst ab und tipp dann noch einmal auf den Knopf.",
+    "TRAINING_SCHON_BEANTWORTET": "Dazu hast du schon geschrieben. Wenn du noch etwas loswerden willst, schreib es mir einfach so.",
+    "TRAINING_ANTWORT_ABGELEGT": "✅ Ist angekommen.",
+    "TRAINING_BEENDET": "✅ Alles gut – die Übung bleibt stehen.",
+    "TRAINING_FEEDBACK_PREFIX": "💬 *Coach-Feedback:*\n\n{feedback}",
+    "TRAINING_TYP_MINDSET": "Auftreten",
+    "TRAINING_TYP_SITUATION": "Situation",
+    "TRAINING_TYP_REFLEXION": "Reflexion",
+    "TRAINING_TYP_CHALLENGE": "Challenge",
+    "TRAINING_TYP_WORTE": "Worte für die Szene",
 
     # --- Namen / Persona-Settings -----------------------------------------------------
     "NAMEN_BOTNAME_ANZEIGE": "Aktueller Bot-Name: {aktuell}\n\nSetzen: /botname <Name>\nEntfernen: /botname -",

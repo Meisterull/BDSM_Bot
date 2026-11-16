@@ -28,8 +28,23 @@ SNAP_DIR="$(docker inspect "$QDRANT_CONTAINER" --format '{{range .Mounts}}{{if e
 
 mkdir -p "$AUS"; chmod 777 "$AUS"
 ENVFILE="$(mktemp)"; chmod 600 "$ENVFILE"
+SNAPS=""
 aufraeumen() {
     rm -f "$ENVFILE"
+    # Die eigens erzeugten Snapshots wieder entfernen – sie verdrängen sonst die
+    # nächtlichen aus der Aufbewahrung (die zählt die jüngsten N je Collection).
+    if [ -n "$SNAPS" ]; then
+        docker exec -e SNAPS="$SNAPS" "$BOT_CONTAINER" python -W ignore -c "
+import os, re
+from bot.services.db import kern
+for name in os.environ['SNAPS'].split():
+    col = re.sub(r'-\d+-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.snapshot\$', '', name)
+    try:
+        kern.client.delete_snapshot(col, name)
+    except Exception:
+        pass
+" >/dev/null 2>&1 || true
+    fi
     docker rm -f "$QNAME" >/dev/null 2>&1 || true
     docker network rm "$NETZ" >/dev/null 2>&1 || true
 }

@@ -141,6 +141,10 @@ ROLLENSPIEL_VORSCHLAG_TIME = os.getenv("ROLLENSPIEL_VORSCHLAG_TIME", "19:00")  #
 WOCHENPLANUNG_TIME = os.getenv("WOCHENPLANUNG_TIME", "19:00")                # sonntags
 TINY_TASK_FEEDBACK_TIME = os.getenv("TINY_TASK_FEEDBACK_TIME", "21:30")
 TRAINING_ERINNERUNG_TIME = os.getenv("TRAINING_ERINNERUNG_TIME", "20:00")
+# Psycho-Training (Di+Do). Eigene Zeit statt „5 Minuten nach der Nachfrage":
+# der alte Versatz legte die Übung in den frühen Abend direkt vor den
+# Aufgaben-Vorschlag – der Default liegt jetzt im späteren Abend.
+TRAINING_TIME = os.getenv("TRAINING_TIME", "20:15")
 
 # Lücken-Füller: schlägt der Domina nach LUECKEN_INTERVALL_TAGE Tagen ohne erteilte
 # Aufgabe/Szene einen Task vor (nur bei Opt-in via /luecken; sie gibt jeden frei).
@@ -414,10 +418,6 @@ def kat_to_cmd(kat: str) -> str:
     return _re.sub(r"[^a-z0-9_]", "_", s)
 
 
-# Psycho-Training Zeit (Minuten nach FOLLOWUP_TIME)
-TRAINING_OFFSET_MINUTEN = 5
-
-
 def validate() -> None:
     """Fail-fast beim Start: Pflicht-Env-Vars prüfen mit klarer Meldung.
 
@@ -453,6 +453,7 @@ def validate() -> None:
         ("WOCHENPLANUNG_TIME", WOCHENPLANUNG_TIME),
         ("TINY_TASK_FEEDBACK_TIME", TINY_TASK_FEEDBACK_TIME),
         ("TRAINING_ERINNERUNG_TIME", TRAINING_ERINNERUNG_TIME),
+        ("TRAINING_TIME", TRAINING_TIME),
         ("LUECKEN_CHECK_TIME", LUECKEN_CHECK_TIME),
         ("LUECKEN_ABEND_TIME", LUECKEN_ABEND_TIME),
         ("TERMIN_ZUSTELLUNG_TIME", TERMIN_ZUSTELLUNG_TIME),

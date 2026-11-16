@@ -33,6 +33,7 @@ ZEIT_FELDER = {
     "wochenplanung_time": "WOCHENPLANUNG_TIME",
     "tiny_task_feedback_time": "TINY_TASK_FEEDBACK_TIME",
     "training_erinnerung_time": "TRAINING_ERINNERUNG_TIME",
+    "training_time": "TRAINING_TIME",
     "luecken_check_time": "LUECKEN_CHECK_TIME",
     "luecken_abend_time": "LUECKEN_ABEND_TIME",
     "termin_zustellung_time": "TERMIN_ZUSTELLUNG_TIME",

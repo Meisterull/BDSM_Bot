@@ -321,24 +321,32 @@ async def test_advent_pause_skip():
 # --------------------------------------------------------------------------
 
 async def test_training_send_fehler_kein_geister_mode():
+    """Seit dem Umbau (16.11.2026) setzt die Übung keinen Mode mehr. Geblieben
+    ist die Regel dahinter: ein Sendefehler hinterlässt nichts – keinen Mode,
+    keinen abgelegten Eintrag, keinen Verlaufs-Eintrag für eine nie gesehene Übung."""
     orig_enabled = _config.TRAINING_ENABLED
-    orig_gen = _tr._generiere_uebung
+    orig_neu = _tr.neue_uebung
+    orig_save = db_progress.save_training
     try:
         _config.TRAINING_ENABLED = True
         _tr.paare.dom_chat_id = lambda: "111"
         _state.set_mode("111", "chat")
+        verlauf_vorher = len(_state.get_history("111"))
         db_profile.get_user_profile = AsyncMock(return_value={"erfahrungsstand": "x"})
-        db_tasks.get_tasks_by_status = AsyncMock(return_value=[])
-        db_progress.get_training_entries = AsyncMock(return_value=[])
-        _tr._generiere_uebung = AsyncMock(return_value="Übung")
+        db_progress.save_training = AsyncMock(return_value="id")
+        _tr.neue_uebung = AsyncMock(return_value={"typ": "challenge", "uebung": "Übung", "level": 1})
         bot = MagicMock()
         bot.send_message = AsyncMock(side_effect=Exception("netz"))
         await _tr.daily_training(bot)  # Fehler wird intern gefangen
+        assert bot.send_message.await_count == 1
         assert _state.get_mode("111") == "chat"
-        assert "training_typ" not in _state.get("111") or not _state.get("111").get("training_typ")
+        assert db_progress.save_training.await_count == 0
+        assert len(_state.get_history("111")) == verlauf_vorher
+        assert not any(_state.get("111").get(k) for k in _tr._STATE_KEYS)
     finally:
         _config.TRAINING_ENABLED = orig_enabled
-        _tr._generiere_uebung = orig_gen
+        _tr.neue_uebung = orig_neu
+        db_progress.save_training = orig_save
 
 
 # --------------------------------------------------------------------------

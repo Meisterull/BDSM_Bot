@@ -53,6 +53,7 @@ ZEIT_REIHENFOLGE = [
     ("wochenplanung_time", "Wochenplanung (sonntags)"),
     ("luecken_abend_time", "Lücken-Zustellung „heute Abend“"),
     ("termin_zustellung_time", "Termin-Aufgaben-Zustellung (am Zieltag)"),
+    ("training_time", "Psycho-Training (Di+Do)"),
 ]
 
 # Wie config.validate(): Stunden strikt 00-23, Minuten 00-59

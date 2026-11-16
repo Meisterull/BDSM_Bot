@@ -94,8 +94,6 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
         vanilla = modi.ist_vanilla()
 
     hour, minute = config.hm(z["followup_time"])
-    # Training Zeit = Follow-up + TRAINING_OFFSET_MINUTEN
-    training_total = hour * 60 + minute + config.TRAINING_OFFSET_MINUTEN
 
     def _job(name, fn, zeit_feld, **cron):
         h, m = config.hm(z[zeit_feld])
@@ -112,9 +110,8 @@ def plane_zeit_jobs(bot, paar: "paare.Paar") -> None:
     scheduler.add_job(_fuer_paar(followup_job, pid), "cron", hour=hour, minute=minute,
                       args=[bot], id=f"daily_followup_p{pid}", replace_existing=True)
     if config.TRAINING_ENABLED:
-        scheduler.add_job(_fuer_paar(training_job, pid), "cron", day_of_week="tue,thu",
-                          hour=(training_total // 60) % 24, minute=training_total % 60,
-                          args=[bot], id=f"daily_training_p{pid}", replace_existing=True)
+        # Job-ID bleibt "daily_training_p…" (replace_existing ersetzt Alt-Planungen).
+        _job("daily_training", training_job, "training_time", day_of_week="tue,thu")
     # Eigenes Gate (D9/N12): prüft Tasks, nicht Training – siehe config.py.
     if config.TRAINING_ERINNERUNG_ENABLED:
         _job("training_erinnerung", training_erinnerung_job, "training_erinnerung_time")

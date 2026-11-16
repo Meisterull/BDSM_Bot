@@ -1118,14 +1118,22 @@ MESSAGES = {
     "SERIE_HINWEIS_TAEGLICH": "daily",
 
     # --- Training ------------------------------------------------------------------
-    "TRAINING_WARTE": "🧠 *Psycho Training – {typ}*\n\nOne moment...",
-    "TRAINING_UEBUNG": "🧠 {typ}:\n\n{uebung}\n\nWrite your thoughts or answer. /abbrechen to stop.",
-    "TRAINING_BEENDET": "✅ Training finished.",
-    "TRAINING_FEEDBACK_PREFIX": "💬 *Coach feedback:*\n\n{feedback}",
-    "TRAINING_TAEGLICH": (
-        "🧠 Daily training – {typ}:\n\n{uebung}\n\n"
-        "Write your thoughts or /abbrechen to skip."
+    "TRAINING_NACHRICHT": "🧠 Training – {typ}\n\n{uebung}",
+    "TRAINING_KNOPF_ANTWORT": "💬 Reply",
+    "TRAINING_ANTWORT_BITTE": (
+        "Just write – your next message counts as your reply to the exercise. "
+        "/abbrechen if you change your mind."
     ),
+    "TRAINING_GERADE_BELEGT": "Something else is still open – finish that first, then tap the button again.",
+    "TRAINING_SCHON_BEANTWORTET": "You already replied to this one. If there is more you want to say, just write it to me.",
+    "TRAINING_ANTWORT_ABGELEGT": "✅ Got it.",
+    "TRAINING_BEENDET": "✅ All good – the exercise stays where it is.",
+    "TRAINING_FEEDBACK_PREFIX": "💬 *Coach feedback:*\n\n{feedback}",
+    "TRAINING_TYP_MINDSET": "Presence",
+    "TRAINING_TYP_SITUATION": "Situation",
+    "TRAINING_TYP_REFLEXION": "Reflection",
+    "TRAINING_TYP_CHALLENGE": "Challenge",
+    "TRAINING_TYP_WORTE": "Words for the scene",
 
     # --- Namen / Persona-Settings -----------------------------------------------------
     "NAMEN_BOTNAME_ANZEIGE": "Current bot name: {aktuell}\n\nSet: /botname <name>\nRemove: /botname -",

@@ -189,8 +189,10 @@ Beispiel-Tasks: {', '.join(daten['task_details'])}"""
 
 
 @basis._job_guard
+@basis._nachholbar(max_stunden=5)
 async def training_job(bot: Bot) -> None:
-    """Tägliches Psycho-Training – 5 Minuten nach Follow-up."""
+    """Psycho-Training Di+Do zur Trainings-Zeit des Paares (TRAINING_TIME).
+    Ist der Chat gerade in einem Flow, wird die Übung nachgeholt."""
     from bot.handlers.training import daily_training
     logger.info("Training-Job gestartet.")
     await daily_training(bot)

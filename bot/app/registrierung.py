@@ -181,6 +181,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(tiny_task_feedback.callback_button, pattern=r"^tinyfb:"))
     app.add_handler(CallbackQueryHandler(stimmung.callback_button, pattern=r"^stimmung:"))
     app.add_handler(CallbackQueryHandler(stille_checkin.callback,           pattern=r"^stille:"))
+    app.add_handler(CallbackQueryHandler(training.callback,                 pattern=r"^training:"))
     app.add_handler(CallbackQueryHandler(wuerfel.callback,                pattern=r"^wuerfel:"))
     app.add_handler(CallbackQueryHandler(wette.callback,                  pattern=r"^wette:"))
     app.add_handler(CallbackQueryHandler(blitz.callback_fertig,           pattern=r"^blitz:fertig:"))

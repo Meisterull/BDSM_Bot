@@ -182,7 +182,7 @@ FLOW_STATE_KEYS = (
     "inspiration_vorschlaege", "inspiration_point_ids", "inspiration_iteration", "inspiration_feedback",
     "neue_vorlage_name", "vorlagen_liste",
     "loeschen_tasks", "loeschen_bestaetigung_id", "loeschen_serie_stopp",
-    "training_typ", "training_uebung",
+    "training_id", "training_typ", "training_uebung", "training_msg_id",
     "quiz_frage", "quiz_musterantwort",
     # Coach-Quiz (fehlten hier: Stale-Reset ließ die Frage-Leichen liegen)
     "coach_quiz_typ", "coach_quiz_frage", "coach_quiz_muster",

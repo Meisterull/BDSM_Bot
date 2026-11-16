@@ -103,6 +103,7 @@ _CALLBACK_ROLLEN = (
     ("kettefail:",          paare.ROLLE_DOM),
     ("wochenplan:",         paare.ROLLE_DOM),
     ("stille:",             paare.ROLLE_DOM),
+    ("training:",           paare.ROLLE_DOM),   # Übung: „Antworten"-Knopf
     ("herrinfehl:",         paare.ROLLE_DOM),   # Versäumnis: nachholen/streichen
     ("snaufgabe:",          paare.ROLLE_DOM),   # Sprachnachricht → Aufgabe ja/nein
     ("snnetz:",             paare.ROLLE_DOM),   # Prüf-Netz: Weitergabe ok/Wortlaut/nein

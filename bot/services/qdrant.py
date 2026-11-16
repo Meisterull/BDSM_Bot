@@ -92,6 +92,7 @@ _MODUL_VON = {
     "get_task": "tasks",
     "get_tasks_by_status": "tasks",
     "get_tiny_task_by_id": "vorschlaege",
+    "get_training_by_id": "progress",
     "get_training_entries": "progress",
     "get_user_profile": "profile",
     "get_vertrauens_score": "strafen",
@@ -119,6 +120,7 @@ _MODUL_VON = {
     "update_skill_fields": "skills",
     "update_strafe": "strafen",
     "update_task": "tasks",
+    "update_training": "progress",
     "update_wunsch": "wuensche",
     "upsert_user_profile": "profile",
 }
