@@ -182,6 +182,23 @@ def test_pausierte_kategorie_wird_nicht_gewaehlt():
                for _ in range(400))
 
 
+def test_gedaempfte_kategorie_ist_nie_das_bevorzugte_thema():
+    """Heruntergestufte Kategorien bleiben wählbar, werden aber nicht als
+    „frisches Thema, heute BEVORZUGEN" gesetzt."""
+    random.seed(3)
+    profil = {"vorlieben": ["Pegging"], kl.FELD_SELTEN: ["Sissy_Training", "Feminisierung"]}
+    frei = {"vorlieben": ["Pegging"]}
+    als_frisch = gewaehlt = ohne_daempfung = 0
+    for _ in range(600):
+        auswahl, cross = kl.gewichtete_auswahl(profil, count=3, mit_cross_info=True)
+        als_frisch += cross in profil[kl.FELD_SELTEN]
+        gewaehlt += bool(set(auswahl) & set(profil[kl.FELD_SELTEN]))
+        _, cross = kl.gewichtete_auswahl(frei, count=3, mit_cross_info=True)
+        ohne_daempfung += cross in profil[kl.FELD_SELTEN]
+    assert als_frisch == 0 and ohne_daempfung > 10, (als_frisch, ohne_daempfung)
+    assert gewaehlt > 0, gewaehlt                      # in den normalen Slots weiter möglich
+
+
 async def test_buchung_setzt_und_hebt_die_pause():
     from bot.services import qdrant
     gespeichert: dict = {}
@@ -436,6 +453,7 @@ if __name__ == "__main__":
     test_prompt_nennt_heute_und_die_umrechnung()
     test_thema_pausiert()
     test_pausierte_kategorie_wird_nicht_gewaehlt()
+    test_gedaempfte_kategorie_ist_nie_das_bevorzugte_thema()
     asyncio.run(test_buchung_setzt_und_hebt_die_pause())
     asyncio.run(test_nur_der_grund_thema_setzt_die_pause())
     test_prompt_nennt_pause_und_abgelehntes_thema()

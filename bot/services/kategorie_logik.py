@@ -1219,6 +1219,11 @@ def gewichtete_auswahl(
                 k for k in (exploration | wildcard)
                 if not (zc.get(k, set()) & basis_cluster)
             }
+        # Der Prompt markiert diesen Slot als „frisches Thema, heute BEVORZUGEN".
+        # Eine gedämpfte Kategorie (selten_kategorien) bleibt in den normalen
+        # Slots wählbar, aber sie wird nicht bevorzugt – genau das geschah mit
+        # einer am Vortag heruntergestuften Kategorie (Live-Befund 17.11.2026).
+        fremd -= selten
         # bevorzugt ein fremdes Thema, das auch nicht zuletzt schon dran war
         fremd_frisch = {k for k in fremd if not (zc.get(k, set()) & recent_cluster)}
         kandidaten = fremd_frisch or fremd
