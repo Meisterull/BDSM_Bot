@@ -703,3 +703,49 @@ async def alle(h, phase, w):
         print(f"   fester Knopf: {e.get('zusammenfassung')!r}")
         config.STIMMUNG_ENABLED = False
     await phase(h, "46 Stimmungsfrage", p46)
+
+    # ------------------------------------------------ 47 Coach kennt, was sonst im Chat der Dom-Seite steht
+    async def p47():
+        dom_chat = config.DOMINA_CHAT_ID
+
+        def gemerkt() -> list[str]:
+            return [" ".join(e["text"].split())[:44] for e in st.gesendet_offen(dom_chat)]
+
+        def erwarte_vorspann(muster: str) -> int:
+            """Greift nur, wenn der Vorspann mit diesem Inhalt beim Modell ankommt."""
+            w.OVERRIDES.append((r"Zur Einordnung.*" + muster, "Du meinst das von eben, oder?"))
+            return len(w.OVERRIDES)
+
+        await aufraeumen()
+        await schliesse_offene()
+        await qdrant.patch_profile_fields("sklave", {"wette": {}})     # Kopie der Live-Daten: keine laufende Wette
+        await neue_aufgabe("Er soll heute Abend den Tisch decken.")
+        st.gesendet_abhaken(dom_chat, 9e12)                            # Vorgeschichte interessiert hier nicht
+        # 1) Er wettet → Info an sie → sie antwortet mit einem einzigen Wort
+        await h.send(S, "/wette")
+        gedrueckt = await h.press(S, "wette:setzen")
+        print(f"   gewettet: {gedrueckt} | gemerkt: {gemerkt()}")
+        n = erwarte_vorspann("gewettet")
+        vor = w.ZAEHLER["n"]
+        await h.send(D, "Einverstanden")
+        print(f"   Ein-Wort-Antwort: Vorspann mit der Wett-Info beim Modell: {len(w.OVERRIDES) < n} | "
+              f"{w.ZAEHLER['n'] - vor} Prompts | danach gemerkt: {gemerkt()} | {modi()}")
+        verlauf = st.get_history(dom_chat)[-2:]
+        print(f"   im Verlauf: {[(m['role'], m['content'][:40]) for m in verlauf]}")
+        # 2) Folge-Nachricht ohne neue Info → kein Vorspann mehr
+        n = erwarte_vorspann(".")
+        await h.send(D, "Alles klar, danke dir.")
+        print(f"   Folge-Nachricht ohne Vorspann: {len(w.OVERRIDES) == n} | gemerkt: {gemerkt()}")
+        w.OVERRIDES.pop()
+        # 3) Auftrag mit Sprachnachricht: Bestätigung und Angebot stehen daneben, seine Antwort nicht
+        await h.send(D, "Sag ihm bitte: Er soll um neun bereitstehen.")
+        print(f"   nach Auftrag gemerkt: {gemerkt()} | {modi()} | Knöpfe D: {w.kn(h, D)}")
+        n = erwarte_vorspann("Auftrag")
+        await h.send(D, "Ja, mach das")
+        print(f"   getippte Antwort auf das Angebot: Vorspann beim Modell: {len(w.OVERRIDES) < n} | {modi()}")
+        if len(w.OVERRIDES) == n:
+            w.OVERRIDES.pop()
+        await aufraeumen()
+        await schliesse_offene()
+        await qdrant.patch_profile_fields("sklave", {"wette": {}})
+    await phase(h, "47 Coach kennt automatische Nachrichten", p47)

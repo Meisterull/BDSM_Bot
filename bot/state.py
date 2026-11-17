@@ -4,6 +4,8 @@ Wird beim Start aus Qdrant (Modi/Tasks) und aus STATE_FILE (message_history,
 Pause-Flag) wiederhergestellt.
 """
 import asyncio
+import contextlib
+import contextvars
 import json
 import logging
 import os
@@ -320,6 +322,7 @@ def vergiss_chat(chat_id: str) -> None:
     with _persist_lock:
         _state.pop(str(chat_id), None)
         (_state.get("__eingang__") or {}).pop(str(chat_id), None)
+        (_state.get("__gesendet__") or {}).pop(str(chat_id), None)
     _persist(immediate=True)
 
 
@@ -433,6 +436,78 @@ def clear_history(chat_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Was der Bot sonst noch in den Chat geschrieben hat
+# ---------------------------------------------------------------------------
+# Der Verlauf (message_history) enthält nur den Wortwechsel mit dem Modell.
+# Alles andere im selben Chat – Infos, Berichte, Vorschläge, Rückfragen mit
+# Knöpfen – kennt das Modell nicht. Schreibt jemand als Reaktion darauf einen
+# Freitext, bezieht das Modell ihn auf das Letzte, was es kennt (Live
+# 17.11.2026: ein einzelnes Wort als Reaktion auf eine Info löste die
+# Wiederholung eines älteren Auftrags aus). Deshalb merkt sich der Bot je Chat
+# die jüngsten Nachrichten, die NICHT im Verlauf stehen; der Chat-Handler gibt
+# sie dem Modell als Kontext mit und hakt sie nach seiner Antwort ab.
+
+GESENDET_MAX = 6                    # je Chat
+GESENDET_MAX_ZEICHEN = 4096         # je Nachricht = Telegrams Obergrenze; gekürzt wird erst im Prompt
+GESENDET_MAX_ALTER = 24 * 3600      # Sekunden – Älteres beantwortet niemand mehr mit einem Wort
+
+_im_verlauf: contextvars.ContextVar[bool] = contextvars.ContextVar("gesendet_im_verlauf", default=False)
+
+
+@contextlib.contextmanager
+def steht_im_verlauf():
+    """Für Sendungen, die der Aufrufer selbst in den Verlauf einträgt
+    (add_message): Sie werden hier nicht noch einmal gemerkt – sonst bekäme das
+    Modell seine eigene Antwort zusätzlich als „automatische Nachricht"."""
+    token = _im_verlauf.set(True)
+    try:
+        yield
+    finally:
+        _im_verlauf.reset(token)
+
+
+def _frisch(eintraege, jetzt: float) -> list[dict]:
+    return [e for e in (eintraege or [])
+            if isinstance(e, dict) and isinstance(e.get("zeit"), (int, float)) and e.get("text")
+            and jetzt - e["zeit"] <= GESENDET_MAX_ALTER]
+
+
+def merke_gesendet(chat_id, text) -> None:
+    """Eine Nachricht des Bots an diesen Chat festhalten (Aufruf: zentraler
+    Sende-Wrapper, app/routing.py). Innerhalb von steht_im_verlauf() ein No-op."""
+    text = str(text or "").strip()
+    if not text or _im_verlauf.get():
+        return
+    jetzt = time.time()
+    with _persist_lock:
+        alle = _state.setdefault("__gesendet__", {})
+        liste = _frisch(alle.get(str(chat_id)), jetzt)
+        liste.append({"zeit": jetzt, "text": text[:GESENDET_MAX_ZEICHEN]})
+        alle[str(chat_id)] = liste[-GESENDET_MAX:]
+    _persist()
+
+
+def gesendet_offen(chat_id) -> list[dict]:
+    """Die gemerkten Nachrichten der letzten 24 Stunden, älteste zuerst (Kopie)."""
+    jetzt = time.time()
+    with _persist_lock:
+        return [dict(e) for e in _frisch((_state.get("__gesendet__") or {}).get(str(chat_id)), jetzt)]
+
+
+def gesendet_abhaken(chat_id, bis: float) -> None:
+    """Alles bis einschließlich Zeitstempel `bis` ist dem Modell gezeigt und
+    beantwortet – es steht ab jetzt über die Antwort im Verlauf."""
+    with _persist_lock:
+        alle = _state.get("__gesendet__") or {}
+        rest = [e for e in alle.get(str(chat_id)) or [] if e.get("zeit", 0) > bis]
+        if rest:
+            alle[str(chat_id)] = rest
+        else:
+            alle.pop(str(chat_id), None)
+    _persist()
+
+
+# ---------------------------------------------------------------------------
 # Persistenz (message_history + Pause-Flag) – überlebt Neustart via STATE_FILE.
 # Modi/Tasks werden separat aus Qdrant via restore_state() wiederhergestellt.
 # ---------------------------------------------------------------------------
@@ -488,6 +563,9 @@ def _persist_now() -> None:
                 # Stille-Check-in: Eingangsstempel je Chat + Coach-Ruhe je Paar
                 "eingang": dict(_state.get("__eingang__") or {}),
                 "coach_ruhe": dict(_state.get("__coach_ruhe__") or {}),
+                # Bot-Nachrichten außerhalb des Verlaufs (s. merke_gesendet)
+                "gesendet": {cid: list(liste) for cid, liste
+                             in (_state.get("__gesendet__") or {}).items() if liste},
             }
             pfad = config.STATE_FILE
             os.makedirs(os.path.dirname(pfad) or ".", exist_ok=True)
@@ -529,6 +607,11 @@ def load_persisted() -> None:
         if isinstance(daten.get("coach_ruhe"), dict):
             _state["__coach_ruhe__"] = {str(k): v for k, v in daten["coach_ruhe"].items()
                                         if isinstance(v, dict) and v.get("modus")}
+        if isinstance(daten.get("gesendet"), dict):
+            jetzt = time.time()
+            geladen = {str(k): _frisch(v if isinstance(v, list) else [], jetzt)[-GESENDET_MAX:]
+                       for k, v in daten["gesendet"].items()}
+            _state["__gesendet__"] = {k: v for k, v in geladen.items() if v}
         logger.info("State geladen: %d Chats, pausierte Paare=%s",
                     len(daten.get("histories") or {}),
                     sorted(_state.get("__paused_paare__", set())) or "keine")

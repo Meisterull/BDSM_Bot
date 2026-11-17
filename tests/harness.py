@@ -108,6 +108,11 @@ class Harness:
         self.app = ApplicationBuilder().token("4242:TESTTOKEN").build()
         self.bot = self.app.bot
         self._patch_bot()
+        # Wie im Betrieb (app/lebenszyklus): der Sende-Wrapper liegt um den
+        # Versand – hier um den nachgestellten. Er merkt sich, was die Dom-Seite
+        # außerhalb des Coach-Verlaufs bekommt (state.merke_gesendet).
+        from bot.app import routing
+        routing._wrap_outgoing_logging(self.app)
         await self.app.initialize()
         app_registrierung.register_handlers(self.app)
         # Fehler zusätzlich für den Testbericht einsammeln (läuft NEBEN dem

@@ -90,7 +90,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # [SPRACHNACHRICHT:]-Tag (komplett ODER von max_tokens gekappt) nie anzeigen.
     clean_response = re.sub(r"\[SPRACHNACHRICHT:[^\]]*\]?", "", clean_response).rstrip()
     if clean_response:
-        await telegram_helper.reply_markdown_safe(update.message, clean_response)
+        with state.steht_im_verlauf():   # seine Antwort – kein „automatischer" Text
+            await telegram_helper.reply_markdown_safe(update.message, clean_response)
         # „Telefonieren" (Flag aus handle_voice): gesprochene Frage → Antwort
         # zusätzlich als Voice-Bubble in der Coach-Stimme (best-effort).
         if context.chat_data.get("voice_eingang"):
@@ -548,8 +549,12 @@ async def _chat_antwort(
 ) -> str | None:
     """Grok-Chat mit History-Pflege. Gibt die Antwort zurück oder None bei Fehler
     (dann ist die Fehlermeldung bereits gesendet)."""
+    # Was sie seit dem letzten Wortwechsel sonst noch im Chat bekommen hat
+    # (Infos, Berichte, Vorschläge) – der Coach soll wissen, worauf sie antwortet.
+    automatik = state.gesendet_offen(chat_id)
     state.add_message(chat_id, "user", text)
-    history = state.get_history(chat_id)
+    history = _verlauf_fuer_modell(state.get_history(chat_id),
+                                   domina_coach.automatik_hinweis(automatik))
     try:
         async with telegram_helper.typing_action(context.bot, chat_id):
             response = await grok.chat(system, history)
@@ -578,7 +583,21 @@ async def _chat_antwort(
     except Exception as e:
         logger.error("Tarn-Neugenerierung fehlgeschlagen: %s", e)
     state.add_message(chat_id, "assistant", response)
+    if automatik:
+        # Gezeigt und beantwortet: ab jetzt trägt seine Antwort den Bezug im Verlauf.
+        state.gesendet_abhaken(chat_id, automatik[-1]["zeit"])
     return response
+
+
+def _verlauf_fuer_modell(history: list[dict], hinweis: str) -> list[dict]:
+    """Der Verlauf, wie ihn das Modell für DIESE Antwort bekommt: mit dem
+    Automatik-Hinweis als Vorspann ihrer neuen Nachricht. Eine Kopie – im
+    gespeicherten Verlauf bleibt ihre Nachricht ihr Wortlaut (Prüf-Netz,
+    Folge-Antworten und Auswertungen lesen ihn als das, was sie gesagt hat)."""
+    if not hinweis or not history or history[-1].get("role") != "user":
+        return history
+    letzte = history[-1]
+    return history[:-1] + [{**letzte, "content": f"{hinweis}\n\n{letzte.get('content', '')}"}]
 
 
 async def _starte_aufgaben_bestaetigung(

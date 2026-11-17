@@ -584,7 +584,9 @@ MESSAGES = {
     "WETTE_ZU_WENIG_PUNKTE": "🎰 Du hast {punkte} Punkte – für eine Wette brauchst du mindestens {minimum}.",
     "WETTE_STATE_WEG": "Diese Wett-Buttons sind nicht mehr gültig. Starte neu mit /wette.",
     "WETTE_VERLOREN": "🎰 *Wette verloren.* Dein Einsatz von {einsatz} Punkten ist weg.",
-    "WETTE_INFO_DOMINA": "🎰 Nebenbei: dein Sklave hat gerade *{einsatz} Punkte* darauf gewettet, dass er seine nächste Aufgabe schafft. Doppelt oder nichts.",
+    # Reine Info ohne Knöpfe: Sie darf nicht mit einer Auswahl enden. Der frühere
+    # Schluss „Doppelt oder nichts." wurde wie eine Frage beantwortet.
+    "WETTE_INFO_DOMINA": "🎰 Nebenbei: dein Sklave hat gerade *{einsatz} Punkte* darauf gewettet, dass er seine nächste Aufgabe schafft. Schafft er sie, bekommt er das Doppelte zurück, sonst ist der Einsatz weg. Nur zur Info, du musst nichts tun.",
     "SPIEL_IMPULS_WETTE": "Mir ist gerade nach einem Spiel – und du darfst mitspielen:",
 
     # --- Blitzaufgaben ⚡ --------------------------------------------------------

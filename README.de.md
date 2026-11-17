@@ -357,6 +357,8 @@ Auch die festen Verhaltensregeln (führen statt spiegeln, Wortvielfalt, anatomis
 
 `LOG_PORT=0` deaktiviert den HTTP-Log-Server (Standard). Wird er aktiviert, verweigert er ohne `LOG_USERS` (Basic-Auth) den Start, spricht reines HTTP, und die Compose-Datei bindet ihn an `127.0.0.1` – Zugriff per SSH-Tunnel. Nachrichteninhalte landen nur in der 0600-Logdatei, nie in `docker logs`.
 
+Zur Fehlersuche steht in der Logdatei auch, was an das Modell geht: Jeder Aufruf schreibt seine vollständige Eingabe (System-Prompt und alle Nachrichten) als `LLM-EINGABE-VOLL`, und eine Kennung (`#a1b2c3`) verbindet Eingabe, `LLM-Call` und `LLM-AUSGABE`. Auf dem Log-Server bleibt die Übersicht schlank; ein einzelner Aufruf öffnet sich mit `/?eingabe=a1b2c3` (oder `/?eingabe=letzte` für den jüngsten). Die Eingaben enthalten die vollständigen Profile **beider** Seiten und sind deshalb nur für Nutzer aus `LOG_EINGABE_USERS` sichtbar – andere Log-Nutzer sehen diese Zeilen nicht und können keinen Aufruf öffnen. `LOG_LLM_EINGABE=false` schaltet das Mitschreiben ab.
+
 ---
 
 ## Architektur (Kurzfassung)

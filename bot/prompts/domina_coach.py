@@ -364,3 +364,65 @@ def format_quiz_wissen(entries: list[dict]) -> str:
         marker = " (falsch beantwortet – behutsam wiederholen)" if e.get("status") == "offen" else ""
         zeilen.append(f"• {e.get('thema', '?')}{marker}: {e.get('inhalt', '')[:300]}")
     return "\n".join(zeilen)
+
+
+# ---------------------------------------------------------------------------
+# Was sonst noch in ihrem Chat steht (state.merke_gesendet)
+# ---------------------------------------------------------------------------
+
+AUTOMATIK_MAX = 4          # so viele der jüngsten Nachrichten bekommt der Coach zu sehen
+_AUTOMATIK_LANG = 1500     # die jüngste (fast) vollständig – auf sie wird am ehesten geantwortet
+_AUTOMATIK_KURZ = 400      # ältere gekürzt: genug, um den Bezug zu erkennen
+_QUITTUNG_MAX = 30         # kürzer und ohne Frage = bloße Quittung („✅ Abgebrochen.")
+
+
+def _gekuerzt(text: str, grenze: int) -> str:
+    """Einzeilig, ohne Markdown-Zeichen und höchstens `grenze` Zeichen. Gekürzt
+    wird in der Mitte: Am Schluss einer Nachricht steht oft die Frage, auf die
+    geantwortet wird."""
+    from bot.services import telegram_helper
+    text = " ".join(telegram_helper.strip_md(str(text or "")).split())
+    if len(text) <= grenze:
+        return text
+    schluss = grenze // 4
+    return f"{text[:grenze - schluss].rstrip()} […] {text[-schluss:].lstrip()}"
+
+
+def automatik_hinweis(nachrichten: list[dict], jetzt: float | None = None) -> str:
+    """Vorspann für die neue Nachricht der Dom-Seite: was ihr das System seit
+    dem letzten Wortwechsel sonst noch in den Chat geschrieben hat
+    ([{"zeit": Unix-Zeit, "text": …}], älteste zuerst). Leer, wenn es nichts gab.
+
+    Der Coach kennt nur seinen eigenen Wortwechsel. Infos, Berichte und
+    Vorschläge kommen für sie aber aus demselben Chat; antwortet sie darauf mit
+    einem Wort, bezog er es bisher auf das Letzte in seinem Verlauf. Der
+    Hinweis gehört deshalb unmittelbar VOR ihre Nachricht (nicht in den
+    System-Prompt): Eine kurze Antwort liest das Modell als Fortsetzung dessen,
+    was direkt davor steht. Mit Zeitangabe, weil der Verlauf keine trägt."""
+    from bot.services import zeiten
+
+    def sagt_etwas(text: str) -> bool:
+        # Quittungen ihrer eigenen Eingaben tragen keinen Bezug und nähmen den
+        # Platz der Nachrichten ein, auf die sich eine Antwort beziehen kann.
+        text = " ".join(str(text or "").split())
+        return bool(text) and (len(text) >= _QUITTUNG_MAX or "?" in text)
+
+    juengste = [n for n in (nachrichten or []) if sagt_etwas(n.get("text"))][-AUTOMATIK_MAX:]
+    if not juengste:
+        return ""
+    d = rollen.dom()
+    zeilen = []
+    for i, n in enumerate(juengste):
+        grenze = _AUTOMATIK_LANG if i == len(juengste) - 1 else _AUTOMATIK_KURZ
+        zeilen.append(f"– {zeiten.wann_label(n.get('zeit') or 0, jetzt)}: „{_gekuerzt(n['text'], grenze)}“")
+    return (
+        f"[Zur Einordnung – das Folgende hat nicht {d['nom']} geschrieben. Seit eurem letzten "
+        f"Wortwechsel hat das System {d['dat']} in diesem Chat von sich aus geschrieben; aus "
+        f"{d['poss']}r Sicht kommt das von dir, in deinem Verlauf steht es nicht:\n"
+        + "\n".join(zeilen) + "\n"
+        f"{d['poss'].capitalize()} Nachricht unten kann eine Reaktion darauf sein, am ehesten auf "
+        "das Jüngste. Prüfe das zuerst, bevor du sie auf Älteres im Verlauf beziehst. Über diese "
+        "Mitteilungen weißt du nur, was dasteht: Erfinde keinen Ausgang, keinen Stand und keine "
+        "Zusage dazu. Bleibt unklar, was gemeint ist, frag kurz nach und setze keinen Tag. Hat "
+        "sie erkennbar nichts damit zu tun, erwähne es nicht.]"
+    )

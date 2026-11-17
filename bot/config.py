@@ -329,6 +329,15 @@ LOG_TOKEN = os.getenv("LOG_TOKEN", "")                       # leer = kein Token
 # HTTP-Basic-Auth für den Log-Server (Browser-Login). Format: "user1:pass1,user2:pass2".
 # Leer = keine Auth. PFLICHT, sobald der Port über 127.0.0.1 hinaus freigegeben wird (LAN)!
 LOG_USERS = os.getenv("LOG_USERS", "")
+# Eingabe ans Modell mitschreiben (LLM-EINGABE, DEBUG → nur Logdatei/Log-Server):
+# System-Prompt und alle Nachrichten jedes Aufrufs, zum Nachvollziehen einer
+# Antwort. Vergrößert die Logdatei deutlich (ein Prompt = mehrere tausend Zeichen).
+LOG_LLM_EINGABE = os.getenv("LOG_LLM_EINGABE", "true").lower() == "true"
+# Wer die Eingaben auf dem Log-Server sehen darf (Namen aus LOG_USERS, kommagetrennt).
+# Leer = niemand per Browser-Login: Die Prompts enthalten die vollständigen Profile
+# BEIDER Seiten samt allem, was die Tarn-Regel vor der Dom-Seite verbirgt – wer nur
+# mitlesen soll, was gesendet wurde, bekommt sie nicht zu sehen. LOG_TOKEN sieht alles.
+LOG_EINGABE_USERS = os.getenv("LOG_EINGABE_USERS", "")
 
 # Optionaler Fallback-LLM (OpenAI-kompatibler Chat-Endpoint), wenn Grok nicht erreichbar ist.
 # Leer = aus (Verhalten wie bisher). Beispiel Ollama: http://localhost:11434/v1/chat/completions

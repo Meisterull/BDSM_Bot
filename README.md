@@ -357,6 +357,8 @@ The fixed behaviour rules (lead-don't-mirror, word variety, anatomy grounding) a
 
 `LOG_PORT=0` disables the HTTP log server (default). If you enable it, it fail-closes without `LOG_USERS` (Basic-Auth), speaks plain HTTP, and the compose file binds it to `127.0.0.1` — access it via SSH tunnel. Message content is written only to the 0600 log file, never to `docker logs`.
 
+For debugging, the log file also records what is sent to the model: every call writes its full input (system prompt and all messages) as `LLM-EINGABE-VOLL`, and a call ID (`#a1b2c3`) ties input, `LLM-Call` and `LLM-AUSGABE` together. On the log server the overview stays compact; open one call with `/?eingabe=a1b2c3` (or `/?eingabe=letzte` for the most recent). Model inputs contain the complete profiles of **both** partners, so they are shown only to users listed in `LOG_EINGABE_USERS` — other log users neither see those lines nor can open a call. `LOG_LLM_EINGABE=false` turns the recording off.
+
 ---
 
 ## Architecture (short version)

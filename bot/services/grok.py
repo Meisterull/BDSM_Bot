@@ -5,7 +5,9 @@ Der Modulname bleibt historisch `grok` – alle Callsites importieren ihn so.
 """
 import re
 import asyncio
+import contextvars
 import logging
+import secrets
 import time
 import httpx
 from bot import config
@@ -37,12 +39,52 @@ _BASE_DELAY = 1.0   # Sekunden
 _MAX_DELAY = 30.0   # Maximale Wartezeit
 
 
+# Kennung des laufenden Aufrufs: verbindet LLM-EINGABE, LLM-Call und
+# LLM-AUSGABE im Log. Die Reihenfolge der Zeilen allein reicht nicht – Jobs und
+# Chat-Antworten rufen das Modell auch gleichzeitig auf.
+_aufruf: contextvars.ContextVar[str] = contextvars.ContextVar("llm_aufruf", default="")
+
+
+def _nr() -> str:
+    """' #a1b2c3' für die Logzeilen des laufenden Aufrufs (leer außerhalb von chat())."""
+    kennung = _aufruf.get()
+    return f" #{kennung}" if kennung else ""
+
+
+def _einzeilig(text) -> str:
+    return str(text or "").replace("\n", " ⏎ ")
+
+
+def _log_eingabe(payload: dict) -> None:
+    """Was an das Modell geht, im Wortlaut auf DEBUG – also nur in Logdatei und
+    Logserver, nicht in den Docker-json-Logs. Zwei Zeilen je Aufruf:
+
+    LLM-EINGABE       Überblick: Modell, Umfang und die letzte Nachricht.
+    LLM-EINGABE-VOLL  System-Prompt und alle Nachrichten, eine Zeile.
+
+    Ohne die Eingabe ließ sich eine unerwartete Antwort nur erklären, indem man
+    den Prompt mit den Daten von damals nachbaute. Der Log-Server zeigt die
+    VOLL-Zeile nicht in der Übersicht, sondern auf Abruf (`?eingabe=<Kennung>`)
+    – und nur freigegebenen Nutzern (config.LOG_EINGABE_USERS)."""
+    if not config.LOG_LLM_EINGABE:
+        return
+    nachrichten = payload.get("messages") or []
+    system = sum(len(str(m.get("content") or "")) for m in nachrichten if m.get("role") == "system")
+    verlauf = [m for m in nachrichten if m.get("role") != "system"]
+    letzte = verlauf[-1] if verlauf else {}
+    logger.debug("LLM-EINGABE%s | %s | System %d Zeichen, %d Nachricht(en) | zuletzt (%s): %s",
+                 _nr(), payload.get("model"), system, len(verlauf), letzte.get("role", "–"),
+                 _einzeilig(letzte.get("content"))[:300])
+    logger.debug("LLM-EINGABE-VOLL%s | %s", _nr(),
+                 " ⏎ ".join(f"[{m.get('role')}] ⏎ {_einzeilig(m.get('content'))}" for m in nachrichten))
+
+
 def _log_ausgabe(text: str) -> None:
     """Jede Modell-Antwort im Wortlaut auf DEBUG – also nur in Logdatei und
     Logserver, nicht in den Docker-json-Logs (wie GESENDET-INHALT). So lässt
     sich nachsehen, was ein verworfener Entwurf enthielt (Limit-Treffer,
     Detektor-Retry), der nie als Nachricht rausging."""
-    logger.debug("LLM-AUSGABE | %s", (text or "").replace("\n", " ⏎ "))
+    logger.debug("LLM-AUSGABE%s | %s", _nr(), _einzeilig(text))
 
 
 async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False,
@@ -83,7 +125,18 @@ async def chat(system_prompt: str, messages: list[dict], reasoning: bool = False
             payload["presence_penalty"] = presence_penalty
 
     logger.debug("LLM %s, Modell: %s", config.LLM_PROVIDER, model)
+    token = _aufruf.set(secrets.token_hex(3))
+    try:
+        _log_eingabe(payload)
+        return await _senden(payload, model, lokal, max_tokens)
+    finally:
+        _aufruf.reset(token)
 
+
+async def _senden(payload: dict, model: str, lokal: bool, max_tokens: int | None) -> str:
+    """Versand eines fertig gebauten Requests (Rumpf von chat()): lokales
+    Generator-Modell, falls gewünscht; sonst Primär-Endpoint mit Retry und
+    danach der optionale Fallback."""
     # Generator-Test (11.11.2026): ausgewählte Generatoren (Tiny-Task, Wett-Idee)
     # gehen zuerst ans lokale Generator-Modell – mit vollem Live-Prompt. Fehler,
     # Zeitüberschreitung oder leere Antwort → ganz normal weiter zu Grok.
@@ -175,8 +228,8 @@ async def _post_chat(url: str, headers: dict, payload: dict,
     if cache:
         zusatz += f" cache={cache}"
     logger.info(
-        "LLM-Call %s: %.1fs | Tokens in=%s out=%s%s",
-        payload.get("model"), time.monotonic() - start,
+        "LLM-Call%s %s: %.1fs | Tokens in=%s out=%s%s",
+        _nr(), payload.get("model"), time.monotonic() - start,
         usage.get("prompt_tokens", "?"), usage.get("completion_tokens", "?"), zusatz,
     )
     # `content` kann bei Refusal/leerem Completion `null`/leer sein. Das ist wie
@@ -233,8 +286,8 @@ async def _generator_lokal(payload: dict, max_tokens: int | None) -> str | None:
         daten = resp.json()
         text = ohne_steuer_token(((daten.get("message") or {}).get("content") or "").strip())
         _log_ausgabe(text)
-        logger.info("LLM-Call %s (lokal, Generator): %.1fs | Tokens in=%s out=%s",
-                    config.GENERATOR_LLM_MODEL, time.monotonic() - start,
+        logger.info("LLM-Call%s %s (lokal, Generator): %.1fs | Tokens in=%s out=%s",
+                    _nr(), config.GENERATOR_LLM_MODEL, time.monotonic() - start,
                     daten.get("prompt_eval_count", "?"), daten.get("eval_count", "?"))
         if not text:
             logger.warning("Lokales Generator-Modell lieferte leere Antwort – nutze Grok.")

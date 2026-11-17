@@ -191,8 +191,9 @@ async def show(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     training_id = str(uuid.uuid4())
-    await update.message.reply_text(_nachricht(daten["typ"], daten["uebung"]),
-                                    reply_markup=_knopf(training_id))
+    with state.steht_im_verlauf():   # _zugestellt trägt die Übung in den Verlauf ein
+        await update.message.reply_text(_nachricht(daten["typ"], daten["uebung"]),
+                                        reply_markup=_knopf(training_id))
     await _zugestellt(chat_id, training_id, daten, quelle="befehl")
 
 
@@ -302,7 +303,8 @@ async def handle_antwort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         except Exception:
             pass
     if feedback:
-        await telegram_helper.reply_markdown_safe(update.message, t("TRAINING_FEEDBACK_PREFIX", feedback=feedback))
+        with state.steht_im_verlauf():   # steht über _verlauf_ergaenzen schon drin
+            await telegram_helper.reply_markdown_safe(update.message, t("TRAINING_FEEDBACK_PREFIX", feedback=feedback))
     else:
         await update.message.reply_text(t("TRAINING_ANTWORT_ABGELEGT"))
 
@@ -341,8 +343,9 @@ async def daily_training(bot: Bot) -> None:
 
     training_id = str(uuid.uuid4())
     try:
-        await telegram_helper.send_domina(bot, _nachricht(daten["typ"], daten["uebung"]),
-                                          reply_markup=_knopf(training_id))
+        with state.steht_im_verlauf():   # _zugestellt trägt die Übung in den Verlauf ein
+            await telegram_helper.send_domina(bot, _nachricht(daten["typ"], daten["uebung"]),
+                                              reply_markup=_knopf(training_id))
     except Exception as e:
         # Ablage und Verlauf erst NACH erfolgreichem Versand: eine nie gesehene
         # Übung darf weder den Typ-Wechsel weiterdrehen noch im Verlauf stehen.

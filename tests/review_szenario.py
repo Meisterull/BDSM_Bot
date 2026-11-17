@@ -93,6 +93,9 @@ def json_aus_vorlage(text: str) -> str:
 def antwort_fuer(system: str, messages: list) -> str:
     user = str(messages[-1].get("content", "")) if messages else ""
     voll = system + "\n" + user
+    # Den Automatik-Vorspann des Coachs (prompts/domina_coach.automatik_hinweis)
+    # nicht als ihre Worte lesen: Die Muster unten gelten nur ihrer Nachricht.
+    user = re.sub(r"\A\[Zur Einordnung.*?\]\n\n", "", user, flags=re.S)
     for i, (rx, ant) in enumerate(OVERRIDES):
         if re.search(rx, voll, re.S):
             OVERRIDES.pop(i)

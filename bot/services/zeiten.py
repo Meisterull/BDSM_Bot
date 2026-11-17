@@ -61,6 +61,28 @@ def alter_label(datum_iso: str) -> str:
     return f"vor {tage} Tagen"
 
 
+def wann_label(zeitstempel: float, jetzt: float | None = None) -> str:
+    """Wann etwas war, auf die Minute und in Worten: 'gerade eben', 'vor 9
+    Minuten', 'heute um 14:05', 'gestern um 21:30', 'vor 3 Tagen'. Für
+    Kontext im Chat-Prompt aus Unix-Zeitstempeln – ohne Angabe hält das Modell
+    alles, was es zu sehen bekommt, für eben geschehen."""
+    if jetzt is None:
+        jetzt = datetime.now(timezone.utc).timestamp()
+    sekunden = max(0.0, jetzt - zeitstempel)
+    if sekunden < 90:
+        return "gerade eben"
+    if sekunden < 3600:
+        return f"vor {max(2, round(sekunden / 60))} Minuten"
+    bot_tz = ZoneInfo(config.TIMEZONE)
+    damals = datetime.fromtimestamp(zeitstempel, bot_tz)
+    tage = (datetime.fromtimestamp(jetzt, bot_tz).date() - damals.date()).days
+    if tage <= 0:
+        return f"heute um {damals:%H:%M}"
+    if tage == 1:
+        return f"gestern um {damals:%H:%M}"
+    return f"vor {tage} Tagen"
+
+
 def mit_alter_label(text: str, datum_iso: str) -> str:
     """'vor 4 Tagen: <text>' – lässt den Text unverändert, wenn kein Datum parsebar."""
     label = alter_label(datum_iso)

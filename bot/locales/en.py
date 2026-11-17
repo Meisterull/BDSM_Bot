@@ -583,7 +583,7 @@ MESSAGES = {
     "WETTE_ZU_WENIG_PUNKTE": "🎰 You have {punkte} points – a bet takes at least {minimum}.",
     "WETTE_STATE_WEG": "These bet buttons are no longer valid. Start over with /wette.",
     "WETTE_VERLOREN": "🎰 *Bet lost.* Your stake of {einsatz} points is gone.",
-    "WETTE_INFO_DOMINA": "🎰 By the way: your slave just bet *{einsatz} points* that he will complete his next task. Double or nothing.",
+    "WETTE_INFO_DOMINA": "🎰 By the way: your slave just bet *{einsatz} points* that he will complete his next task. If he does, he gets double back; if not, the stake is gone. Just so you know, there is nothing you need to do.",
     "SPIEL_IMPULS_WETTE": "I am in the mood for a game – and you get to play:",
 
     # --- Flash tasks ⚡ ----------------------------------------------------------

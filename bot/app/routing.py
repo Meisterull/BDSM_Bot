@@ -368,6 +368,19 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             pass
 
 
+def _merke_fuer_coach(chat_id, text) -> None:
+    """Zugestellte Nachricht an die Dom-Seite für den Coach festhalten
+    (state.merke_gesendet): Er soll wissen, worauf sie antwortet, auch wenn die
+    Nachricht nicht von ihm kam. Nur die Dom-Seite – nur dort wird es gelesen
+    (handlers/domina._chat_antwort). Darf den Versand nie stören."""
+    try:
+        ctx = paare.resolve(chat_id)
+        if ctx is not None and ctx[1] == paare.ROLLE_DOM:
+            state.merke_gesendet(chat_id, text)
+    except Exception:
+        logger.exception("Merken der gesendeten Nachricht fehlgeschlagen")
+
+
 def _wrap_outgoing_logging(application: Application) -> None:
     """Wrappt bot.send_message + copy_message, um JEDE ausgehende Nachricht zu loggen."""
     bot = application.bot
@@ -380,7 +393,9 @@ def _wrap_outgoing_logging(application: Application) -> None:
         # Inhalt nur auf DEBUG (Logdatei/Logserver), nicht in die Docker-json-Logs.
         logger.info("GESENDET → %s | (%d Zeichen)", gates._rolle(cid), len(str(txt)))
         logger.debug("GESENDET-INHALT → %s | %s", gates._rolle(cid), str(txt).replace("\n", " ⏎ "))
-        return await _orig_send(*args, **kwargs)
+        ergebnis = await _orig_send(*args, **kwargs)
+        _merke_fuer_coach(cid, txt)
+        return ergebnis
 
     async def _logged_copy(*args, **kwargs):
         cid = kwargs.get("chat_id", args[0] if args else None)
