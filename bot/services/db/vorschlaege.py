@@ -157,6 +157,7 @@ async def get_recent_rejected_tiny_tasks(limit: int = 5, user_id: str = "domina"
     return [
         {
             "inhalt": p.get("inhalt", ""),
+            "kurzlabel": p.get("kurzlabel", ""),
             "kategorien": p.get("kategorien", [p.get("kategorie", "")]),
             "grund": p.get("feedback_grund", ""),
         }

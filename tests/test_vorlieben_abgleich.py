@@ -303,12 +303,13 @@ async def test_ablehnung_nur_auf_belegte_kategorien():
     etiketten = ["Spanking", "Pet_Play", "Peitsche"]
     text = "Zwanzig Hiebe mit der Peitsche, er zählt laut mit."
     try:
-        # LLM nennt eine Teilmenge → nur die, in Etikett-Reihenfolge; Fremdes fällt raus
-        kl.grok.simple = AsyncMock(return_value="peitsche, Spanking, Erfundenes")
+        # Urteil je Kategorie → nur die mit JA, in Etikett-Reihenfolge; Fremdes fällt raus
+        kl.grok.simple = AsyncMock(return_value="peitsche: JA\nSpanking: ja\n- Pet_Play: NEIN\nErfundenes: JA")
         assert await kl.kategorien_im_text_belegt(text, etiketten) == ["Spanking", "Peitsche"]
         assert kl.grok.simple.call_args.kwargs.get("temperature") == 0
-        # LLM sagt KEINE → nur noch der wörtliche Treffer
-        kl.grok.simple = AsyncMock(return_value="KEINE")
+        # überall NEIN → nur noch der wörtliche Treffer
+        alle_nein = "Spanking: NEIN\nPet_Play: NEIN\nPeitsche: NEIN"
+        kl.grok.simple = AsyncMock(return_value=alle_nein)
         assert await kl.kategorien_im_text_belegt(text, etiketten) == ["Peitsche"]
         assert await kl.kategorien_im_text_belegt("Er räumt wortlos den Tisch ab.", etiketten) == []
         # unlesbare Antwort / Fehler → Keyword-Abgleich gegen die Etiketten
@@ -323,10 +324,11 @@ async def test_ablehnung_nur_auf_belegte_kategorien():
         orig_anrede = _pc.sklave_anrede
         _pc.sklave_anrede = lambda: "Braver Kater"
         try:
-            kl.grok.simple = AsyncMock(return_value="KEINE")
+            kl.grok.simple = AsyncMock(return_value=alle_nein)
             await kl.kategorien_im_text_belegt("Der Brave Kater zählt, dem Braven Kater reicht das.", etiketten)
             gesendet = kl.grok.simple.call_args.args[0]
-            assert "Kater" not in gesendet and gesendet.count("die Sub-Seite") == 2, gesendet
+            vorschlag = gesendet.split("Vorschlag:")[1]
+            assert "Kater" not in gesendet and vorschlag.count("die Sub-Seite") == 2, gesendet
         finally:
             _pc.sklave_anrede = orig_anrede
         kl.grok.simple = AsyncMock()
@@ -337,18 +339,18 @@ async def test_ablehnung_nur_auf_belegte_kategorien():
         # Handler: nur Belegtes wird gebucht; bleibt nichts übrig → gar keine Buchung
         gebucht = []
 
-        async def _rec(kats, sig):
+        async def _rec(kats, sig, thema_pause=False):
             gebucht.append((list(kats), sig))
         kl.record_domina_praeferenz = _rec
-        kl.grok.simple = AsyncMock(return_value="Peitsche")
+        kl.grok.simple = AsyncMock(return_value="Peitsche: JA\nSpanking: NEIN\nPet_Play: NEIN")
         await tfb._signal_verbuchen(text, etiketten, "abgelehnt")
         assert gebucht == [(["Peitsche"], "abgelehnt")], gebucht
         gebucht.clear()
-        kl.grok.simple = AsyncMock(return_value="KEINE")
+        kl.grok.simple = AsyncMock(return_value=alle_nein)
         await tfb._signal_verbuchen("Er räumt wortlos den Tisch ab.", etiketten, "abgelehnt")
         assert gebucht == []
         # dasselbe für die positiven Signale
-        kl.grok.simple = AsyncMock(return_value="Spanking, Peitsche")
+        kl.grok.simple = AsyncMock(return_value="Spanking: JA\nPeitsche: JA\nPet_Play: NEIN")
         await tfb._signal_verbuchen(text, etiketten, "genutzt")
         assert gebucht == [(["Spanking", "Peitsche"], "genutzt")], gebucht
     finally:

@@ -41,17 +41,22 @@ _GRUENDE = {
 }
 
 
-async def _signal_verbuchen(inhalt: str, kategorien: list, signal: str) -> None:
+async def _signal_verbuchen(inhalt: str, kategorien: list, signal: str, thema_pause: bool = False) -> None:
     """Domina-Signal ('genutzt' | 'gut' | 'abgelehnt') nur auf die Kategorien
     buchen, die der Vorschlagstext wirklich umsetzt – die Etiketten allein sagen
     das nicht (s. kategorien_im_text_belegt). Bleibt keine übrig, wird nichts
-    gebucht: lieber kein Signal als ein falsches."""
+    gebucht: lieber kein Signal als ein falsches.
+    thema_pause: Der Grund war „Thema reizt mich nicht" – die belegten
+    Kategorien ruhen danach in der Auswahl (kategorie_logik.THEMA_PAUSE_TAGE)."""
     belegt = await kategorie_logik.kategorien_im_text_belegt(inhalt, kategorien)
     if not belegt:
         logger.info("Tiny-Task-Feedback (%s): keine Etikett-Kategorie im Text belegt (%s) – kein Kategorie-Signal.",
                     signal, ", ".join(kategorien) or "–")
         return
-    await kategorie_logik.record_domina_praeferenz(belegt, signal)
+    if thema_pause:
+        await kategorie_logik.record_domina_praeferenz(belegt, signal, thema_pause=True)
+    else:
+        await kategorie_logik.record_domina_praeferenz(belegt, signal)
 
 
 def _tasten_frage(point_id: str) -> InlineKeyboardMarkup:
@@ -259,7 +264,10 @@ async def callback_button(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         grund = t(key)
         await qdrant.mark_tiny_task_status(point_id, "abgelehnt", grund=grund)
         if kategorie_signal:
-            await _signal_verbuchen(eintrag.get("inhalt", ""), eintrag.get("kategorien", []), "abgelehnt")
+            # Der einzige feste Grund mit Kategorie-Signal ist „Thema reizt mich
+            # nicht" – er setzt zusätzlich die Themen-Pause.
+            await _signal_verbuchen(eintrag.get("inhalt", ""), eintrag.get("kategorien", []), "abgelehnt",
+                                    thema_pause=True)
         # Bewusst KEINE Regel-Ableitung (_vorschlag_aus_ablehnung) aus einem
         # festen Grund: ein Standardsatz trägt keine verallgemeinerbare Regel,
         # und jede Ableitung wäre eine weitere Nachricht mit Rückfrage.

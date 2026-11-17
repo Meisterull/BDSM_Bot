@@ -1595,7 +1595,7 @@ async def test_tinyfb_klassifikation():
     markiert, praef, chat_calls = {}, [], []
     db_vorschlaege.get_tiny_task_by_id = _aw(lambda pid: {"inhalt": "Vorschlag X", "kategorien": ["Dienst"]})
     db_vorschlaege.mark_tiny_task_status = _aw(lambda pid, s, grund="": markiert.update({pid: (s, grund)}))
-    tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig: praef.append((tuple(kats), sig)))
+    tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig, thema_pause=False: praef.append((tuple(kats), sig)))
     _orig_beleg = tfb.kategorie_logik.kategorien_im_text_belegt
     tfb.kategorie_logik.kategorien_im_text_belegt = _aw(lambda inhalt, kats: list(kats))
     tfb._vorschlag_aus_ablehnung = _aw(lambda *a, **k: None)
@@ -1682,7 +1682,7 @@ async def test_tinyfb_ein_tipp_ohne_mode():
         eintraege[pid]["status"] = status
     db_vorschlaege.get_tiny_task_by_id = _aw(lambda pid: eintraege.get(pid))
     db_vorschlaege.mark_tiny_task_status = _aw(_mark)
-    tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig: praef.append((tuple(kats), sig)))
+    tfb.kategorie_logik.record_domina_praeferenz = _aw(lambda kats, sig, thema_pause=False: praef.append((tuple(kats), sig)))
     _orig_beleg = tfb.kategorie_logik.kategorien_im_text_belegt
     tfb.kategorie_logik.kategorien_im_text_belegt = _aw(lambda inhalt, kats: list(kats))
     tfb._vorschlag_aus_ablehnung = _aw(lambda *a, **k: regel.append(a))

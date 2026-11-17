@@ -71,6 +71,65 @@ _KEYWORDS: dict[str, list[str]] = {
     "Anal":                 ["anal", "hintern", "arsch"],  # bewusst zuletzt — sehr breit
 }
 
+# Woran man eine Kategorie im Text ERKENNT – für den Beleg-Prüfer
+# (kategorien_im_text_belegt). Der bekam bisher nur die Namen und urteilte bei
+# Grenzfällen mal so, mal so (Live-Befund 17.11.2026: ein Vorschlag, der seine
+# Kategorie nur über Kleidung und Auftreten umsetzte, blieb ohne Kategorie). Rollen-neutral
+# formuliert; Kategorien ohne Eintrag (eigene, andere Modi) gehen nur mit Namen
+# in die Prüfung.
+_MERKMALE: dict[str, str] = {
+    "Anal":                 "anale Berührung oder Penetration der Sub-Seite (Finger, Zunge, Spielzeug)",
+    "Schlucken":            "die Sub-Seite schluckt etwas auf Anweisung",
+    "Psycho":               "Kopfspiel ohne Körperpraktik: nachdenken, aufschreiben, bekennen, mentale Aufgabe",
+    "Analdehnung":          "der Anus der Sub-Seite wird schrittweise geweitet (größere Plugs oder Dildos)",
+    "Analeingangstraining": "Training nur am Schließmuskel: an- und entspannen, kurze Reize am Eingang",
+    "Buttplug_Tragen":      "die Sub-Seite trägt über eine Zeit einen Plug",
+    "Dildo_Training":       "die Sub-Seite übt mit einem Dildo (aufnehmen, reiten, halten)",
+    "Pegging":              "die Dom-Seite penetriert die Sub-Seite anal mit dem Strapon",
+    "Strap_on":             "ein Strapon ist im Einsatz (tragen, lutschen lassen, penetrieren)",
+    "Blowjob_Training":     "die Sub-Seite übt Oralsex an Penis, Strapon oder Dildo",
+    "Deepthroat_Training":  "tiefes Aufnehmen in den Rachen wird geübt",
+    "Gesichtsfick":         "Mund oder Rachen der Sub-Seite wird aktiv gestoßen",
+    "Enema_Play":           "Einlauf oder Klistier",
+    "Creampie_Cleanup":     "die Sub-Seite leckt Sperma von oder aus der Dom-Seite auf",
+    "Fisting":              "mehrere Finger bis zur ganzen Hand werden eingeführt",
+    "Prostatamassage":      "die Prostata der Sub-Seite wird massiert oder gemolken",
+    "Spanking":             "Schläge auf den Hintern",
+    "Sperma_Schlucken":     "die Sub-Seite nimmt Sperma in den Mund und schluckt es",
+    "Impact":               "Schlagspiel am Körper (Hand, Gerte, Flogger, Paddle)",
+    "Peitsche":             "Peitsche oder Flogger wird eingesetzt",
+    "Klassische_Fesselspiele": "die Sub-Seite wird gefesselt oder fixiert (Seil, Manschetten)",
+    "Paddle_Training":      "Schläge mit dem Paddle",
+    "Piss_Play":            "Urin im Spiel (anpinkeln, trinken, einnässen)",
+    "Toiletten_Sklave":     "die Sub-Seite dient als Toilette oder säubert nach dem Toilettengang",
+    "Arschanbetung":        "die Sub-Seite verehrt, küsst oder leckt den Hintern der Dom-Seite",
+    "Muschianbetung":       "die Sub-Seite verehrt, küsst oder leckt die Vulva der Dom-Seite",
+    "Orgasmusverweigerung": "die Sub-Seite darf nicht kommen (Edging, Keuschheit, Abbruch vor dem Höhepunkt)",
+    "Ruiniertes_Orgasmen":  "der Höhepunkt der Sub-Seite wird absichtlich verdorben",
+    "Sissy_Training":       "die Sub-Seite wird als Mädchen hergerichtet oder darin geübt: Damenwäsche, "
+                            "Schminke, weibliche Stimme, Gang, Haltung, Benehmen",
+    "Feminisierung":        "weibliche Kleidung, Make-up, weiblicher Name oder weibliche Rolle für die Sub-Seite",
+    "Facesitting":          "die Dom-Seite sitzt auf dem Gesicht der Sub-Seite",
+    "Smothering":           "der Sub-Seite wird mit dem Körper der Dom-Seite kurz die Luft genommen",
+    "Schmerz":              "gezielter Schmerz ohne Schläge: Klemmen, Wachs, Kneifen, Kratzen",
+    "Speichelspiel":        "Speichel im Spiel: anspucken, in den Mund spucken, sabbern lassen",
+    "Pet_Play":             "die Sub-Seite SPIELT ein Tier: Halsband und Leine, auf allen Vieren, Napf, "
+                            "Schwanz-Plug (ein Tiername als Kosewort genügt nicht)",
+    "Demütigung":           "die Sub-Seite wird bloßgestellt oder klein gemacht (peinliche Aufgabe, Vorführen)",
+    "Verbale_Demütigung":   "Beschimpfen, Auslachen, herabsetzende Worte",
+    "Erniedrigung":         "erniedrigende Handlungen oder Stellungen (kriechen, betteln, zu Füßen liegen)",
+    "Objektifizierung":     "die Sub-Seite wird als Gegenstand benutzt (Möbel, Ablage, Halter)",
+    "Dienst":               "die Sub-Seite bedient oder arbeitet für die Dom-Seite (Haushalt, Servieren, "
+                            "Massage, Besorgungen)",
+    "Bestrafung":           "eine Strafe für ein Vergehen",
+}
+
+
+def merkmal(kategorie: str) -> str:
+    """Erkennungs-Merkmal einer Kategorie für den Beleg-Prüfer ('' = keins hinterlegt)."""
+    return _MERKMALE.get(kategorie, "")
+
+
 # Englische Keywords, additiv zur deutschen Referenz (Veröffentlichungs-Schritt 2):
 # Matching läuft immer gegen die UNION beider Sprachen – deutsche Texte treffen
 # deutsche Begriffe, englische englische; kein Locale-Plumbing nötig und das
@@ -837,6 +896,52 @@ def domina_netto_effektiv(v: dict, jetzt=None) -> int:
     return min(0, netto + abzug)
 
 
+# Themen-Pause: Lehnt die Dom-Seite einen Vorschlag mit „Thema reizt mich
+# nicht" ab, ist das mehr als ein Minuspunkt. Bisher zählte es wie jede
+# Ablehnung (−1) und hob bestenfalls ein älteres Plus auf – fünf Tage später
+# galt dieselbe Kategorie wieder als „frisches Thema, heute bevorzugen"
+# (Live-Befund 17.11.2026). Deshalb ruht eine so abgelehnte Kategorie für
+# THEMA_PAUSE_TAGE in der Auswahl; ein späteres positives Signal hebt die
+# Pause wieder auf.
+THEMA_PAUSE_TAGE = 28
+FELD_PAUSE_BIS = "pause_bis"
+# Dasselbe Thema unter zwei Namen: Die Pause der einen Kategorie gilt auch der
+# anderen – sonst kommt das abgelehnte Thema am nächsten Tag unter dem
+# Schwester-Etikett wieder (in der Probe wählte die Auswahl genau das als
+# „frisches Thema"). Bewusst nur echte Doppel, keine ganzen Cluster.
+_GLEICHES_THEMA: tuple[frozenset, ...] = (
+    frozenset({"Sissy_Training", "Feminisierung"}),
+    frozenset({"Demütigung", "Erniedrigung"}),
+    frozenset({"Pegging", "Strap_on"}),
+)
+
+
+def _mit_gleichem_thema(kategorie: str) -> list[str]:
+    """Die Kategorie selbst und ihre Doppel (gleiches Thema), Kategorie zuerst."""
+    doppel = sorted(k for gruppe in _GLEICHES_THEMA if kategorie in gruppe for k in gruppe if k != kategorie)
+    return [kategorie] + doppel
+
+
+def thema_pausiert(praeferenzen: dict | None, jetzt=None) -> list[str]:
+    """Kategorien, deren Themen-Pause noch läuft (sortiert)."""
+    from datetime import datetime, timezone
+    jetzt = jetzt or datetime.now(timezone.utc)
+    aus = []
+    for kat, v in (praeferenzen or {}).items():
+        bis = (v or {}).get(FELD_PAUSE_BIS) if isinstance(v, dict) else None
+        if not bis:
+            continue
+        try:
+            ende = datetime.fromisoformat(str(bis))
+        except (ValueError, TypeError):
+            continue
+        if ende.tzinfo is None:
+            ende = ende.replace(tzinfo=timezone.utc)
+        if ende > jetzt:
+            aus.append(kat)
+    return sorted(aus)
+
+
 def domina_praeferenz_rangliste(praeferenzen: dict, jetzt=None) -> tuple[list[str], list[str]]:
     """(gern, ungern) – nur Kategorien mit verbleibendem Signal, stärkstes zuerst."""
     eff = {k: domina_netto_effektiv(v, jetzt) for k, v in (praeferenzen or {}).items()}
@@ -862,67 +967,90 @@ def _anrede_neutral(text: str) -> str:
     return re.sub(muster, "die Sub-Seite", text, flags=re.I)
 
 
+_BELEG_ZEILE_RE = re.compile(r"^\W*([\wäöüÄÖÜß]+)\W*:\W*(ja|nein)\b", re.IGNORECASE | re.MULTILINE)
+
+
 async def kategorien_im_text_belegt(inhalt: str, kategorien: list) -> list[str]:
     """Welche der ETIKETT-Kategorien eines Vorschlags kommen in seinem Text
     wirklich vor? Die Etiketten stammen aus der Auswahl VOR der Generierung; der
     fertige Text setzt oft nur einen Teil davon um. Ein „Thema reizt mich nicht"
     darf deshalb nicht pauschal alle Etiketten belasten – sonst sammelt eine
     Kategorie Ablehnungen für Vorschläge, in denen sie gar nicht vorkam.
-    Ein LLM-Durchlauf (temperature 0), streng gegen die Etiketten validiert und
-    um wörtliche Keyword-Treffer ergänzt; bei Fehler oder unlesbarer Antwort
-    der Keyword-Abgleich allein.
+    Ein LLM-Durchlauf (temperature 0) mit dem Erkennungs-Merkmal je Kategorie
+    und einem Urteil JE Kategorie (JA/NEIN) – ein gemeinsames „KEINE" ließ das
+    Modell Grenzfälle mal so, mal so entscheiden. Streng gegen die Etiketten
+    validiert und um wörtliche Keyword-Treffer ergänzt; bei Fehler oder
+    unlesbarer Antwort der Keyword-Abgleich allein.
     Ohne Text gibt es nichts zu prüfen → Etiketten unverändert."""
     kategorien = [k for k in (kategorien or []) if k]
     if not kategorien or not (inhalt or "").strip():
         return kategorien
     system = (
-        f"Du prüfst einen {modi.thema()}-Aufgabenvorschlag gegen eine Liste von Kategorien.\n"
-        "Nenne die Kategorien aus der Liste, deren Praktik im Text tatsächlich stattfindet – "
-        "auch als Teilaspekt und auch wenn das Wort selbst nicht fällt (umschrieben zählt). "
-        "Nicht nennen: Kategorien, deren Praktik im Text gar nicht vorkommt. Eine Anrede, ein "
-        "Kosename oder ein einzelnes bildhaftes Wort belegt keine Kategorie – es zählt nur, "
-        "was die Beteiligten im Text tatsächlich TUN.\n"
-        "Antworte mit den exakten Kategorie-Namen, durch Komma getrennt, sonst NUR mit KEINE. "
+        f"Du prüfst einen {modi.thema()}-Aufgabenvorschlag gegen eine Liste von Kategorien. "
+        "Entscheide für JEDE Kategorie einzeln, ob ihre Praktik im Text stattfindet.\n"
+        "JA: Die Beteiligten tun im Text etwas, das zum Merkmal der Kategorie passt – auch als "
+        "Teil der Szene und auch, wenn das Wort selbst nicht fällt.\n"
+        "NEIN: Die Praktik kommt nicht vor. Eine Anrede, ein Kosename oder ein bildhaftes Wort "
+        "belegt nichts – es zählt nur, was die Beteiligten tatsächlich TUN. Was der Text "
+        "ausdrücklich ausschließt („kein …“, „… gibt es nicht“), zählt ebenfalls nicht.\n"
+        "Antworte NUR mit einer Zeile je Kategorie, genau so: Name: JA oder Name: NEIN. "
         "Keine Erklärung."
     )
-    prompt = "Kategorien: " + ", ".join(kategorien) + f"\n\nVorschlag:\n{_anrede_neutral(inhalt)[:1200]}"
+    zeilen = [f"- {k}" + (f" – Merkmal: {merkmal(k)}" if merkmal(k) else "") for k in kategorien]
+    prompt = "Kategorien:\n" + "\n".join(zeilen) + f"\n\nVorschlag:\n{_anrede_neutral(inhalt)[:1200]}"
     try:
         raw = grok.clean_text(await grok.simple(prompt, system=system, temperature=0)) or ""
-        teile = [x.strip().strip(".").lower().replace(" ", "_") for x in re.split(r"[,\n;]", raw) if x.strip()]
-        treffer = [k for k in kategorien if k.lower() in teile]
-        if treffer or (len(teile) == 1 and teile[0].startswith("keine")):
+        urteile = {name.lower(): urteil.lower() == "ja" for name, urteil in _BELEG_ZEILE_RE.findall(raw)}
+        bekannt = {k: urteile[k.lower()] for k in kategorien if k.lower() in urteile}
+        if bekannt:
             # Eindeutige Wort-Treffer ergänzen: das LLM übersieht gelegentlich
-            # eine Kategorie, die wörtlich im Text steht.
-            im_text = kategorien_in_text(inhalt)
-            return [k for k in kategorien if k in treffer or k in im_text]
+            # eine Kategorie, die wörtlich im Text steht. Auch hier ohne den
+            # Kosenamen – sonst belegt ein Tiername als Anrede die Kategorie
+            # über das Stichwort.
+            im_text = kategorien_in_text(_anrede_neutral(inhalt))
+            return [k for k in kategorien if bekannt.get(k) or k in im_text]
         logger.warning("Kategorie-Beleg: Antwort nicht lesbar – Keyword-Abgleich.")
     except Exception:
         logger.exception("Kategorie-Beleg fehlgeschlagen – Keyword-Abgleich")
-    im_text = kategorien_in_text(inhalt)
+    im_text = kategorien_in_text(_anrede_neutral(inhalt))
     return [k for k in kategorien if k in im_text]
 
 
-async def record_domina_praeferenz(kategorien: list, signal: str) -> None:
+async def record_domina_praeferenz(kategorien: list, signal: str, thema_pause: bool = False) -> None:
     """Verbucht die Reaktion der DOMINA auf die Kategorien eines Vorschlags als
     eigenes Signal – NICHT in kategorie_reaktionen (das bleibt die Reaktion des
     Sklaven). So lassen sich Domina-Vorlieben und Sklaven-Erleben später getrennt
-    gewichten. `signal`: 'genutzt' | 'gut' | 'abgelehnt'."""
+    gewichten. `signal`: 'genutzt' | 'gut' | 'abgelehnt'.
+    thema_pause=True (nur bei 'abgelehnt'): Der Grund war das Thema selbst – die
+    Kategorien ruhen THEMA_PAUSE_TAGE lang in der Auswahl (thema_pausiert)."""
     from bot.services import qdrant
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
     eintrag = _DOMINA_SIGNAL.get(signal)
     if not eintrag or not kategorien:
         return
     bucket, amount = eintrag
     prof = await qdrant.get_user_profile("domina") or {}
     praef = dict(prof.get("kategorie_praeferenzen", {}) or {})
-    jetzt = datetime.now(timezone.utc).isoformat()
+    jetzt = datetime.now(timezone.utc)
+    pause_bis = (jetzt + timedelta(days=THEMA_PAUSE_TAGE)).isoformat()
     for kat in kategorien:
         e = dict(praef.get(kat) or {"positiv": 0, "negativ": 0})
         e[bucket] = int(e.get(bucket, 0)) + amount
-        e["letztes_signal"] = jetzt
+        e["letztes_signal"] = jetzt.isoformat()
         praef[kat] = e
+        # Die Pause (setzen wie aufheben) gilt dem Thema – also auch der
+        # Kategorie, die dasselbe unter anderem Namen führt. Das Signal selbst
+        # bleibt bei der Kategorie, zu der die Rückmeldung kam.
+        for betroffen in _mit_gleichem_thema(kat):
+            if bucket == "positiv":           # sie mochte es doch → Pause vorbei
+                if betroffen in praef:
+                    praef[betroffen] = {k: v for k, v in praef[betroffen].items() if k != FELD_PAUSE_BIS}
+            elif thema_pause:
+                praef[betroffen] = dict(praef.get(betroffen) or {"positiv": 0, "negativ": 0},
+                                        **{FELD_PAUSE_BIS: pause_bis})
     await qdrant.patch_profile_fields("domina", {"kategorie_praeferenzen": praef})
-    logger.info("Domina-Präferenz: %s +%d für %s", bucket, amount, ", ".join(kategorien))
+    logger.info("Domina-Präferenz: %s +%d für %s%s", bucket, amount, ", ".join(kategorien),
+                f" (Themen-Pause {THEMA_PAUSE_TAGE} Tage)" if thema_pause and bucket == "negativ" else "")
 
 
 def top_kategorien(sklave_profil: dict, min_signal: int = 2) -> list[str]:
@@ -1000,7 +1128,9 @@ def gewichtete_auswahl(
     domina_praeferenzen = domina_praeferenzen or {}
 
     wunsch = set(sklave_profil.get("wunsch_kategorien", []) or []) if sklave_profil else set()
-    dislikes = set(gesperrte_kategorien(sklave_profil))
+    # Nicht wählbar: gelernte Abneigungen der Sub-Seite UND Themen, die die
+    # Dom-Seite gerade ausdrücklich nicht reizen (Themen-Pause).
+    dislikes = set(gesperrte_kategorien(sklave_profil)) | set(thema_pausiert(domina_praeferenzen))
     selten = set(gedaempfte_kategorien(sklave_profil))
     tops = set(top_kategorien(sklave_profil))
     erlebt = set(reaktionen.keys())

@@ -50,13 +50,22 @@ def level_zeile(level: int) -> str:
     return f"Level: {level} von 5 (1=Einsteiger{'in' if d['nom'] == 'sie' else ''}, 5=sehr erfahren)"
 
 
-def _namen_block() -> str:
-    """Optionaler Namens-/Sprach-Kontext (Bot-Name, Sub-Anrede, Sprache)."""
+def _namen_block(fertige_nachricht: bool = False) -> str:
+    """Optionaler Namens-/Sprach-Kontext (Bot-Name, Sub-Anrede, Sprache).
+    fertige_nachricht=True für Generator-Prompts (ein Vorschlag, ein Bericht,
+    eine Übung – kein Gespräch): Dort hat der eigene Name nichts verloren. Als
+    Einstieg einer solchen Nachricht las er sich wie eine Anrede an die
+    Dom-Seite (Live-Befund 17.11.2026)."""
     from bot.services import persona_config
     zeilen = []
     name = persona_config.bot_name()
     anrede = persona_config.sklave_anrede()
-    if name:
+    if name and fertige_nachricht:
+        d = rollen.dom()
+        zeilen.append(f'- Dein Name ist {name}. In dieser Nachricht kommt er nicht vor – kein Einstieg '
+                      f'mit dem Namen, keine Unterschrift. Es ist DEIN Name, nicht der {d["real_gen"]}: '
+                      f'Sprich {d["akk"]} nie mit einem Namen an.')
+    elif name:
         zeilen.append(f'- Dein Name ist {name}. Du darfst dich so geben, wenn es natürlich passt.')
     if anrede:
         # Härtung analog persona.py (Test-Befund F6): ohne "ausschließlich" kopiert
@@ -127,7 +136,7 @@ def fuer_coach_prompt() -> str:
 def fuer_strukturierten_output() -> str:
     """Stimme OHNE Chat-Format – für Prompts, die ihr eigenes Format/Längenlimit
     vorgeben (z.B. 'kein Markdown', 'max. 4-5 Sätze')."""
-    return coach_stil() + _namen_block() + "\n" + tarnung()
+    return coach_stil() + _namen_block(fertige_nachricht=True) + "\n" + tarnung()
 
 
 # Anti-Klischee-Block für Aufgaben- und Strafen-Vorschläge.
@@ -157,7 +166,7 @@ def fuer_aufgaben_vorschlag() -> str:
     # Widerspruch wird hier einmal aufgelöst (Review D10). Ausnahme bleibt, was
     # ein Auftrag ausdrücklich verlangt: der Straf-Vorschlag endet mit der Frage,
     # ob sie die Strafe anordnen will – der Ablauf wartet auf ihr Ja/Nein.
-    return (coach_stil() + _namen_block()
+    return (coach_stil() + _namen_block(fertige_nachricht=True)
             + "\n\nFÜR DIESEN AUFTRAG: Du lieferst einen fertigen Vorschlag, kein Gespräch. "
               "Die Stil-Regel zum Weiterreden gilt hier NICHT – keine angehängte Plauder-Frage und "
               "kein Anstoß zum Antworten. Eine Abschlussfrage stellst du nur, wenn der Auftrag "

@@ -129,6 +129,7 @@ async def rollenspiel_vorschlag_job(bot: Bot) -> None:
                     and not await limits_check.verletzungen(neu, hard_limits, grenzen)):
                 vorschlag = neu
         vorschlag = schablonen._meta_rueckfrage_entfernen(schablonen._begruendungs_formel_entfernen(vorschlag or ""))
+        vorschlag = schablonen._eigener_name_entfernen(vorschlag)
         if basis._nach_llm_verworfen(domina_chat, "Rollenspiel-Vorschlag"):
             return
         await telegram_helper.send_domina(bot, t("ROLLENSPIEL_IDEE", vorschlag=vorschlag), parse_mode="Markdown")

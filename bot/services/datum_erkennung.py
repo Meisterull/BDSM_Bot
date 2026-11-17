@@ -46,6 +46,19 @@ _WOCHENTAG_RE = re.compile(
     re.IGNORECASE,
 )
 _SOFORT = {"sofort", "jetzt", "gleich", "direkt", "heute", "now", "today", "immediately"}
+# Sätze, die den LOHN einer Aufgabe nennen ("Als Belohnung bekommt er morgen
+# Abend …", "Wenn er das gut macht, darf er am Samstag …"). Eine Zeitangabe
+# darin sagt, wann es den Lohn gibt – nicht, wann die Aufgabe dran ist. Bewusst
+# nur Lohn-Wörter: "Zur Strafe … morgen" ist selbst die Aufgabe für morgen.
+_LOHN_RE = re.compile(
+    r"\bbelohn\w*|\b(?:als|zum|zur)\s+lohn\b|\bim\s+gegenzug\b"
+    r"|\bdaf(?:ü|ue)r\s+(?:bekomm\w*|krieg\w*|darf\w*|gibt)\b"
+    r"|\b(?:bekomm\w*|krieg\w*|darf\w*)\s+\w+\s+(?:dann|daf(?:ü|ue)r)\b"
+    r"|\bwenn\s+\w+\s+(?:das|es)\s+(?:gut|brav|ordentlich|sauber)\b"
+    r"|\breward\w*|\bin\s+return\b",
+    re.IGNORECASE)
+# Satzgrenzen für diese Prüfung: Satzzeichen, Gedankenstrich, Zeilenumbruch.
+_SATZ_TRENNER_RE = re.compile(r"(?<=[.!?;:])\s+|\s+[–—-]\s+|\n+")
 
 
 def _heute() -> date:
@@ -65,7 +78,7 @@ def _vorwort(text: str, start: int) -> str:
     return m.group(1) if m else ""
 
 
-def _datum_treffer(text: str, heute: date) -> tuple[date, str] | None:
+def _datum_treffer(text: str, heute: date) -> tuple[date, re.Match] | None:
     for m in _DATUM_RE.finditer(text):
         tag, monat, jahr = int(m.group(1)), int(m.group(2)), _jahr(m.group(3))
         try:
@@ -78,11 +91,11 @@ def _datum_treffer(text: str, heute: date) -> tuple[date, str] | None:
         except ValueError:
             continue
         if kandidat >= heute:
-            return kandidat, m.group(0)
+            return kandidat, m
     return None
 
 
-def _wochentag_treffer(text: str, heute: date) -> tuple[date, str] | None:
+def _wochentag_treffer(text: str, heute: date) -> tuple[date, re.Match] | None:
     for m in _WOCHENTAG_RE.finditer(text):
         if _vorwort(text, m.start()) in _WIEDERKEHREND:
             continue
@@ -91,8 +104,27 @@ def _wochentag_treffer(text: str, heute: date) -> tuple[date, str] | None:
             delta = 7  # "nächsten Samstag" AM Samstag = nächste Woche
         if delta == 0:
             return None  # "am Samstag" am Samstag selbst = heute = sofort
-        return heute + timedelta(days=delta), m.group(0)
+        return heute + timedelta(days=delta), m
     return None
+
+
+def _termin_treffer(text: str, heute: date) -> tuple[date, re.Match] | None:
+    """Erstes zukünftiges Datum samt Fundstelle. Priorität: explizites Datum >
+    übermorgen > morgen > Wochentag."""
+    treffer = _datum_treffer(text, heute)
+    if treffer and treffer[0] > heute:
+        return treffer
+
+    m = _UEBERMORGEN_RE.search(text)
+    if m:
+        return heute + timedelta(days=2), m
+
+    for m in _MORGEN_RE.finditer(text):
+        if _vorwort(text, m.start()) in _MORGEN_TAGESZEIT:
+            continue
+        return heute + timedelta(days=1), m
+
+    return _wochentag_treffer(text, heute)
 
 
 def finde_termin(text: str, heute: date | None = None) -> tuple[date, str] | None:
@@ -102,22 +134,19 @@ def finde_termin(text: str, heute: date | None = None) -> tuple[date, str] | Non
     Default = jetzt in der Bot-Zeitzone."""
     if not text:
         return None
-    heute = heute or _heute()
+    treffer = _termin_treffer(text, heute or _heute())
+    return (treffer[0], treffer[1].group(0)) if treffer else None
 
-    treffer = _datum_treffer(text, heute)
-    if treffer and treffer[0] > heute:
-        return treffer
 
-    m = _UEBERMORGEN_RE.search(text)
-    if m:
-        return heute + timedelta(days=2), m.group(0)
-
-    for m in _MORGEN_RE.finditer(text):
-        if _vorwort(text, m.start()) in _MORGEN_TAGESZEIT:
-            continue
-        return heute + timedelta(days=1), m.group(0)
-
-    return _wochentag_treffer(text, heute)
+def finde_aufgaben_termin(text: str, heute: date | None = None) -> tuple[date, str] | None:
+    """Termin einer AUFGABE: wie finde_termin, aber Zeitangaben in einem
+    Lohn-Satz zählen nicht (_LOHN_RE). Live-Befund 17.11.2026: "heute Abend …;
+    Belohnung ist morgen Abend …" wurde als Aufgabe für morgen geführt, die
+    Nachfrage kam einen Tag zu spät."""
+    if not text:
+        return None
+    saetze = [satz for satz in _SATZ_TRENNER_RE.split(text) if satz and not _LOHN_RE.search(satz)]
+    return finde_termin(" \n".join(saetze), heute)
 
 
 # Uhrzeit/Tageszeit in einer Termin-Aufgabe ("ab 20 Uhr", "um 9:30 Uhr", "abends")

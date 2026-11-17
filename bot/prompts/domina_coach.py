@@ -309,7 +309,9 @@ def format_context(entries: list[dict]) -> str:
     # Chronologisch, ohne Doppelte; Steuer-Tags und Doppelstern-Markdown alter
     # Antworten raus; ältere Einträge tragen ihren Abstand (Review D10).
     for entry in kontext_pflege.verlauf_bereinigt(entries):
-        datum = entry.get("datum", "")[:10] + kontext_pflege.alters_hinweis(entry.get("datum", ""))
+        # Mit Abstand zu heute („gestern", „vor 5 Tagen"): Die Einträge zitieren
+        # wörtlich, und ein „heute Abend" darin meint den Tag des Eintrags.
+        datum = entry.get("datum", "")[:10] + kontext_pflege.abstand_hinweis(entry.get("datum", ""))
         zusammenfassung = kontext_pflege.ohne_steuer_tags(entry.get("zusammenfassung", ""))
         wichtige_punkte = entry.get("wichtige_punkte", [])
         # Neues Feld 'themen' (Liste); Fallback auf altes 'thema'

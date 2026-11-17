@@ -369,13 +369,14 @@ def test_callback_termin_und_limits():
     # Uhrzeit; datum_erkennung.nachfrage_tage, Live-Befund 26.10.2026)
     morgen = date.today() + timedelta(days=1)
     from bot.services import datum_erkennung
-    orig = datum_erkennung.finde_termin
-    datum_erkennung.finde_termin = lambda text: (morgen + timedelta(days=2), "Samstag") if "Samstag" in (text or "") else None
+    orig = datum_erkennung.finde_aufgaben_termin
+    datum_erkennung.finde_aufgaben_termin = (
+        lambda text, heute=None: (morgen + timedelta(days=2), "Samstag") if "Samstag" in (text or "") else None)
     try:
         kennung = _angebot_anlegen(w, quelltext="Sag ihm, am Samstag muss er stillhalten")
         q = _press(f"snaufgabe:ja:{kennung}")
     finally:
-        datum_erkennung.finde_termin = orig
+        datum_erkennung.finde_aufgaben_termin = orig
     assert len(w.tasks) == 1 and w.tasks[0]["followup_in_tagen"] == 4
     assert w.tasks[0]["extra"]["termin_datum"] == (morgen + timedelta(days=2)).isoformat()
     # Limits-Treffer → kein Task, Grenzen-Meldung

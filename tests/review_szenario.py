@@ -108,6 +108,8 @@ def antwort_fuer(system: str, messages: list) -> str:
         if m:
             return f"Geht raus.\n\n[SPRACHNACHRICHT: {' '.join(m.group(1).split())[:220]}]"
         return "Coach-Antwort des Szenarios, zwei Sätze lang. Mehr gibt es hier nicht zu sagen."
+    if "Name: JA oder Name: NEIN" in system:      # Kategorie-Beleg: nichts belegt (wie früher „KEINE")
+        return "\n".join(f"{k}: NEIN" for k in re.findall(r"^- ([\wäöüÄÖÜß]+)", user, re.M))
     if re.search(r"\bJSON\b", system):
         return json_aus_vorlage(system)
     if re.search(r"JA oder NEIN|mit JA oder|NUR mit JA", system):

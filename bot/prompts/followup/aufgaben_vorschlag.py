@@ -26,6 +26,19 @@ def _cluster_beispiele(dislikes: list = None, domina_grenzen: list = None) -> st
     return ", ".join(frei or _CLUSTER_BEISPIELE)
 
 
+_WOCHENTAGE = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+
+
+def _heute_zeile() -> str:
+    """„Heute ist Dienstag, der 17.11.2026." – der Generator kennt das Datum
+    sonst nicht und kann die datierten Einträge weiter unten nicht einordnen.
+    Deutsch wie der ganze Prompt, unabhängig von der UI-Sprache des Paares."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    heute = datetime.now(ZoneInfo(config.TIMEZONE)).date()
+    return f"Heute ist {_WOCHENTAGE[heute.weekday()]}, der {heute:%d.%m.%Y}."
+
+
 def _aufgaben_kontext(
     erfahrungsstand: str,
     level: int,
@@ -237,8 +250,12 @@ def _aufgaben_kontext(
         )
     rejected_str = ""
     if abgelehnte_tiny_tasks:
+        # Das Kurzlabel nennt das THEMA des abgelehnten Vorschlags. Der Satzanfang
+        # (vorher [:80]) zeigte nur den Einstieg – das Modell erfuhr nicht, was
+        # es meiden soll (Live-Befund 17.11.2026). Ältere Einträge ohne Label
+        # fallen auf den Anfang zurück.
         eintraege = "\n".join(
-            f"  • '{t['inhalt'][:80]}' – Grund: {t['grund'][:120]}"
+            f"  • '{(t.get('kurzlabel') or t['inhalt'][:80])}' – Grund: {t['grund'][:120]}"
             for t in abgelehnte_tiny_tasks
         )
         rejected_str = (
@@ -248,7 +265,17 @@ def _aufgaben_kontext(
         )
     kontext_str = ""
     if conversation_context:
-        kontext_str = f"\nAktueller Kontext aus vergangenen Gesprächen:\n{conversation_context}\n→ Passe den Vorschlag an diesen Kontext an.\n"
+        # Die Einträge zitieren wörtlich. Ohne die Umrechnungs-Regel galt ein
+        # „heute Abend" aus dem Gespräch von gestern als heutiger Plan
+        # (Live-Befund 17.11.2026: der Vorschlag baute auf einem Abend auf, der
+        # schon vorbei war).
+        kontext_str = (
+            f"\nAktueller Kontext aus vergangenen Gesprächen:\n{conversation_context}\n"
+            f"→ Passe den Vorschlag an diesen Kontext an. Zeitwörter in den Einträgen („heute "
+            f"Abend“, „morgen“) meinen den Tag des jeweiligen Eintrags, nicht heute: Rechne sie "
+            f"über das Datum in der Klammer um, bevor du dich darauf beziehst – was dort für "
+            f"„heute“ geplant war, ist bei einem Eintrag von gestern schon vorbei.\n"
+        )
     stimmung_str = ""
     if stimmung:
         # Stimmung ist 1:1 gespeicherter Sklaven-Freitext → mit Delimiter einbetten
@@ -342,11 +369,19 @@ def _aufgaben_kontext(
         # verblasste Einzelsignale fallen raus, statt als "zuletzt" zu gelten.
         from bot.services import kategorie_logik
         gern, ungern = kategorie_logik.domina_praeferenz_rangliste(domina_kategorie_praeferenzen)
+        # Themen-Pause: steht nicht mehr zur Wahl (gewichtete_auswahl) – der
+        # Generator soll das Thema aber auch nicht von sich aus als Beiwerk
+        # einstreuen, etwa über einen Ausstattungs-Impuls.
+        pausiert = kategorie_logik.thema_pausiert(domina_kategorie_praeferenzen)
         teile = []
         if gern:
-            teile.append(f"gern übernommen: {', '.join(gern)}")
+            teile.append(f"gern übernommen: {', '.join(k for k in gern if k not in pausiert)}")
         if ungern:
-            teile.append(f"eher abgelehnt: {', '.join(ungern)}")
+            teile.append(f"eher abgelehnt: {', '.join(k for k in ungern if k not in pausiert)}")
+        teile = [t for t in teile if not t.endswith(": ")]
+        if pausiert:
+            teile.append(f"reizt {d['akk']} gerade nicht (ganz weglassen, auch als Beiwerk): "
+                         f"{', '.join(pausiert)}")
         if teile:
             # Gleiches Geschlecht → "ihre Vorlieben, nicht ihre" wäre sinnfrei;
             # dann über das Label abgrenzen ("nicht die der Sklavin").
@@ -373,7 +408,8 @@ def _aufgaben_kontext(
             f"\n  Persönliche Grenzen (NIEMALS vorschlagen, auch nicht umschrieben oder als "
             f"Beiwerk – \"langweilig\" heißt: will {d['nom']} nicht): {', '.join(domina_grenzen)}"
         )
-    return f"""Profil {d['real_gen']}:
+    return f"""{_heute_zeile()}
+Profil {d['real_gen']}:
   Erfahrungsstand: {erfahrungsstand}
   {coach_persona.level_zeile(level)}
   Interessen: {', '.join(interessen) if interessen else 'nicht angegeben'}{grenzen_zeile}

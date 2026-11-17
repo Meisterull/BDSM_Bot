@@ -657,6 +657,10 @@ async def _send_tiny_task_vorschlag(bot: Bot) -> None:
         if gekappt != vorschlag:
             logger.info("Meta-Rückfrage am Schluss entfernt.")
             vorschlag = gekappt
+        ohne_namen = schablonen._eigener_name_entfernen(vorschlag)
+        if ohne_namen != vorschlag:
+            logger.info("Eigenen Namen am Anfang des Vorschlags entfernt.")
+            vorschlag = ohne_namen
 
         # Kürzen falls zu lang (Telegram Limit 4096, Prefix ~50 Zeichen)
         if len(vorschlag) > 4000:

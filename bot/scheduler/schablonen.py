@@ -170,6 +170,29 @@ def _meta_rueckfrage_entfernen(text: str) -> str:
     return rest if len(rest) >= 40 else t
 
 
+def _eigener_name_entfernen(text: str) -> str:
+    """Schneidet den eigenen Namen als Einstieg einer fertigen Coach-Nachricht
+    weg („<Name>, kurz und bündig: …" → „Kurz und bündig: …"). Der Coach
+    kennt seinen Namen aus dem Rahmen-Block; als erstes Wort liest er sich für
+    die Dom-Seite wie eine Anrede an sie (Live-Befund 17.11.2026). Die
+    Prompt-Regel dazu steht in coach_persona._namen_block – das hier ist das
+    Netz darunter. Ohne Namen oder wenn danach nichts übrig bliebe: unverändert."""
+    try:
+        from bot.services import persona_config  # lazy: zirkelfrei
+        name = (persona_config.bot_name() or "").strip()
+    except Exception:
+        name = ""
+    t = text or ""
+    if not name:
+        return t
+    m = re.match(rf"(\W*)(?:(?:hey|hi|hallo|na|so)[\s,]+)?{re.escape(name)}(?![\wäöüß])\s*[,:;!.–—-]*\s*",
+                 t, re.IGNORECASE)
+    if not m or len(t[m.end():].strip()) < 20:
+        return t
+    rest = t[m.end():]
+    return m.group(1) + rest[:1].upper() + rest[1:]
+
+
 def _formel_verstoesse(text: str) -> list[str]:
     funde = []
     if _PASST_WEIL_RE.search(text or "") or _JETZT_RICHTIG_WEIL_RE.search(text or ""):

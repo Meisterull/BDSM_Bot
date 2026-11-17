@@ -50,6 +50,21 @@ def alters_hinweis(datum, ab_tagen: int = 14) -> str:
     return f", vor {tage // 30} Monaten"
 
 
+def abstand_hinweis(datum) -> str:
+    """Wie alters_hinweis, aber auch für jüngere Einträge: „, heute" / „,
+    gestern" / „, vor 5 Tagen" (Kalendertage in der Bot-Zeitzone). Für Kontext,
+    der wörtliche Zeitangaben enthält: Ohne den Abstand liest das Modell ein
+    „heute Abend" aus dem Eintrag von gestern als heute (Live-Befund 17.11.2026)."""
+    tage = alter_tage(datum)
+    if tage is None:
+        return ""
+    if tage >= 14:
+        return alters_hinweis(datum)
+    from bot.services import zeiten
+    label = zeiten.alter_label(str(datum).replace("Z", "+00:00"))
+    return f", {label}" if label else ""
+
+
 def ohne_steuer_tags(text: str) -> str:
     """Steuer-Tags und Doppelstern-Markdown aus gespeichertem Text entfernen."""
     t = _STEUER_TAG_RE.sub("", text or "").replace("**", "")

@@ -256,6 +256,15 @@ def ist_auftrag_an_bot(text: str) -> bool:
     return bool(grok.extract_keyword_task(text)[0] or _AN_BOT_RE.search(text))
 
 
+def _aufgaben_termin(quelltext: str, aufgabe: str):
+    """Termin einer Aufgabe: zuerst im Original-Wortlaut der Dom-Seite (der
+    [AUFGABE:]-Tag verliert die Zeitangabe oft beim Umformulieren), dann im
+    Aufgabentext. Zeitangaben im Lohn-Satz zählen nicht (finde_aufgaben_termin)."""
+    from bot.services import datum_erkennung
+    return (datum_erkennung.finde_aufgaben_termin(quelltext)
+            or datum_erkennung.finde_aufgaben_termin(aufgabe))
+
+
 def _nachfrage_wann(tage: int) -> str:
     """„am Mittwoch, 16.09.2026 um 17:30" – Nachfrage-Zeitpunkt des Paares."""
     from zoneinfo import ZoneInfo
@@ -337,7 +346,7 @@ async def callback_sn_aufgabe(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Termin aus dem Original-Wortlaut („am Samstag") → Nachfrage am Tag danach
     # (bzw. am Termin-Tag, wenn eine frühe Uhrzeit genannt ist – nachfrage_tage);
     # sonst wie jede Sofort-Aufgabe morgen zur Followup-Zeit.
-    termin = datum_erkennung.finde_termin(quelltext) or datum_erkennung.finde_termin(auftrag)
+    termin = _aufgaben_termin(quelltext, auftrag)
     tage = 1
     extra: dict = {}
     if termin:
@@ -635,7 +644,7 @@ async def _starte_aufgaben_bestaetigung(
     # Termin zuerst im Original-Wortlaut suchen (der [AUFGABE:]-Tag verliert die
     # Zeitangabe oft beim Umformulieren), dann im Aufgabentext selbst.
     from bot.services import datum_erkennung
-    termin = datum_erkennung.finde_termin(quelltext) or datum_erkennung.finde_termin(task_text)
+    termin = _aufgaben_termin(quelltext, task_text)
 
     s = state.get(chat_id)
     s["pending_task_text"] = task_text

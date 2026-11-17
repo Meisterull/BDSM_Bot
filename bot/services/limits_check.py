@@ -214,12 +214,60 @@ _FALSE_FRIEND_SUFFIX: dict[str, str] = {
 _VERB_PRAEFIXE = r"(?:aus|an|be|ab|ein|ver|voll|durch|ge){0,2}"
 
 
+# Ortswörter: Sie berühren eine Öffentlichkeits-Grenze nur als ORT. Als bloßer
+# Wortanfang treffen sie Körper- und Alltagswörter – "bus" steckt in "Busen"
+# und (nach der ß-Normalisierung) in "Buße", "park" in "Parkett" und "geparkt".
+# Für diese Suchwörter gilt deshalb ein eigenes Muster: das Wort selbst und
+# seine Zusammensetzungen ("Linienbus", "Bushaltestelle", "Stadtpark",
+# "Parkplatz"). Weiter fail-closed: Unbekannte Zusammensetzungen auf -bus/-park
+# zählen als Ort; ausgenommen sind nur benannte Nicht-Orte. Die Mehrzahl
+# "Busse" bleibt außen vor – sie ist von "Buße" nicht zu unterscheiden.
+# (Fundstellen von "draussen" prüft _draussen_ohne_ort im Zusammenhang.)
+_ORT_MUSTER: dict[str, str] = {
+    "bus": (r"\b(?!(?:glo|ku|rhom|sukku|succu|inku|incu|sylla|bam|nim|kolum|colum)bus\b)"
+            r"(?:\w*bus(?:es)?|bus(?:fahr|halt|bahnhof|linie|station|reise)\w*)\b"),
+    "park": (r"\b(?!sparks?\b)"
+             r"(?:\w*park(?:s|es)?"
+             r"|park(?:anlage|bank|baenke|platz|plaetze|haus|haeuser|weg|deck|garage|bucht)\w*"
+             r"|parking\s+(?:lot|garage))\b"),
+}
+
+# "draussen" direkt hinter einem Körperteil oder Spielzeug heißt "nicht drin /
+# nicht bedeckt" – kein Ort (Live-Befund 17.11.2026: ein Entwurf wurde deshalb
+# als Verstoß gegen eine Öffentlichkeits-Grenze verworfen, der Ersatz war
+# schlechter). Bewusst eng: Folgt eine Orts- oder Bewegungsangabe ("… draussen
+# im Garten", "… draussen spazieren"), bleibt es ein Treffer.
+_DRAUSSEN_KOERPER_DAVOR = re.compile(
+    r"\b(?:schwanz|penis|pimmel|glied|eichel|eier|hoden|sack|zunge\w*|nippel\w*|brust|brueste|titten|busen"
+    r"|plug\w*|dildo\w*|vibrator\w*|kugeln?|spitze)"
+    r"(?:\s+(?:bleib\w*|haeng\w*|ist|sind|lass\w*|laesst|liegt|liegen|noch|nicht|dabei|ganz|halb"
+    r"|schon|immer|weiter|gut|sichtbar|frei|heute|jetzt|erst|erstmal|vorerst|solange|ruhig|einfach"
+    r"|aber|auch|eben|halt|mal)){0,3}\s+$")
+_DRAUSSEN_ORT_DANACH = re.compile(
+    r"^\W{0,3}(?:im|in|ins|auf|aufs|vor|vorm|am|an|bei|beim|hinter|hinterm|neben|unter|ueber|zwischen"
+    r"|unterwegs|spazier\w*|geh\w*|lauf\w*|steh\w*|sitz\w*|knie\w*|wart\w*|trag\w*|zeig\w*|rum\w*|herum\w*)\b")
+_WORT_RE = re.compile(r"\w+")
+
+
+def _draussen_ohne_ort(text_norm: str, start: int) -> bool:
+    """True, wenn an `start` das Wort "draussen" steht und es dort erkennbar
+    keinen Ort meint ("Zunge bleibt draussen")."""
+    wort = _WORT_RE.match(text_norm, start)
+    if not wort or wort.group(0) != "draussen":
+        return False
+    davor = text_norm[max(0, start - 70):start]
+    danach = text_norm[wort.end():wort.end() + 30]
+    return bool(_DRAUSSEN_KOERPER_DAVOR.search(davor)) and not _DRAUSSEN_ORT_DANACH.search(danach)
+
+
 def _such_pattern(suchwort: str) -> str:
     """Regex für ein Suchwort: Wortanfang (\\b), optionale Verb-Präfixe (nur für
     rein alphabetische Stämme ab 4 Zeichen – kurze Stämme wie 'hau' und Phrasen
     mit Leerzeichen bleiben beim strikten \\b-Match), Negative-Lookahead für
     bekannte False Friends (z.B. 'wund' nicht in 'wunderbar', auch nicht als
-    'verwundert')."""
+    'verwundert'). Ortswörter haben ihr eigenes Muster (_ORT_MUSTER)."""
+    if suchwort in _ORT_MUSTER:
+        return _ORT_MUSTER[suchwort]
     nl = _FALSE_FRIEND_SUFFIX.get(suchwort)
     lookahead = rf"(?!(?:{nl}))" if nl else ""
     if re.fullmatch(r"[a-z]{4,}", suchwort):
@@ -323,6 +371,8 @@ def _prufe_liste(text_norm: str, limits: list[str], quelle: str,
                 if richtung and _eindeutig_andere_person(
                         text_norm, m.start(), m.end(), richtung, sprecher):
                     continue  # Fundstelle gehört eindeutig der anderen Person
+                if _draussen_ohne_ort(text_norm, m.start()):
+                    continue  # "… draussen" im Sinn von "nicht drin", kein Ort
                 gefunden = True
                 break
             if gefunden:
