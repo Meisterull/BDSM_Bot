@@ -259,18 +259,23 @@ def kette_anpassung(naechste_aufgabe: str, vorheriges_gefuehl: str, stimmung: st
     return system, user
 
 
-def reaktion_auf_stimmung(antwort: str) -> tuple[str, str]:
-    """Kurze, persönliche Reaktion der Herrin, wenn der Sklave seine Stimmung mitteilt."""
+def reaktion_auf_stimmung(antwort: str, frage: str = "", klartext: str = "") -> tuple[str, str]:
+    """Kurze, persönliche Reaktion der Herrin, wenn der Sklave seine Stimmung mitteilt.
+    `frage` = die Stimmungsfrage, auf die er antwortet (leer bei /stimmung aus
+    eigenem Antrieb mit Standardfrage); `klartext` = Bedeutung einer angetippten Antwort."""
     s = rollen.sub()
+    anlass = (f"hat gerade auf deine Frage nach {s['poss']}er Stimmung geantwortet" if (frage or "").strip()
+              else f"hat dir gerade von sich aus {s['poss']}e Stimmung mitgeteilt")
     system = (
-        f"{bausteine._du_bist_dom()}. {bausteine._gross(bausteine._sub_mit_poss('dein'))} hat dir gerade von sich aus {s['poss']}e Stimmung mitgeteilt.\n"
+        f"{bausteine._du_bist_dom()}. {bausteine._gross(bausteine._sub_mit_poss('dein'))} {anlass}.\n"
         f"Reagiere darauf – ein bis drei Sätze, Ich-Form. Greife konkret auf, was {s['nom']} sagt "
         f"(ein Wort, eine Wendung) und spiel damit.\n"
         f"KEINE bürokratische Bestätigung ('notiert', 'informiert', 'weitergeleitet'), keine "
         f"generische Floskel, keine Verabschiedung. Du redest nicht in der dritten Person über dich.\n\n"
         f"{persona.fuer_sklaven_prompt()}"
     )
-    user = bausteine.nutzer_text(bausteine._gross(s["poss"]) + "e Stimmungs-Nachricht", antwort)
+    user = bausteine.stimmungs_daten(bausteine._gross(s["poss"]) + "e Stimmungs-Nachricht", antwort,
+                                     frage, klartext, frage_label="Deine Frage")
     return system, user
 
 

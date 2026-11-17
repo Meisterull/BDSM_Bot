@@ -114,7 +114,10 @@ def stimmung_abfragen(vermeiden: list[str] | None = None,
         )
         anrede = _anrede()
         if anrede and sum(1 for v in vermeiden if v and anrede.lower() in v.lower()) >= 2:
-            vermeiden_block += "Die Anrede stand zuletzt in fast jeder Frage – diesmal OHNE Anrede, nur „du\".\n"
+            # Nicht „nur ‚du'" schreiben: das Modell hängte daraufhin an jede Frage ein „…, du?" an.
+            vermeiden_block += (f"Die Anrede „{anrede}\" stand zuletzt in fast jeder Frage. In der heutigen Frage "
+                                "kommt sie NICHT vor – auch kein Ersatz dafür und kein angehängtes „du\" am "
+                                "Satzende; die Frage spricht ihn einfach mit dir/dich/dein an.\n")
         # Die Satzanfänge NOCH EINMAL einzeln und wörtlich: der Detektor in
         # handlers/stimmung verwirft jede Frage, die mit denselben drei Wörtern
         # beginnt wie eine der letzten. Die Liste oben allein reicht nicht – die
@@ -139,6 +142,51 @@ def stimmung_abfragen(vermeiden: list[str] | None = None,
         f"{persona.fuer_sklaven_prompt()}"
     )
     user = "Formuliere jetzt genau EINE solche Frage."
+    return system, user
+
+
+# Der FRAGE-Prompt erfährt bewusst nichts von den Antworten zum Antippen: Ein
+# Hinweis darauf („unter deiner Frage stehen gleich kurze Antworten …") ließ das
+# Modell die Antwortvorschläge gleich selbst unter die Frage schreiben (Echt-Test
+# 17.11.2026, 4 von 5 Fragen). Die Antworten entstehen getrennt, zur fertigen Frage.
+ANTWORT_ANZAHL = 4
+ANTWORT_MAX_ZEICHEN = 28
+
+
+def stimmung_antworten(frage: str, nachbessern: bool = False) -> tuple[str, str]:
+    """Kurze Antworten zum Antippen, passend zu GENAU dieser Stimmungsfrage.
+
+    Die Frage wird täglich frisch und oft bildhaft gestellt; eine feste Skala
+    (mies … aufgedreht) passt darauf selten, und ohne passenden Knopf blieb sie
+    unbeantwortet. Zu jeder Antwort gehört ein Klartext: Der wird gespeichert
+    und steht später als „Aktuelle Stimmung" in anderen Prompts – er muss ohne
+    die Frage verständlich sein. Bewusst ohne Rollen-Wörter: die Frage kann an
+    jede der beiden Personen gehen (Vanilla)."""
+    from bot.services import persona_config
+    system = (
+        "Unter einer Frage nach der Stimmung stehen Antworten zum Antippen. Du schreibst, was die "
+        "gefragte Person darauf antworten könnte.\n"
+        f"Schreib genau {ANTWORT_ANZAHL} Antworten:\n"
+        "- Jede ist eine direkte Antwort auf GENAU diese Frage und greift ihre Wörter oder ihr Bild auf.\n"
+        "- Zusammen decken sie die Spannweite ab: bei einem Entweder-oder beide Seiten, dazu etwas "
+        "dazwischen und eine Antwort für „weder noch\" oder „ganz anders\". Fragt die Frage nach mehreren "
+        "Dingen, antworte auf ihren Kern – nicht auf jeden Teil einzeln.\n"
+        "- Erfinde nichts aus dem Leben der Person: keine Ereignisse, Orte, Dinge oder Wünsche, die nur sie "
+        "kennen kann. Fragt die Frage danach (was war das Beste, worauf hast du Lust), bleiben die Antworten "
+        "auf der Ebene der Stimmung – etwa wie viel Schönes und wie viel Nerviges, wie viel Lust überhaupt.\n"
+        f"- Kurz wie ein Knopf: zwei bis fünf Wörter, höchstens {ANTWORT_MAX_ZEICHEN} Zeichen, in den eigenen "
+        "Worten der Person (Ich-Form oder Stichwort) – ohne Anrede, ohne Emoji, ohne Anführungszeichen, "
+        "ohne Punkt am Ende.\n"
+        "- Zu jeder Antwort ein Klartext: was sie über die Stimmung sagt – drei bis acht Wörter als "
+        "Stichworte OHNE Subjekt und ohne Pronomen (nicht „sie ist …\", nicht „er fühlt …\"), nüchtern, "
+        "OHNE das Bild der Frage, verständlich für jemanden, der die Frage nicht kennt.\n"
+        'Antworte NUR mit JSON in dieser Form: {"antworten": [{"knopf": "…", "klartext": "…"}]}'
+        f"{persona_config.sprache_anweisung()}"
+    )
+    user = bausteine.nutzer_text("Die Frage", frage)
+    if nachbessern:
+        user += (f"\n\nDein erster Versuch war unbrauchbar (Antworten zu lang für einen Knopf oder kein "
+                 f"gültiges JSON). Jetzt wirklich: höchstens {ANTWORT_MAX_ZEICHEN} Zeichen je Antwort, nur das JSON.")
     return system, user
 
 

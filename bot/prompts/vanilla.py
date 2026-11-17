@@ -274,20 +274,25 @@ def stimmung_frage(rolle: str, vermeiden: list[str] | None = None, richtung: str
     return system, "Formuliere jetzt die Frage."
 
 
-def stimmung_reaktion(rolle: str, antwort: str) -> tuple[str, str]:
+def stimmung_reaktion(rolle: str, antwort: str, frage: str = "", klartext: str = "") -> tuple[str, str]:
+    """`frage` = die Stimmungsfrage, auf die geantwortet wurde; `klartext` =
+    Bedeutung einer angetippten Antwort (s. followup.stimmung_antworten)."""
     from bot.prompts.followup import bausteine
     ich = person(rolle)
+    anlass = (f"hat gerade auf deine Frage nach {ich['poss']}er Stimmung geantwortet" if (frage or "").strip()
+              else f"hat dir gerade von sich aus {ich['poss']}e Stimmung mitgeteilt")
     system = (
         f"{stimme_block(rolle)}\n\n"
-        f"{_gross(ich['name'])} hat dir gerade von sich aus {ich['poss']}e Stimmung mitgeteilt. "
+        f"{_gross(ich['name'])} {anlass}. "
         "Reagiere darauf – ein bis drei Sätze, Ich-Form. Greif konkret auf, was gesagt wurde (ein Wort, "
         "eine Wendung). Keine bürokratische Bestätigung, keine Floskel, keine Verabschiedung, kein Ratschlag-Block.\n\n"
         f"{stil_fuss()}"
     )
-    return system, bausteine.nutzer_text("Stimmungs-Nachricht", antwort)
+    return system, bausteine.stimmungs_daten("Stimmungs-Nachricht", antwort, frage, klartext,
+                                             frage_label="Deine Frage")
 
 
-def stimmung_hinweis(rolle: str, antwort: str) -> tuple[str, str]:
+def stimmung_hinweis(rolle: str, antwort: str, frage: str = "", klartext: str = "") -> tuple[str, str]:
     """Kurzer Hinweis an die ANDERE Person, wie es `rolle` gerade geht."""
     from bot.prompts.followup import bausteine
     ich, partner = person(rolle), person(andere_rolle(rolle))
@@ -300,7 +305,8 @@ def stimmung_hinweis(rolle: str, antwort: str) -> tuple[str, str]:
         f"darauf eingehen könnte. 1-3 Sätze, Du-Form, kein Bericht-Format, keine Floskeln, kein Zitat in Anführungszeichen.\n\n"
         f"{kurz_stil()}"
     )
-    return system, bausteine.nutzer_text(f"Stimmungs-Nachricht von {von}", antwort)
+    return system, bausteine.stimmungs_daten(f"Stimmungs-Nachricht von {von}", antwort, frage, klartext,
+                                             frage_label="Die Frage, auf die geantwortet wurde")
 
 
 # ---------------------------------------------------------------------------

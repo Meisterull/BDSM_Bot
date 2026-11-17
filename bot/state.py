@@ -203,7 +203,7 @@ FLOW_STATE_KEYS = (
     "tiny_task_feedback_id",
     "herrin_frage_task_id",
     # Offene Stimmungsfrage (Merkmarke statt Mode): /abbrechen räumt sie mit ab
-    "stimmung_offen_bis",
+    "stimmung_offen_bis", "stimmung_offen_frage",
     "privileg_aktiv_id",
     # Stille-Check-in: offene Rückfrage (aufgaben/nervt)
     "stille_rueckfrage",

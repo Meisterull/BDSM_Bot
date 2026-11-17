@@ -661,3 +661,45 @@ async def alle(h, phase, w):
         await mt._training_erstellen(pid, "Spanking")
         config.TRAINING_ENABLED = False
     await phase(h, "45 Psycho-Training", p45)
+
+    # ------------------------------------------------ 46 Stimmungsfrage mit passenden Antwort-Knöpfen
+    async def p46():
+        optionen = ('{"antworten": [{"knopf": "Eher ruhig", "klartext": "gelassen, wenig los"},'
+                    '{"knopf": "Ziemlich voll", "klartext": "unruhig, viel im Kopf"},'
+                    '{"knopf": "Mal so, mal so", "klartext": "gemischt"},'
+                    '{"knopf": "Weder noch", "klartext": "müde, eher leer"}]}')
+        muster = r"Antworten zum Antippen\. Du schreibst"
+        frage_muster = r"Formuliere jetzt genau EINE solche Frage"
+        # Eigene Fragetexte je Runde: der Platzhalter-Satz des Szenarios gilt dem
+        # Wiederholungs-Detektor sonst als „zu ähnlich" (→ Standardfrage ohne Knöpfe zur Frage).
+        fragen = ["Ist dein Kopf heute eher ein stiller See oder ein voller Bahnhof?",
+                  "Wie viel Kraft steckt jetzt noch in dir – voller Akku oder letzter Strich?",
+                  "Fühlt sich der Tag bisher leicht an oder eher wie ein Rucksack voller Steine?"]
+        config.STIMMUNG_ENABLED = True
+        await aufraeumen()
+        await schliesse_offene()
+        # 1) Frage mit vier passenden Antworten → Tipp auf eine davon
+        w.OVERRIDES.append((frage_muster, fragen[0]))
+        w.OVERRIDES.append((muster, optionen))
+        await h.job("stimmung_job", tagesjobs.stimmung_job)
+        print(f"   Frage 1: {modi()} | Knöpfe S: {w.kn(h, S)}")
+        gedrueckt = await h.press(S, "Ziemlich voll")
+        e = await qdrant.get_latest_stimmung("sklave") or {}
+        print(f"   Tipp: {gedrueckt} | gespeichert: {e.get('zusammenfassung')!r} | Knopf: {e.get('knopf')!r} | Frage dabei: {bool(e.get('frage'))}")
+        # 2) neue Frage, aber getippte Antwort
+        w.OVERRIDES.append((frage_muster, fragen[1]))
+        w.OVERRIDES.append((muster, optionen))
+        await h.job("stimmung_job", tagesjobs.stimmung_job)
+        await h.send(S, "eher müde, aber ganz zufrieden")
+        e = await qdrant.get_latest_stimmung("sklave") or {}
+        print(f"   getippt: {e.get('zusammenfassung')!r} | Frage dabei: {bool(e.get('frage'))} | {modi()}")
+        # 3) unbrauchbare Ausgabe (Platzhalter-JSON) → Nachbesserung, dann feste Knöpfe
+        w.OVERRIDES.append((frage_muster, fragen[2]))
+        vor = w.ZAEHLER["n"]
+        await h.job("stimmung_job", tagesjobs.stimmung_job)
+        print(f"   Rückfall: {w.ZAEHLER['n'] - vor} Prompts | Knöpfe S: {w.kn(h, S)}")
+        await h.press(S, "stimmung:4")
+        e = await qdrant.get_latest_stimmung("sklave") or {}
+        print(f"   fester Knopf: {e.get('zusammenfassung')!r}")
+        config.STIMMUNG_ENABLED = False
+    await phase(h, "46 Stimmungsfrage", p46)

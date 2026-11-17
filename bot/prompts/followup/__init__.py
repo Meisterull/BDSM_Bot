@@ -23,6 +23,8 @@ from bot import config  # noqa: F401
 from bot.prompts import persona, rollen  # noqa: F401
 
 _MODUL_VON = {
+    "ANTWORT_ANZAHL": "stimmung_fragen",
+    "ANTWORT_MAX_ZEICHEN": "stimmung_fragen",
     "_GEFUEHL_FRAGEN": "stimmung_fragen",
     "_PRUEF_ART": "aufgaben_vorschlag",
     "_STIMMUNG_RICHTUNGEN": "stimmung_fragen",
@@ -54,7 +56,9 @@ _MODUL_VON = {
     "reaktion_herrin_versaeumt": "versaeumnis",
     "serie_variationen": "sub_nachrichten",
     "stimmung_abfragen": "stimmung_fragen",
+    "stimmung_antworten": "stimmung_fragen",
     "stimmung_richtungen": "stimmung_fragen",
+    "stimmungs_daten": "bausteine",
     "strafe_fuer_ablehnung": "sub_nachrichten",
     "tiny_task_vorschlag": "aufgaben_vorschlag",
     "wett_ergebnis_an_dom": "sub_nachrichten",
