@@ -31,7 +31,13 @@ _BG_TASKS: set = set()
 # selbst (FELD_GEFRAGT) – kein Chat-State, ein Neustart ändert daran nichts.
 ZIFFER_FENSTER = timedelta(hours=12)
 FELD_GEFRAGT = "bewertung_gefragt_am"
+FELD_BEWERTET = "bewertet_am"
 MODE_KOMMENTAR = "aufgabe_kommentar"
+
+# Aufgaben-Komplexität aus den Bewertungen: so viele braucht es mindestens, und
+# nur so alte zählen (s. _stufe_aus_bewertungen).
+KOMPLEX_MIN = 5
+KOMPLEX_FENSTER_TAGE = 90
 
 
 def _kommentar_zeile(task_id: str) -> list[InlineKeyboardButton]:
@@ -101,7 +107,8 @@ async def _bewerten(bot, task_id: str, wert: int) -> str:
         return "fehlt"
     if task.get("domina_bewertung"):
         return "schon"
-    await qdrant.update_task(task_id, {"domina_bewertung": wert})
+    await qdrant.update_task(task_id, {"domina_bewertung": wert,
+                                       FELD_BEWERTET: datetime.now(timezone.utc).isoformat()})
     logger.info("Aufgabe bewertet: %d von 5 (%s).", wert, task_id)
     kontext = SimpleNamespace(bot=bot)
     try:
@@ -192,56 +199,103 @@ async def per_ziffer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool
     return True
 
 
-async def _pruefe_schwierigkeit(context, bewertung: int) -> None:
-    """Passt die Aufgaben-Schwierigkeit automatisch an Bewertungs-Durchschnitt an."""
+def _wertungs_alter(task: dict) -> timedelta | None:
+    """Wie lange die Bewertung her ist – nach `bewertet_am`, bei älteren
+    Einträgen ohne dieses Feld nach dem Datum der Aufgabe."""
+    for feld in (FELD_BEWERTET, "erteilt_am"):
+        try:
+            wann = datetime.fromisoformat(task.get(feld) or "")
+        except (TypeError, ValueError):
+            continue
+        if wann.tzinfo is None:
+            wann = wann.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - wann
+    return None
+
+
+async def _stufe_aus_bewertungen(aktuell: str) -> tuple[str, float | None]:
+    """Die Aufgaben-Komplexität, die sich aus den Bewertungen ergibt, samt
+    Schnitt (None, wenn es keinen gibt).
+
+    Es zählen nur Bewertungen der letzten KOMPLEX_FENSTER_TAGE Tage. Vorher
+    galten die fünf jüngsten ohne Altersgrenze: Eine einmal gesetzte Stufe
+    blieb so auf Dauer stehen, auch wenn längst nicht mehr bewertet wurde
+    (Durchsicht 18.11.2026). Liegen im Fenster weniger als KOMPLEX_MIN
+    Bewertungen, gibt es für eine Abweichung keine Grundlage → „normal".
+    Ein Schnitt zwischen den Schwellen lässt die Stufe, wie sie ist (kein
+    Hin und Her an der Grenze)."""
     # sort_by_datum: ohne serverseitige Sortierung liefert scroll bei >100
     # erledigten Tasks eine willkürliche Teilmenge statt der neuesten.
-    results = await qdrant.get_tasks_by_status(["erledigt"], sort_by_datum=True)
-    letzte = sorted(
-        [r for r in results if r.get("domina_bewertung")],
-        key=lambda x: x.get("erteilt_am", ""), reverse=True
-    )[:5]
+    tasks = await qdrant.get_tasks_by_status(["erledigt"], sort_by_datum=True)
+    fenster = timedelta(days=KOMPLEX_FENSTER_TAGE)
+    frisch = []
+    for task in tasks:
+        wert = task.get("domina_bewertung")
+        alter = _wertungs_alter(task)
+        if wert and alter is not None and alter <= fenster:
+            frisch.append((alter, wert))
+    if len(frisch) < KOMPLEX_MIN:
+        return "normal", None
+    werte = [wert for _, wert in sorted(frisch, key=lambda x: x[0])[:KOMPLEX_MIN]]
+    schnitt = sum(werte) / len(werte)
+    if schnitt >= 4.5:
+        return "hoch", schnitt
+    if schnitt <= 2.0:
+        return "niedrig", schnitt
+    if 2.5 <= schnitt <= 3.5:
+        return "normal", schnitt
+    return aktuell, schnitt
 
-    if len(letzte) < 5:
-        return
 
-    bewertungen = [t["domina_bewertung"] for t in letzte if "domina_bewertung" in t]
-    avg = sum(bewertungen) / len(bewertungen)
+async def schwierigkeit_nachziehen() -> str | None:
+    """Stufe ohne Meldung an die Dom-Seite an die Bewertungen der letzten Zeit
+    angleichen – für den Wartungs-Job: Wird nicht mehr bewertet, soll eine alte
+    Abweichung nicht ewig stehen bleiben. Gibt die neue Stufe zurück, None, wenn
+    nichts zu ändern war."""
+    profil = await qdrant.get_user_profile("domina") or {}
+    aktuell = profil.get("aufgaben_schwierigkeit", "normal")
+    ziel, schnitt = await _stufe_aus_bewertungen(aktuell)
+    if ziel == aktuell:
+        return None
+    await qdrant.patch_profile_fields("domina", {"aufgaben_schwierigkeit": ziel})
+    logger.info("Aufgaben-Komplexität %s → %s (%s).", aktuell, ziel,
+                f"Schnitt {schnitt:.1f}" if schnitt is not None
+                else f"weniger als {KOMPLEX_MIN} Bewertungen in {KOMPLEX_FENSTER_TAGE} Tagen")
+    return ziel
 
+
+async def _pruefe_schwierigkeit(context, bewertung: int) -> None:
+    """Nach einer neuen Bewertung: Aufgaben-Komplexität an den Schnitt der
+    letzten Bewertungen anpassen und der Dom-Seite Bescheid geben."""
     domina_profile = await qdrant.get_user_profile("domina") or {}
     schwierigkeit = domina_profile.get("aufgaben_schwierigkeit", "normal")
-
-    neue_schwierigkeit = schwierigkeit
-    hinweis = ""
-
-    if avg >= 4.5 and schwierigkeit != "hoch":
-        neue_schwierigkeit = "hoch"
-        hinweis = t("BEWERTUNG_KOMPLEX_HOCH")
-    elif avg <= 2.0 and schwierigkeit != "niedrig":
-        neue_schwierigkeit = "niedrig"
-        hinweis = t("BEWERTUNG_KOMPLEX_NIEDRIG")
-    elif 2.5 <= avg <= 3.5 and schwierigkeit != "normal":
-        neue_schwierigkeit = "normal"
-        hinweis = t("BEWERTUNG_KOMPLEX_NORMAL")
-
-    if neue_schwierigkeit != schwierigkeit:
-        await qdrant.patch_profile_fields("domina", {"aufgaben_schwierigkeit": neue_schwierigkeit})
-        await telegram_helper.send_domina(context.bot, hinweis)
-        try:
-            from bot.prompts import coach_persona
-            tipp_system = (
-                f"{coach_persona.fuer_strukturierten_output()}\n\n"
-                f"Gib der Domina in 1-2 Sätzen einen konkreten Tipp, wie sie Aufgaben formulieren kann, "
-                f"die besser zu ihr und ihrem Sklaven passen. Kein Markdown."
-            )
-            tipp = await grok.simple(
-                f"Die Domina hat ihre letzten 5 Aufgaben im Schnitt mit {avg:.1f}/5 Sternen "
-                f"bewertet. Die Aufgaben-Komplexität wurde auf '{neue_schwierigkeit}' angepasst.",
-                system=tipp_system,
-            )
-            await telegram_helper.send_domina(context.bot, t("BEWERTUNG_TIPP_PREFIX", tipp=tipp))
-        except Exception as e:
-            logger.error("Fehler bei Bewertungs-Coaching-Tipp: %s", e)
+    neue_schwierigkeit, avg = await _stufe_aus_bewertungen(schwierigkeit)
+    if neue_schwierigkeit == schwierigkeit:
+        return
+    await qdrant.patch_profile_fields("domina", {"aufgaben_schwierigkeit": neue_schwierigkeit})
+    if avg is None:
+        # Zurück auf „normal", weil zu wenige frische Bewertungen vorliegen –
+        # eine Korrektur im Hintergrund, keine Nachricht wert.
+        logger.info("Aufgaben-Komplexität %s → normal (zu wenige Bewertungen im Fenster).", schwierigkeit)
+        return
+    hinweis = t({"hoch": "BEWERTUNG_KOMPLEX_HOCH", "niedrig": "BEWERTUNG_KOMPLEX_NIEDRIG",
+                 "normal": "BEWERTUNG_KOMPLEX_NORMAL"}[neue_schwierigkeit])
+    await telegram_helper.send_domina(context.bot, hinweis)
+    try:
+        from bot.prompts import coach_persona
+        tipp_system = (
+            f"{coach_persona.fuer_strukturierten_output()}\n\n"
+            f"Gib der Domina in 1-2 Sätzen einen konkreten Tipp, wie sie Aufgaben formulieren kann, "
+            f"die besser zu ihr und ihrem Sklaven passen. Kein Markdown."
+        )
+        tipp = await grok.simple(
+            f"Die Domina hat ihre letzten {KOMPLEX_MIN} Aufgaben im Schnitt mit {avg:.1f}/5 Sternen "
+            f"bewertet. Die Aufgaben-Komplexität wurde auf '{neue_schwierigkeit}' angepasst.",
+            system=tipp_system,
+        )
+        await telegram_helper.send_domina(context.bot, t("BEWERTUNG_TIPP_PREFIX", tipp=tipp))
+    except Exception as e:
+        logger.error("Fehler bei Bewertungs-Coaching-Tipp: %s", e)
 
 
 async def _vorlieben_notiz_vorschlagen(bot, task_id: str) -> None:

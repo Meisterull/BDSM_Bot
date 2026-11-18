@@ -12,6 +12,12 @@ Regressions-Tests zur Log-Durchsicht zweier Tage (18.11.2026). Sieben Befunde:
   6. Wett-Idee: sagt ausdrücklich, worauf gewettet wird (ein Retry, kein Ausschluss)
   7. Offene Fäden: keine Profil-Bitten und nichts, was eine Grenze berührt
 
+Nachtrag vom selben Abend (aus dem Prompt des Tages-Vorschlags):
+
+  8. Aufgaben-Komplexität: nur Bewertungen der letzten 90 Tage zählen; ohne
+     genug frische Bewertungen gilt „normal"
+  9. Die Zeile „was bei ihm wirkt" nennt keine heruntergestuften Kategorien
+
     python3 tests/test_review_d13.py
 """
 import asyncio
@@ -46,6 +52,7 @@ from bot.prompts import bestrafung as bp  # noqa: E402
 from bot.prompts import followup as fp  # noqa: E402
 from bot.prompts.followup import bausteine  # noqa: E402
 from bot.services import datum_erkennung as de  # noqa: E402
+from bot.services import kategorie_logik as kl  # noqa: E402
 from bot.services import kontext_pflege as kp  # noqa: E402
 from bot.services import persona_config  # noqa: E402
 from bot.services import waehrung as ws  # noqa: E402
@@ -184,7 +191,11 @@ async def test_bewertung_per_knopf():
         u = _update(data=f"bewertung:4:{tid}")
         await bw.callback(u, _context())
         await asyncio.sleep(0)
-    update_task.assert_awaited_once_with(tid, {"domina_bewertung": 4})
+    update_task.assert_awaited_once()
+    assert update_task.await_args.args[0] == tid
+    felder = update_task.await_args.args[1]
+    # Mit Zeitstempel: nur frische Bewertungen zählen für die Aufgaben-Komplexität.
+    assert felder["domina_bewertung"] == 4 and bw.FELD_BEWERTET in felder
     q = u.callback_query
     assert "4" in q.answer.await_args.args[0]
     # Die Sterne fallen weg, der Kommentar-Knopf bleibt.
@@ -594,6 +605,115 @@ async def test_offene_faeden_filtern_quelle_und_ergebnis():
     assert faeden == ["hat morgen ein schwieriges Gespräch im Büro"] == gespeichert["offene_faeden"]
 
 
+# --------------------------------------------------------------------------
+# 8. Aufgaben-Komplexität aus frischen Bewertungen
+# --------------------------------------------------------------------------
+
+def _wertung(wert: int, erteilt_vor: int, bewertet_vor: int | None = None) -> dict:
+    task = {"domina_bewertung": wert, "erteilt_am": _vor(erteilt_vor)}
+    if bewertet_vor is not None:
+        task[bw.FELD_BEWERTET] = _vor(bewertet_vor)
+    return task
+
+
+async def test_komplexitaet_zaehlt_nur_frische_bewertungen():
+    async def stufe(tasks, aktuell="normal"):
+        with _Flicken((db_tasks, "get_tasks_by_status", AsyncMock(return_value=tasks))):
+            return await bw._stufe_aus_bewertungen(aktuell)
+
+    alt = [_wertung(1, 200 + i) for i in range(7)]
+    # Viele alte Einsen, eine frische Drei: keine Grundlage mehr für „niedrig".
+    assert await stufe(alt + [_wertung(3, 40)], "niedrig") == ("normal", None)
+    assert await stufe([], "hoch") == ("normal", None)
+    # Fünf frische Bewertungen entscheiden – die alten spielen nicht hinein.
+    assert await stufe(alt + [_wertung(5, t_) for t_ in (1, 2, 3, 4, 5)]) == ("hoch", 5.0)
+    assert await stufe([_wertung(w, 10) for w in (1, 2, 2, 3, 2)]) == ("niedrig", 2.0)
+    assert await stufe([_wertung(3, 10)] * 5, "hoch") == ("normal", 3.0)
+    # Schnitt zwischen den Schwellen: die Stufe bleibt, wie sie ist.
+    assert await stufe([_wertung(w, 10) for w in (3, 1, 3, 1, 4)], "niedrig") == ("niedrig", 2.4)
+    assert await stufe([_wertung(w, 10) for w in (3, 1, 3, 1, 4)], "hoch") == ("hoch", 2.4)
+    # Maßgeblich ist, wann BEWERTET wurde: alte Aufgabe, frische Wertung zählt …
+    frisch_bewertet = [_wertung(5, 300, bewertet_vor=2) for _ in range(5)]
+    assert await stufe(frisch_bewertet) == ("hoch", 5.0)
+    # … und es zählen die fünf jüngsten Wertungen im Fenster.
+    gemischt = [_wertung(1, 80) for _ in range(5)] + [_wertung(5, 3) for _ in range(5)]
+    assert await stufe(gemischt) == ("hoch", 5.0)
+    # Unlesbares Datum zählt nicht.
+    assert await stufe([{"domina_bewertung": 5, "erteilt_am": "kein-datum"}] * 5, "niedrig") == ("normal", None)
+
+
+async def test_komplexitaet_nachziehen_und_melden():
+    patches = []
+
+    async def patch(uid, felder, **kw):
+        patches.append((uid, felder))
+
+    gesendet = []
+
+    async def send_domina(bot, text, *a, **kw):
+        gesendet.append(text)
+
+    profil = {"aufgaben_schwierigkeit": "niedrig"}
+    alt = [_wertung(1, 200 + i) for i in range(7)]
+    with _Flicken((db_profile, "get_user_profile", AsyncMock(return_value=profil)),
+                  (db_profile, "patch_profile_fields", patch),
+                  (db_tasks, "get_tasks_by_status", AsyncMock(return_value=alt)),
+                  (bw.telegram_helper, "send_domina", send_domina),
+                  (bw.grok, "simple", AsyncMock(return_value="Ein Tipp."))):
+        # Wartungs-Job: still zurück auf normal
+        assert await bw.schwierigkeit_nachziehen() == "normal"
+        assert patches == [("domina", {"aufgaben_schwierigkeit": "normal"})] and gesendet == []
+        # Nach einer Bewertung ohne genug frische Wertungen: ebenfalls still
+        patches.clear()
+        await bw._pruefe_schwierigkeit(_context(), 3)
+        assert patches == [("domina", {"aufgaben_schwierigkeit": "normal"})] and gesendet == []
+    # Nichts zu ändern: kein Schreibzugriff
+    patches.clear()
+    with _Flicken((db_profile, "get_user_profile", AsyncMock(return_value={"aufgaben_schwierigkeit": "normal"})),
+                  (db_profile, "patch_profile_fields", patch),
+                  (db_tasks, "get_tasks_by_status", AsyncMock(return_value=alt))):
+        assert await bw.schwierigkeit_nachziehen() is None and patches == []
+    # Eine echte Änderung aus fünf frischen Bewertungen wird ihr gemeldet.
+    with _Flicken((db_profile, "get_user_profile", AsyncMock(return_value={"aufgaben_schwierigkeit": "normal"})),
+                  (db_profile, "patch_profile_fields", patch),
+                  (db_tasks, "get_tasks_by_status", AsyncMock(return_value=[_wertung(5, 3) for _ in range(5)])),
+                  (bw.telegram_helper, "send_domina", send_domina),
+                  (bw.grok, "simple", AsyncMock(return_value="Ein Tipp."))):
+        await bw._pruefe_schwierigkeit(_context(), 5)
+    assert patches == [("domina", {"aufgaben_schwierigkeit": "hoch"})]
+    assert gesendet[0] == t("BEWERTUNG_KOMPLEX_HOCH") and "Ein Tipp." in gesendet[1]
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    wartung = open(os.path.join(root, "bot", "scheduler", "wartung.py"), encoding="utf-8").read()
+    assert "bewertung.schwierigkeit_nachziehen()" in wartung, "der Wochen-Job zieht die Stufe nach"
+
+
+# --------------------------------------------------------------------------
+# 9. „Was bei ihm wirkt" ohne heruntergestufte Kategorien
+# --------------------------------------------------------------------------
+
+def test_reaktions_zeile_ohne_heruntergestufte():
+    plus = {"positiv": 1, "neutral": 0, "negativ": 0}
+    profil = {"kategorie_reaktionen": {"Alpha": dict(plus), "Beta": dict(plus),
+                                       "Gamma": {"positiv": 0, "neutral": 0, "negativ": 2}},
+              kl.FELD_SELTEN: ["Alpha", "Gamma"]}
+    assert set(kl.reaktionen_fuer_prompt(profil)) == {"Beta"}
+    assert kl.reaktions_spitzen(profil) == "Beta: positiv"
+    # Ohne Herunterstufung bleibt alles wie bisher.
+    frei = {"kategorie_reaktionen": profil["kategorie_reaktionen"]}
+    assert set(kl.reaktionen_fuer_prompt(frei)) == {"Alpha", "Beta", "Gamma"}
+    assert kl.reaktions_spitzen(frei) == "Alpha: positiv, Beta: positiv, Gamma: negativ"
+    assert kl.reaktionen_fuer_prompt(None) == {} and kl.reaktions_spitzen({}) == ""
+    # Die Zählung selbst bleibt unangetastet (nur die Anzeige filtert).
+    assert "Alpha" in profil["kategorie_reaktionen"]
+    # Alle Generatoren, die die Zeile zeigen, bekommen die gefilterten Daten.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for pfad in ("bot/scheduler/tiny_task.py", "bot/handlers/followup_response.py",
+                 "bot/handlers/waehrung/wette_ablehnung.py"):
+        src = open(os.path.join(root, pfad), encoding="utf-8").read()
+        assert "kategorie_logik.reaktionen_fuer_prompt(" in src, pfad
+        assert 'get("kategorie_reaktionen"' not in src, pfad
+
+
 if __name__ == "__main__":
     test_sterne_knoepfe()
     asyncio.run(test_bericht_setzt_keinen_mode())
@@ -614,4 +734,7 @@ if __name__ == "__main__":
     test_sieger_unklar()
     test_profil_bitte()
     asyncio.run(test_offene_faeden_filtern_quelle_und_ergebnis())
+    asyncio.run(test_komplexitaet_zaehlt_nur_frische_bewertungen())
+    asyncio.run(test_komplexitaet_nachziehen_und_melden())
+    test_reaktions_zeile_ohne_heruntergestufte()
     print("✅ Alle Review-D13-Tests bestanden")

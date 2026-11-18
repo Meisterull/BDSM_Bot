@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from bot import config, state
 from bot.services import paare
-from bot.services import qdrant, grok, telegram_helper, punkte, synonyme
+from bot.services import qdrant, grok, telegram_helper, punkte, synonyme, kategorie_logik
 from bot.services import sticker_reaktionen
 from bot.prompts import followup as fp
 from bot.prompts import bestrafung as bp
@@ -191,7 +191,7 @@ async def malus_kette(
         nicht_erledigt_streak = await qdrant.get_nicht_erledigt_streak("sklave")
         # Personalisierungs-Kontext für Bestrafungs-Prompt
         sklave_vorlieben = sklave_profil.get("vorlieben", []) or []
-        kategorie_reaktionen = sklave_profil.get("kategorie_reaktionen", {}) or {}
+        kategorie_reaktionen = kategorie_logik.reaktionen_fuer_prompt(sklave_profil)
         try:
             letzte_strafen_eintraege = await qdrant.get_strafen("sklave", limit=5) or []
             letzte_strafen = [

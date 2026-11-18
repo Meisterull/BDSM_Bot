@@ -57,8 +57,9 @@ async def backup_job(bot: Bot) -> None:
 
 @basis._job_guard
 async def sklave_dossier_job(bot: Bot) -> None:
-    """Wöchentlich – Charakteristiken (Sklave + Domina) verdichten und die
-    Kategorie-Reaktionen sanft altern lassen (Recency)."""
+    """Wöchentlich – Charakteristiken (Sklave + Domina) verdichten, die
+    Kategorie-Reaktionen sanft altern lassen (Recency) und die Aufgaben-
+    Komplexität an die Bewertungen der letzten Zeit angleichen."""
     from bot.handlers import dossier
     try:
         text = await dossier.aktualisiere_dossier()
@@ -82,6 +83,12 @@ async def sklave_dossier_job(bot: Bot) -> None:
                         kategorie_logik.DISLIKE_TAG_TAGE, len(verfallen))
     except Exception:
         logger.exception("sklave_dossier_job (Tag-Pflege) fehlgeschlagen")
+    try:
+        # Wird nicht mehr bewertet, fällt eine alte Abweichung auf „normal" zurück.
+        from bot.handlers import bewertung
+        await bewertung.schwierigkeit_nachziehen()
+    except Exception:
+        logger.exception("sklave_dossier_job (Aufgaben-Komplexität) fehlgeschlagen")
 
 
 @basis._job_guard

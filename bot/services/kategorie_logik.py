@@ -567,10 +567,23 @@ async def klassifiziere(text: str) -> str:
 # Profil-Ableitungen (vorher 4x dupliziert)
 # ---------------------------------------------------------------------------
 
+def reaktionen_fuer_prompt(sklave_profil: dict | None) -> dict:
+    """kategorie_reaktionen ohne die heruntergestuften Kategorien
+    (`selten_kategorien`) – für die Zeile „was bei ihm wirkt" in den Prompts.
+    Eine einzelne freundliche Rückmeldung zu einer Aufgabe aus einer
+    heruntergestuften Kategorie stand dort sonst als „<Kategorie>: positiv"
+    und widersprach der Herunterstufung (Durchsicht 18.11.2026). Gezählt wird
+    weiter – nur beworben wird die Kategorie nicht."""
+    profil = sklave_profil or {}
+    gedaempft = set(gedaempfte_kategorien(profil))
+    return {k: v for k, v in (profil.get("kategorie_reaktionen") or {}).items() if k not in gedaempft}
+
+
 def reaktions_spitzen(sklave_profil: dict) -> str:
     """Komma-Liste „kategorie: top-reaktion“ aus kategorie_reaktionen – als
-    Prompt-Baustein. Leerer String, wenn keine Daten vorliegen."""
-    reaktionen = (sklave_profil or {}).get("kategorie_reaktionen", {}) or {}
+    Prompt-Baustein, ohne heruntergestufte Kategorien (reaktionen_fuer_prompt).
+    Leerer String, wenn keine Daten vorliegen."""
+    reaktionen = reaktionen_fuer_prompt(sklave_profil)
     spitzen = []
     for kat, v in reaktionen.items():
         if not v:

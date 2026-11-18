@@ -397,7 +397,7 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         # der Prompt seine eigene Personalisierungs-Anforderung nicht erfüllen.
         dossier=sklave_profile.get("dossier", ""),
         offene_faeden=sklave_profile.get("offene_faeden", []),
-        kategorie_reaktionen=sklave_profile.get("kategorie_reaktionen", {}),
+        kategorie_reaktionen=kategorie_logik.reaktionen_fuer_prompt(sklave_profile),
         # Domina-Signal auch fürs LLM sichtbar machen – es steuert sonst nur die
         # Kategorie-Auswahl, ohne dass der Prompt es erklärt (Review D7, B7).
         domina_kategorie_praeferenzen=domina_profile.get("kategorie_praeferenzen", {}),

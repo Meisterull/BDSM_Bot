@@ -9,7 +9,7 @@ import re
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from bot import state
-from bot.services import grok, limits_check, qdrant, telegram_helper, tts, waehrung
+from bot.services import grok, kategorie_logik, limits_check, qdrant, telegram_helper, tts, waehrung
 from bot.services import sticker_reaktionen
 from bot.messages import t
 from bot.handlers.waehrung import kern, wette_annahme
@@ -81,7 +81,7 @@ async def _ablehnungs_strafen_roh(idee: str, maengel: list[str] | None = None) -
         letzte = []
     hl, gr = sp.get("hard_limits", []) or [], dp.get("grenzen", []) or []
     system, user = bestrafung.ablehnungs_strafen(
-        idee, hl, sp.get("vorlieben", []) or [], sp.get("kategorie_reaktionen", {}) or {},
+        idee, hl, sp.get("vorlieben", []) or [], kategorie_logik.reaktionen_fuer_prompt(sp),
         letzte, sp.get("dossier", "") or "")
     if maengel:
         user += ("\n\nACHTUNG: Diese Strafen aus deinem letzten Entwurf waren körperlich nicht "
