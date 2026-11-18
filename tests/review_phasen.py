@@ -78,7 +78,9 @@ async def alle(h, phase, w):
 
     # ------------------------------------------------ 03 Bewertung
     async def p03():
-        await h.send(D, "5")
+        # Bewertung per Knopf unter dem Bericht, Kommentar über den eigenen Knopf
+        await h.press(D, "bewertung:5")
+        await h.press(D, "bewertung:kommentar")
         await h.send(D, "Sehr brav gemacht, genau so will ich das öfter sehen.")
         await h.press(D, "coachregel:ja")
     await phase(h, "03 Bewertung + Kommentar", p03)
@@ -92,8 +94,8 @@ async def alle(h, phase, w):
         if not await h.press(S, "followup:ja"):
             await h.send(S, "ja")
         await h.send(S, "Langweilig")
+        # getippte Ziffer: zählt noch für die offene Bewertungsfrage (kein Mode)
         await h.send(D, "2")
-        await h.send(D, "/ueberspringen")
     await phase(h, "04 Follow-up + Gefühl negativ + Bewertung 2", p04)
 
     # ------------------------------------------------ 05 nicht erledigt → Strafe
@@ -566,7 +568,8 @@ async def alle(h, phase, w):
             if not await h.press(S, "followup:ja"):
                 await h.send(S, "ja")
             await h.send(S, gefuehl)
-            await h.send(D, sterne)
+            await h.press(D, f"bewertung:{sterne}")
+            await h.press(D, "bewertung:kommentar")
             await h.send(D, kommentar)
             await h.press(D, "coachregel:nein")
             await schliesse_offene()
@@ -749,3 +752,32 @@ async def alle(h, phase, w):
         await schliesse_offene()
         await qdrant.patch_profile_fields("sklave", {"wette": {}})
     await phase(h, "47 Coach kennt automatische Nachrichten", p47)
+
+    # ------------------------------------------------ 48 Aufgabe von vorgestern: Zeitbezug + Bewertung per Knopf
+    async def p48():
+        await aufraeumen()
+        await schliesse_offene()
+        await neue_aufgabe("Er soll heute Abend den Tisch decken; als Belohnung gibt es morgen Abend ein Eis.")
+        # Die Aufgabe zwei Tage altern lassen: ihr „heute Abend" ist dann vorgestern.
+        vor2 = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        for task in await db_tasks.get_tasks_by_status(["offen"]):
+            await db_tasks.update_task(task["qdrant_point_id"], {"erteilt_am": vor2})
+        vor = w.ZAEHLER["n"]
+        await h.send(S, "Ich bin schon gespannt auf später.")          # Chat: offene Aufgabe mit Datum
+        await faellig()                                                 # Nachfrage
+        if not await h.press(S, "followup:ja"):
+            await h.send(S, "ja")
+        await h.send(S, "Es war schön, alles für dich vorzubereiten.")  # Reaktion + Bericht
+        print(f"   Prompts: {w.ZAEHLER['n'] - vor} | D-Mode nach dem Bericht: "
+              f"{st.get_mode(config.DOMINA_CHAT_ID)} | Knöpfe D: {w.kn(h, D)}")
+        # Sie schreibt etwas ganz anderes: das geht an den Coach, nichts wird als Bewertung gelesen.
+        vor = w.ZAEHLER["n"]
+        await h.send(D, "Was könnte ich am Wochenende mit ihm machen?")
+        print(f"   freie Nachricht nach dem Bericht: {w.ZAEHLER['n'] - vor} Prompt(s) | "
+              f"D-Mode: {st.get_mode(config.DOMINA_CHAT_ID)}")
+        gedrueckt = await h.press(D, "bewertung:4")
+        bewertet = [t_.get("domina_bewertung") for t_ in await db_tasks.get_tasks_by_status(["erledigt"], limit=3, sort_by_datum=True)]
+        print(f"   Sterne gedrückt: {gedrueckt} | Bewertungen der jüngsten Aufgaben: {bewertet} | Knöpfe D: {w.kn(h, D)}")
+        await aufraeumen()
+        await schliesse_offene()
+    await phase(h, "48 Zeitbezug in der Kette + Bewertung per Knopf", p48)

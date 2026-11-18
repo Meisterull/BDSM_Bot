@@ -122,7 +122,7 @@ class _Welt:
         self.kette_fragen.append(task)
         return True
 
-    async def malus_kette(self, message, context, chat_id, task_id, aufgabe):
+    async def malus_kette(self, message, context, chat_id, task_id, aufgabe, **kw):
         self.malus.append(task_id)
 
     def install(self):

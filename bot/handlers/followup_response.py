@@ -42,7 +42,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     aufgabe = task.get("aufgabe", "")
     antwort = synonyme.ja_nein(text)
     if antwort == "ja":
-        await _handle_yes(update.message, context, chat_id, task_id, aufgabe, s)
+        await _handle_yes(update.message, context, chat_id, task_id, aufgabe, s,
+                          erteilt_am=task.get("erteilt_am", ""))
     elif antwort == "nein":
         await _handle_no(update.message, context, chat_id, task_id, aufgabe, task)
     else:
@@ -81,7 +82,8 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     s = state.get(chat_id)
     s["followup_task_id"] = task_id
     if action == "ja":
-        await _handle_yes(query.message, context, chat_id, task_id, aufgabe, s)
+        await _handle_yes(query.message, context, chat_id, task_id, aufgabe, s,
+                          erteilt_am=task.get("erteilt_am", ""))
     elif action == "nein":
         await _handle_no(query.message, context, chat_id, task_id, aufgabe, task)
 
@@ -93,11 +95,12 @@ async def _handle_yes(
     task_id: str,
     aufgabe: str,
     s: dict,
+    erteilt_am: str = "",
 ) -> None:
     """Ja: Gefühl abfragen."""
     await qdrant.update_task(task_id, {"status": "gefuehl_pending"})
     state.set_gefuehl_pending(chat_id, task_id)
-    prompt = fp.gefuehl_abfragen(aufgabe)
+    prompt = fp.gefuehl_abfragen(aufgabe, erteilt_am=erteilt_am)
     try:
         frage = await grok.simple(prompt, max_tokens=250)
     except Exception as e:
@@ -127,7 +130,8 @@ async def _handle_no(
         if task and await herrin_versaeumnis.braucht_herrin(task):
             await herrin_versaeumnis.frage_stellen(message, chat_id, task_id)
             return
-    await malus_kette(message, context, chat_id, task_id, aufgabe)
+    await malus_kette(message, context, chat_id, task_id, aufgabe,
+                      erteilt_am=(task or {}).get("erteilt_am", ""))
 
 
 async def malus_kette(
@@ -136,9 +140,11 @@ async def malus_kette(
     chat_id: str,
     task_id: str,
     aufgabe: str,
+    erteilt_am: str = "",
 ) -> None:
     """Nicht erledigt, lag am Sub: Streak reset, Domina informieren + Bestrafungsvorschlag.
-    Auch der Einstieg für herrin_versaeumnis („lag an mir")."""
+    Auch der Einstieg für herrin_versaeumnis („lag an mir"). `erteilt_am` ordnet
+    in den Prompts die Zeitwörter des Aufgabentexts ein."""
     await qdrant.update_task(task_id, {"status": "nicht_erledigt"})
     state.set_mode(chat_id, "chat")
     state.get(chat_id)["followup_task_id"] = None
@@ -201,6 +207,7 @@ async def malus_kette(
                 aufgabe, nicht_erledigt_streak, sklave_hard_limits,
                 dossier=sklave_profil.get("dossier", ""),
                 letzte_strafen=letzte_strafen,
+                erteilt_am=erteilt_am,
             )
             label = t("BESTRAFUNG_LABEL_ESKALATION")
         else:
@@ -212,6 +219,7 @@ async def malus_kette(
                 letzte_strafen=letzte_strafen,
                 dossier=sklave_profil.get("dossier", ""),
                 inventar_impuls=await inventar.impuls_wahl(),
+                erteilt_am=erteilt_am,
             )
             label = t("BESTRAFUNG_LABEL_VORSCHLAG")
         # Limits-Check inkl. Domina-Grenzen, mit einmaliger Re-Generierung
@@ -253,7 +261,7 @@ async def malus_kette(
     # ausrichten möchte.
     if not informiert:
         try:
-            bericht = await grok.simple(fp.bericht_nicht_erledigt(aufgabe))
+            bericht = await grok.simple(fp.bericht_nicht_erledigt(aufgabe, erteilt_am=erteilt_am))
         except Exception as e:
             logger.error("Bericht-nicht-erledigt fehlgeschlagen, sende Roh-Meldung: %s", e)
             bericht = kopf
@@ -266,7 +274,8 @@ async def malus_kette(
 
     # Reaktion der Herrin direkt an den Sklaven
     try:
-        reaktion = await grok.simple(fp.reaktion_auf_nicht_erledigt(aufgabe), max_tokens=250)
+        reaktion = await grok.simple(
+            fp.reaktion_auf_nicht_erledigt(aufgabe, erteilt_am=erteilt_am), max_tokens=250)
     except Exception as e:
         logger.error("Fehler bei Reaktion-auf-Nicht-Erledigt: %s", e)
         reaktion = t("FALLBACK_NICHT_ERLEDIGT")

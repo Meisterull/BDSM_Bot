@@ -195,12 +195,11 @@ FLOW_STATE_KEYS = (
     "szenario_name", "szenario_ton", "szenario_vokabular", "szenario_seit",
     "rollenspiel_intensitaet", "pending_szenario", "pending_szenario_custom",
     "wunsch_eingabe", "wunsch_id",
-    "aufgabe_kommentar", "kommentar_task_id",
+    "aufgabe_kommentar", "kommentar_task_id", "kommentar_msg_id",
     "geheimnis_text_inhalt",
     # Kette / Reaktion / Bewertung / Skill / Feedback / Privileg
     "kette_erste_text", "kette_level", "kette_profile", "kette_kategorie", "kette_aufgaben_liste",
     "strafe_id", "reaktion_fuer_task_id",
-    "bewertung_task_id",
     "skill_edit_kategorie",
     "tiny_task_feedback_id",
     "herrin_frage_task_id",
@@ -234,7 +233,7 @@ def set_followup_task(chat_id: str, task_id: str) -> bool:
     # (D9/M2): ein Ketten-Approve im Antwortfenster überschrieb sonst den
     # Sklaven-Mode und die Stimmungs-/Quiz-Antwort lief in die Followup-Schleife.
     blocked_modes = {"gefuehl", "reaktion_pending", "aufgabe_bestaetigung", "serie_wahl",
-                     "aufgabe_bewertung", "followup", "stimmung", "quiz_antwort"}
+                     "followup", "stimmung", "quiz_antwort"}
     if current_mode in blocked_modes:
         logger.warning("Skipping set_followup_task – user in mode %s", current_mode)
         return False
@@ -267,7 +266,7 @@ def set_gefuehl_pending(chat_id: str, task_id: str) -> None:
     # 'followup' ist hier KEIN Konflikt, sondern der reguläre Vorgänger: nach
     # "Erledigt" geht es vom Followup direkt in die Gefühl-Abfrage. Nur echte
     # Domina-seitige Parallel-Flows blockieren.
-    blocked_modes = {"reaktion_pending", "aufgabe_bestaetigung", "serie_wahl", "aufgabe_bewertung"}
+    blocked_modes = {"reaktion_pending", "aufgabe_bestaetigung", "serie_wahl"}
     if current_mode in blocked_modes:
         logger.warning("Skipping set_gefuehl_pending – user in mode %s", current_mode)
         return

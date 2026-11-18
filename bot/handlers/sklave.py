@@ -268,6 +268,22 @@ def _rotierende_auswahl(items: list, k: int, offset: int) -> list:
     return [items[(start + i) % len(items)] for i in range(k)]
 
 
+def _offene_aufgaben_zeilen(offene: list[dict]) -> str:
+    """Die offenen Aufgaben für den Chat-Prompt. Ältere tragen den Tag, an dem
+    sie gestellt wurden, samt Umrechnung ihrer Zeitwörter: Der Aufgabentext sagt
+    „heute Abend" – Tage später ohne Datum gelistet, liest das Modell das als
+    den heutigen Abend."""
+    from bot.prompts import followup as fp
+    zeilen = [f"- {fp.aufgabe_datiert(task.get('aufgabe', ''), task.get('erteilt_am', ''))}"
+              for task in offene]
+    if not zeilen:
+        return "Keine offenen Aufgaben."
+    if any(z.startswith("- [gestellt ") for z in zeilen):
+        zeilen.append("Zeitwörter in einer älteren Aufgabe zählen ab dem Tag, an dem sie gestellt "
+                      "wurde – nimm die Umrechnung aus der Klammer, nicht den Wortlaut der Aufgabe.")
+    return "\n".join(zeilen)
+
+
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = str(update.effective_chat.id)
     text = update.message.text.strip()
@@ -340,7 +356,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     profile = profile or {}
     domina_profile = domina_profile or {}
 
-    offene_str = "\n".join(f"- {t.get('aufgabe', '')}" for t in offene) or "Keine offenen Aufgaben."
+    offene_str = _offene_aufgaben_zeilen(offene)
     offene_anzahl = len(offene)
 
     # Gelerntes Wissen über ihn zusammenstellen, damit die Herrin ihn spürbar kennt

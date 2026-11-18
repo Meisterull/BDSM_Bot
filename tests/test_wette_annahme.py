@@ -549,7 +549,10 @@ def test_prompts_und_verdrahtung():
     assert "160 Zeichen" in system and "Blut" in user and "alte Strafe" in user
     assert "GENAU EINE Handlung" in system and "keine Belohnung" in system and "Verzicht" in system
     system, _ = fp.wette_an_sklaven(IDEE, einsatz=50)
-    assert "ablehnen darf" in system and "kostet" in system
+    assert "Ablehnen darf" in system and "kostet" in system
+    # Kein erfundener Preis fürs Ablehnen: den wählt die Dom-Seite erst danach.
+    assert "keinen Preis und keine Strafe fürs Ablehnen" in system
+    assert "worauf" in system and "gewonnen hat" in system
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     main_src = "".join(open(pf, encoding="utf-8").read() for pf in sorted(glob.glob(os.path.join(root, "bot", "app", "*.py"))))  # Routing/Registrierung/Gates liegen seit 05.11.2026 in bot/app/
     assert '("wetteantwort:",       paare.ROLLE_SUB)' in main_src

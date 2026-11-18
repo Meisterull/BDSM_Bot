@@ -136,9 +136,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if mode == "training_antwort":
             await training.handle_antwort(update, context)
             return
-        if mode == "aufgabe_bewertung":
-            await bewertung.handle(update, context)
-            return
         if mode in ("rollenspiel_wahl", "rollenspiel_intensitaet"):
             await rollenspiel.handle(update, context)
             return
@@ -230,6 +227,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await vanilla.handle(update, context, rolle)
         return
     if rolle == paare.ROLLE_DOM:
+        # Bewertung ohne Mode (handlers/bewertung): eine aus Gewohnheit getippte
+        # Ziffer zählt noch für die zuletzt gestellte Bewertungsfrage.
+        if mode == "chat" and await bewertung.per_ziffer(update, context):
+            return
         await domina.handle(update, context)
     else:  # ROLLE_SUB (resolve() lässt nur die zwei Rollen durch)
         # Recovery (eval-6): Wartet ein Task auf eine Antwort (Status 'gefragt'),

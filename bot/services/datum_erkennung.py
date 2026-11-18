@@ -28,8 +28,11 @@ _TAGE_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 # Vorwörter, die eine WIEDERKEHRENDE Angabe markieren ("jeden Samstag") –
 # dann ist es kein Einzeltermin und die Erkennung überspringt den Treffer.
 _WIEDERKEHREND = {"jeden", "jedem", "jede", "alle", "immer", "every", "each"}
-# Vorwörter, nach denen "morgen" der Tageszeit-Morgen ist ("am Morgen", "guten Morgen").
-_MORGEN_TAGESZEIT = {"guten", "jeden", "am", "jedem", "zum", "vom"}
+# Vorwörter, nach denen "morgen" der Tageszeit-Morgen ist ("am Morgen", "guten
+# Morgen", "heute Morgen" – der letzte ist HEUTE, kein Termin für morgen).
+_MORGEN_TAGESZEIT = {"guten", "jeden", "am", "jedem", "zum", "vom",
+                     "heute", "heut", "gestern", "vorgestern", "diesen", "ganzen",
+                     "nächsten", "naechsten"}
 
 # "26.07." / "26.07.2026" / "26.07.26" – der Punkt nach dem Monat ist Pflicht,
 # sonst würden Dezimalzahlen ("1.5 Liter") und Uhrzeiten als Datum durchgehen.
@@ -136,6 +139,27 @@ def finde_termin(text: str, heute: date | None = None) -> tuple[date, str] | Non
         return None
     treffer = _termin_treffer(text, heute or _heute())
     return (treffer[0], treffer[1].group(0)) if treffer else None
+
+
+def finde_spaetesten_termin(text: str, heute: date | None = None) -> date | None:
+    """Der SPÄTESTE künftige Tag, den der Text nennt (Datum, übermorgen, morgen,
+    Wochentag) – für Fristen: „von morgen früh bis übermorgen früh" endet
+    übermorgen. None, wenn kein künftiger Tag genannt ist ('heute' zählt nicht)."""
+    if not text:
+        return None
+    heute = heute or _heute()
+    tage = []
+    treffer = _datum_treffer(text, heute)
+    if treffer and treffer[0] > heute:
+        tage.append(treffer[0])
+    if _UEBERMORGEN_RE.search(text):
+        tage.append(heute + timedelta(days=2))
+    if any(_vorwort(text, m.start()) not in _MORGEN_TAGESZEIT for m in _MORGEN_RE.finditer(text)):
+        tage.append(heute + timedelta(days=1))
+    treffer = _wochentag_treffer(text, heute)
+    if treffer:
+        tage.append(treffer[0])
+    return max(tage) if tage else None
 
 
 def finde_aufgaben_termin(text: str, heute: date | None = None) -> tuple[date, str] | None:

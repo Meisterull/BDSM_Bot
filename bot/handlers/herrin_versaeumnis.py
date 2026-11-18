@@ -194,7 +194,8 @@ async def _antwort(message, context, chat_id: str, task: dict, task_id: str, act
     if action == "ich":
         from bot.handlers import followup_response  # lazy: zirkulärer Import
         logger.info("Herrin-Rückfrage: lag am Sub → Malus-Kette (Task %s).", task_id)
-        await followup_response.malus_kette(message, context, chat_id, task_id, aufgabe)
+        await followup_response.malus_kette(message, context, chat_id, task_id, aufgabe,
+                                            erteilt_am=task.get("erteilt_am", ""))
         return
     await versaeumnis_verbuchen(message, context, chat_id, task, task_id)
 

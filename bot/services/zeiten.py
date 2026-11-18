@@ -5,7 +5,7 @@ Zeiten-Helper – Validierung und Normalisierung von Zeitfenster-Eingaben
 """
 import logging
 import re
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from bot import config
@@ -59,6 +59,63 @@ def alter_label(datum_iso: str) -> str:
     if tage == 1:
         return "gestern"
     return f"vor {tage} Tagen"
+
+
+WOCHENTAGE = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+
+
+def heute_lokal() -> date:
+    """Der heutige Kalendertag in der Bot-Zeitzone."""
+    return datetime.now(ZoneInfo(config.TIMEZONE)).date()
+
+
+def tage_seit(datum_iso: str) -> int | None:
+    """Kalendertage (Bot-Zeitzone) seit einem ISO-Zeitstempel – 0 = heute,
+    1 = gestern. None, wenn er nicht lesbar ist oder in der Zukunft liegt."""
+    try:
+        d = datetime.fromisoformat(datum_iso)
+    except (ValueError, TypeError):
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    bot_tz = ZoneInfo(config.TIMEZONE)
+    tage = (datetime.now(bot_tz).date() - d.astimezone(bot_tz).date()).days
+    return tage if tage >= 0 else None
+
+
+# Tageszeit hinter einem Tag: wie sie am festen Wort hängt („gestern Abend"),
+# am Wochentag („am Sonntagabend") und am Datum („am 08.11. abends").
+_TAGESZEITEN = {
+    "abend": ("Abend", "abend", "abends"),
+    "nacht": ("Nacht", " nachts", "nachts"),
+    "früh": ("früh", " früh", "früh"),
+    "morgen": ("Morgen", "morgen", "morgens"),
+    "vormittag": ("Vormittag", "vormittag", "vormittags"),
+    "mittag": ("Mittag", "mittag", "mittags"),
+    "nachmittag": ("Nachmittag", "nachmittag", "nachmittags"),
+}
+_TAG_WORTE = {0: "heute", 1: "gestern", 2: "vorgestern", -1: "morgen", -2: "übermorgen"}
+
+
+def tag_label(tage_her: int, tageszeit: str = "", heute: date | None = None) -> str:
+    """Ein Tag relativ zu heute in Worten, wie man ihn in einem Satz sagt:
+    tage_her > 0 liegt zurück, < 0 voraus. 'heute', 'gestern', 'vorgestern',
+    'morgen', 'übermorgen'; darüber hinaus bis sechs Tage Abstand der Wochentag
+    ('am Sonntag'), sonst das Datum ('am 08.11.'). Mit `tageszeit` ('abend',
+    'früh' …) als fertige Wendung: 'gestern Abend', 'am Sonntagabend',
+    'am 08.11. abends'. Ohne das hängen die Modelle die Tageszeit selbst an
+    und schreiben „vor zwei Tagen Abend" (live 18.11.2026)."""
+    zeit = _TAGESZEITEN.get((tageszeit or "").strip().lower().replace("frueh", "früh"))
+    if tage_her in _TAG_WORTE:
+        wort = _TAG_WORTE[tage_her]
+        if not zeit:
+            return wort
+        # „morgen Morgen" sagt niemand – das ist „morgen früh".
+        return f"{wort} früh" if (wort == "morgen" and zeit[0] == "Morgen") else f"{wort} {zeit[0]}"
+    tag = (heute or heute_lokal()) - timedelta(days=tage_her)
+    if abs(tage_her) <= 6:
+        return f"am {WOCHENTAGE[tag.weekday()]}{zeit[1] if zeit else ''}"
+    return f"am {tag:%d.%m.}{' ' + zeit[2] if zeit else ''}"
 
 
 def wann_label(zeitstempel: float, jetzt: float | None = None) -> str:

@@ -76,7 +76,8 @@ def wett_idee(sklave_vorlieben: list = None, sklave_hard_limits: list = None,
         zaehl_hinweis = (
             "Die letzten Wetten hatten fast alle dieselbe Bauart (er schafft etwas N-mal). "
             "Diesmal KEINE Zähl-Wette – nimm eine andere Messlatte: eine Zeitspanne, ein "
-            "einmaliges Ereignis, ein Entweder-oder, etwas, das DU beobachtest.\n"
+            "einmaliges Ereignis, ein Entweder-oder, etwas, das DU beobachtest. Auch dann steht "
+            "ausdrücklich da, worauf er wettet.\n"
         ) if zaehl >= 2 else ""
         verlauf_str = (
             "\nLETZTE WETTEN (mit Ausgang) – nur damit du dich NICHT wiederholst: Bedingung UND "
@@ -103,6 +104,7 @@ ROLLEN UND ANREDE (strikt):
 
 DIE WETTE (strikt):
 - 2–4 lockere Sätze (höchstens 500 Zeichen): die Wett-Bedingung (messbar, in den nächsten 1–3 Tagen entscheidbar) und was jede Seite bei Sieg bekommt.
+- Sag ausdrücklich, worauf {s['nom']} wettet („… wettet, dass {s['nom']} …") – daran hängt, bei welchem Ausgang {s['nom']} gewonnen hat. Zwei Ausgänge ohne genannten Sieger („Passiert X, bekommt {s['nom']} …; passiert Y, bekommst du …") sind keine Wette: Später weiß niemand, welcher davon als gewonnen zählt.
 - Wer mit wem was tut, ändert sich durch die Wette NICHT: jede Handlung behält in beiden Ausgängen genau die Richtung aus der Vorliebe bzw. dem Interesse – egal, wer gewinnt. Die Wette entscheidet nur, OB und WANN etwas passiert, nie die Rollen.
 - Steht in einer Vorliebe oder einem Interesse „bei X", ist das die Folge von X – nie die Belohnung dafür, dass X ausbleibt. Wer verliert, bestimmt nicht selbst über seinen Einsatz.
 - Safeword, Grenzen und Aftercare gelten immer und sind nie Teil der Wette.

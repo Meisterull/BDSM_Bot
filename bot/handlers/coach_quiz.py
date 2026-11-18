@@ -494,6 +494,25 @@ def _idee_verstoesse(idee: str) -> list[str]:
     return funde
 
 
+# Woran man erkennt, dass eine Wett-Idee sagt, wer bei welchem Ausgang gewinnt:
+# „… wettet, dass …", oder ein Ausgang heißt ausdrücklich Sieg/Niederlage bzw.
+# Gelingen/Scheitern.
+_SIEGER_GENANNT_RE = re.compile(
+    r"\bwette[tn]?\b[^.!?]{0,80}\b(?:dass|ob)\b"
+    r"|\b(?:gewinn\w*|gewonnen|verlier\w*|verloren|sieg\w*|niederlage)\b"
+    r"|\b(?:schaff\w*|scheiter\w*|versag\w*|durchh[aä]lt\w*|h[aä]lt\s+\w+\s+(?:das|durch|es))\b"
+    r"|\bbets?\s+that\b|\b(?:wins?|loses?|won|lost)\b",
+    re.IGNORECASE)
+
+
+def _sieger_unklar(idee: str) -> bool:
+    """True, wenn die Idee zwei Ausgänge beschreibt, ohne zu sagen, worauf der
+    Sub wettet (live 17.11.2026, Bauart „Passiert X, …; passiert Y, …"). Dann
+    raten Ansage und Ergebnis-Meldung jede für sich, welcher Ausgang als
+    gewonnen zählt. Kein Ausschluss-Grund – nur Anlass für den einen Retry."""
+    return not _SIEGER_GENANNT_RE.search(idee or "")
+
+
 def _wett_idee_buttons(kennung: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton(t("BUTTON_WETTIDEE_SENDEN"), callback_data=f"wettidee:senden:{kennung}"),
@@ -597,10 +616,18 @@ async def _wett_idee_generieren(schwerpunkt: str = "") -> str | None:
     idee = _meta_schluss_entfernen(_nachsatz_entfernen(_vorwort_entfernen(idee)))
     funde = _formel_verstoesse(idee) + _idee_verstoesse(idee)
     unmachbar = await machbarkeit.maengel(idee, art="wette")
-    if funde or unmachbar:
-        logger.info("Wett-Idee mit Mängeln (%s) – generiere einmal neu.", "; ".join(funde + unmachbar))
+    # Weicher Mangel: löst den Retry aus, verwirft die Idee am Ende aber nicht.
+    unklar = (["nicht gesagt, worauf er wettet – es bleibt offen, bei welchem Ausgang er gewonnen hat"]
+              if _sieger_unklar(idee) else [])
+    if funde or unmachbar or unklar:
+        logger.info("Wett-Idee mit Mängeln (%s) – generiere einmal neu.",
+                    "; ".join(funde + unmachbar + unklar))
         s = rollen.sub()
-        achtung = "\n\nACHTUNG: Dein letzter Entwurf hatte diese Mängel: " + "; ".join(funde + unmachbar) + "."
+        achtung = ("\n\nACHTUNG: Dein letzter Entwurf hatte diese Mängel: "
+                   + "; ".join(funde + unmachbar + unklar) + ".")
+        if unklar:
+            achtung += (f" Sag ausdrücklich, worauf {s['nom']} wettet („… wettet, dass {s['nom']} …“), "
+                        f"und danach, was {s['nom']} bei Sieg bekommt und was du bei Sieg bekommst.")
         if funde:
             achtung += (
                 " Formuliere die Wette neu – der Inhalt darf bleiben, aber als kurze IDEE an sie "
@@ -616,7 +643,7 @@ async def _wett_idee_generieren(schwerpunkt: str = "") -> str | None:
             neu = _meta_schluss_entfernen(_nachsatz_entfernen(_vorwort_entfernen(neu)))
             neu_unmachbar = await machbarkeit.maengel(neu, art="wette")
             if (len(_formel_verstoesse(neu) + _idee_verstoesse(neu)) + len(neu_unmachbar)
-                    <= len(funde) + len(unmachbar)):
+                    + int(_sieger_unklar(neu)) <= len(funde) + len(unmachbar) + len(unklar)):
                 idee, unmachbar = neu, neu_unmachbar
     rest = _idee_verstoesse(idee) + unmachbar
     if rest:

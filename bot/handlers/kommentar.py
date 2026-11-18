@@ -29,6 +29,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # State aufräumen
     state.set_mode(chat_id, "chat")
     s.pop("kommentar_task_id", None)
+    msg_id = s.pop("kommentar_msg_id", None)
 
     # Kommentar in die Stimme der Herrin gießen (Persona aus prompts/persona.py)
     from bot.prompts import persona, followup as fp
@@ -71,6 +72,17 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
     await update.message.reply_text(t("KOMMENTAR_GESENDET"))
+    # Der Kommentar-Knopf unter dem Bericht hat seinen Zweck erfüllt; die Sterne
+    # bleiben stehen, solange sie noch nicht bewertet hat.
+    if msg_id:
+        try:
+            from bot.handlers import bewertung  # lazy: zirkulären Import vermeiden
+            bewertet = bool((await qdrant.get_task(task_id) or {}).get("domina_bewertung"))
+            await context.bot.edit_message_reply_markup(
+                chat_id=chat_id, message_id=msg_id,
+                reply_markup=None if bewertet else bewertung.sterne_buttons(task_id, kommentar=False))
+        except Exception:
+            pass
 
 
 async def ueberspringen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -83,4 +95,5 @@ async def ueberspringen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if s.get("mode") == "aufgabe_kommentar":
         state.set_mode(chat_id, "chat")
         s.pop("kommentar_task_id", None)
+        s.pop("kommentar_msg_id", None)
         await update.message.reply_text(t("KOMMENTAR_UEBERSPRUNGEN"))

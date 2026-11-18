@@ -28,7 +28,7 @@ The bot accompanies the **dominant partner** as a coach (voiced like a close fri
 
 > **Bot → submissive** *(persona voice)***:** Good morning. Before you even think about coffee: my boots. Spotless by nine — I *will* check.
 
-Afterwards the sub reports back and shares how it felt, points and streaks update, and the dominant gets a report with a 1–5 ★ rating prompt — which feeds the learning system for the next task.
+Afterwards the sub reports back and shares how it felt, points and streaks update, and the dominant gets a report with 1–5 ★ rating buttons — which feeds the learning system for the next task.
 
 ---
 

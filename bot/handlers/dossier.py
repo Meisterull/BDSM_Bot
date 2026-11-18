@@ -189,6 +189,27 @@ async def aktualisiere_offene_faeden() -> list[str]:
     (erwähnter Stress, ein Wunsch, ein Ereignis, eine Sorge). Speichert sie als
     Profilfeld `offene_faeden`. Liste wird jedes Mal NEU erzeugt (Erledigtes fällt
     so von selbst raus, sobald es nicht mehr in den jüngsten Gesprächen auftaucht)."""
+    # Grenzen beider Seiten: Was die Grenzen-Prüfung verwirft, ist kein Faden,
+    # an den irgendwer anknüpfen soll. Live 18.11.2026 stand ein Wunsch, den die
+    # Profil-Pflege als grenzverletzend abgelehnt hatte, umformuliert als
+    # „offener Faden" in den Prompts – die Umformulierung erkennt keine Prüfung
+    # mehr, also wird an der Quelle gefiltert (und das Ergebnis noch einmal).
+    from bot.services import limits_check
+    try:
+        _sp = await qdrant.get_user_profile("sklave") or {}
+        _dp = await qdrant.get_user_profile("domina") or {}
+        hard_limits, grenzen = _sp.get("hard_limits") or [], _dp.get("grenzen") or []
+    except Exception:
+        logger.exception("Offene Fäden: Grenzen nicht lesbar – kein Update.")
+        return []
+
+    async def _beruehrt_grenze(text: str) -> bool:
+        try:
+            return bool(await limits_check.verletzungen(text, hard_limits, grenzen, sprecher="sub"))
+        except Exception:
+            logger.exception("Offene Fäden: Grenzen-Prüfung fehlgeschlagen – Text verworfen.")
+            return True   # fail-closed
+
     # Jüngste Gespräche + Gefühle als Quelle
     gespraeche = []
     try:
@@ -207,8 +228,14 @@ async def aktualisiere_offene_faeden() -> list[str]:
             if not text:
                 z = e.get("zusammenfassung", "")
                 text = _re.split(r"\n?\s*Herrin:", z)[0].removeprefix("Sklave:").strip()
-            if text and not kontext_pflege.ist_kommando(text):
-                gespraeche.append(text[:250])
+            if not text or kontext_pflege.ist_kommando(text):
+                continue
+            # Bitten, das Profil zu pflegen, sind Verwaltung und kein Gespräch.
+            if kontext_pflege.ist_profil_bitte(text):
+                continue
+            if await _beruehrt_grenze(text):
+                continue
+            gespraeche.append(text[:250])
     except Exception as e:
         logger.error("Offene Fäden: Gespräche laden fehlgeschlagen: %s", e)
 
@@ -216,7 +243,7 @@ async def aktualisiere_offene_faeden() -> list[str]:
     try:
         for task in (await qdrant.get_tasks_by_status(["erledigt"], sort_by_datum=True))[:5]:
             g = (task.get("gefuehl") or "").strip()
-            if kontext_pflege.gefuehl_brauchbar(g):
+            if kontext_pflege.gefuehl_brauchbar(g) and not await _beruehrt_grenze(g):
                 gefuehle.append(g[:120])
     except Exception as e:
         logger.error("Offene Fäden: Gefühle laden fehlgeschlagen: %s", e)
@@ -256,6 +283,9 @@ Letzte Gefühle:
                 continue
             if len(z) > 12 and " ".join(z.lower().split()) in quellen_norm:
                 logger.info("Offener Faden war wörtliches Zitat – verworfen: %s", z[:60])
+                continue
+            if await _beruehrt_grenze(z):
+                logger.info("Offener Faden berührt eine Grenze – verworfen.")
                 continue
             faeden.append(z[:120])
         faeden = faeden[:4]

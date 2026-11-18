@@ -58,13 +58,13 @@ def test_reaktion_kennt_die_frage():
 
 def test_nachfrage_am_selben_tag():
     def zeit(tage):
-        system, user = fp.followup_frage("Den Tisch decken", tage_her=tage)
+        system, user = fp.followup_frage("Heute Abend den Tisch decken", tage_her=tage)
         return system + user
     heute = zeit(0)
-    assert "am selben Tag" in heute and "rechne sie um" not in heute, heute
-    assert "Frag niemals im Präsens 'heute', wenn es heute war" not in heute
+    assert "am selben Tag" in heute and "→" not in heute, heute
+    assert "stimmen heute nicht mehr" not in heute
     gestern = zeit(1)
-    assert "RÜCKBLICKEND" in gestern and "gestern Abend" in gestern, gestern
+    assert "RÜCKBLICKEND" in gestern and "„heute Abend“ → „gestern Abend“" in gestern, gestern
 
 
 def test_rollenspiel_erreicht_die_sub_seite():

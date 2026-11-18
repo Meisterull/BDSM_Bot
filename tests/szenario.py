@@ -184,15 +184,13 @@ async def lauf(h: Harness, d: int) -> None:
                 await h.send("sklave", "ja, habe ich erledigt")
             await h.send("sklave", "Es hat sich ungewohnt angefühlt, aber ich war stolz, "
                                    "dass ich durchgehalten habe. Ein bisschen erregend war es auch.")
-            # Domina sollte jetzt bewerten
-            if st.get_mode(config.DOMINA_CHAT_ID) == "aufgabe_bewertung":
-                await h.send("domina", "5")
-                if d == 1:
+            # Domina sollte jetzt bewerten können: Sterne-Knöpfe unter dem Bericht,
+            # der Kommentar über den eigenen Knopf (kein Chat-Mode mehr).
+            if await h.press("domina", "bewertung:5"):
+                if d == 1 and await h.press("domina", "bewertung:kommentar"):
                     await h.send("domina", "Sehr brav gemacht, weiter so.")
-                else:
-                    await h.send("domina", "/ueberspringen")
             else:
-                h.note(f"⚠️ BEFUND-KANDIDAT: Nach Gefühl-Antwort kam keine Bewertungs-Frage "
+                h.note(f"⚠️ BEFUND-KANDIDAT: Nach Gefühl-Antwort kam kein Bericht mit Bewertungs-Knöpfen "
                        f"(Domina-Mode: {st.get_mode(config.DOMINA_CHAT_ID)})")
     await phase(h, f"D{d} Aufgabe erledigen (meineaufgaben)", p_meineaufgaben())
 

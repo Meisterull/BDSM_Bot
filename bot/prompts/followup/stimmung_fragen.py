@@ -190,7 +190,7 @@ def stimmung_antworten(frage: str, nachbessern: bool = False) -> tuple[str, str]
     return system, user
 
 
-def gefuehl_abfragen(aufgabe: str) -> tuple[str, str]:
+def gefuehl_abfragen(aufgabe: str, erteilt_am: str = "") -> tuple[str, str]:
     frage = random.choice(_GEFUEHL_FRAGEN)
     s = rollen.sub()
     system = (
@@ -201,13 +201,13 @@ def gefuehl_abfragen(aufgabe: str) -> tuple[str, str]:
         f"Variiere die Frage – nicht immer nur 'Wie hat es sich angefühlt?'. Diesmal: '{frage}'\n\n"
         f"{persona.fuer_sklaven_prompt()}"
     )
-    user = f"Aufgabe (Kontext): {aufgabe}"
+    user = f"Aufgabe (Kontext): {bausteine.aufgabe_mit_zeitbezug(aufgabe, erteilt_am)}"
     return system, user
 
 
 def bericht_erledigt(aufgabe: str, gefuehl: str, vorherige_gefuehle: list = None,
                      gefuehl_frage: str = "", level: int | None = None,
-                     erledigte: int | None = None) -> tuple[str, str]:
+                     erledigte: int | None = None, erteilt_am: str = "") -> tuple[str, str]:
     """EINE Nachricht an die Dom-Seite nach einer erledigten Aufgabe: was
     passiert ist plus ein Gedanke dazu. Vorher gingen dafür zwei LLM-Texte zum
     selben Ereignis raus (Bericht + Coach-Feedback) und danach die Bewertungs-
@@ -241,7 +241,7 @@ def bericht_erledigt(aufgabe: str, gefuehl: str, vorherige_gefuehle: list = None
                    if (gefuehl_frage or "").strip() else "")
     stand = f"Bisher erledigte Aufgaben gesamt: {erledigte}\n" if erledigte else ""
     user = (
-        f"Aufgabe: {aufgabe}\n"
+        f"Aufgabe: {bausteine.aufgabe_mit_zeitbezug(aufgabe, erteilt_am)}\n"
         f"{frage_zeile}"
         f"{bausteine.nutzer_text('Antwort ' + s['label_gen'], gefuehl)}\n"
         f"{stand}"
@@ -250,7 +250,7 @@ def bericht_erledigt(aufgabe: str, gefuehl: str, vorherige_gefuehle: list = None
     return system, user
 
 
-def bericht_nicht_erledigt(aufgabe: str) -> tuple[str, str]:
+def bericht_nicht_erledigt(aufgabe: str, erteilt_am: str = "") -> tuple[str, str]:
     from bot.prompts import coach_persona
     s, d = rollen.sub(), rollen.dom()
     system = (
@@ -258,5 +258,5 @@ def bericht_nicht_erledigt(aufgabe: str) -> tuple[str, str]:
         f"Ein bis zwei Sätze. Frag am Ende ob {d['nom']} {s['dat']} was ausrichten möchte. Kein Bericht-Format.\n\n"
         f"{coach_persona.fuer_coach_prompt()}"
     )
-    user = f"Aufgabe: {aufgabe}"
+    user = f"Aufgabe: {bausteine.aufgabe_mit_zeitbezug(aufgabe, erteilt_am)}"
     return system, user

@@ -202,11 +202,19 @@ def test_buchen_nie_unter_null():
 def test_wett_frist_tage():
     heute = date(2026, 9, 16)  # Mittwoch
     assert ws.wett_frist_tage("Wer in den nächsten zwei Tagen öfter …", heute) == 2
-    assert ws.wett_frist_tage("Bis morgen Abend durchhalten", heute) == 1
     assert ws.wett_frist_tage("3 Tage lang den Plug tragen", heute) == 3
     assert ws.wett_frist_tage("die nächsten 24 Stunden", heute) == 1
-    assert ws.wett_frist_tage("bis übermorgen", heute) == 2
-    assert ws.wett_frist_tage("Bis Freitag zehn Liegestütze", heute) == 2
+    # Ein genannter TAG: die Urteils-Frage kommt am Tag danach (sie käme sonst
+    # zur Nachfrage-Zeit am späten Nachmittag – vor dem Abend, um den es geht).
+    assert ws.wett_frist_tage("Bis morgen Abend durchhalten", heute) == 2
+    assert ws.wett_frist_tage("Morgen Abend liest er dir zehn Minuten vor", heute) == 2
+    assert ws.wett_frist_tage("bis übermorgen", heute) == 3
+    assert ws.wett_frist_tage("Bis Freitag zehn Liegestütze", heute) == 3
+    assert ws.wett_frist_tage("von morgen früh bis übermorgen früh nichts anfassen", heute) == 3
+    # … außer eine Uhrzeit liegt klar vor der Nachfrage-Zeit.
+    assert ws.wett_frist_tage("Morgen bis 12 Uhr schafft er es", heute) == 1
+    # „heute Morgen" ist heute, kein Termin für morgen.
+    assert ws.wett_frist_tage("Heute Morgen war er frech, heute Abend zeigt er es", heute) == 1
     assert ws.wett_frist_tage("Wer zuerst lacht, verliert", heute) == ws.WETT_FRIST_DEFAULT_TAGE
     assert ws.wett_frist_tage("Wer heute Abend länger durchhält, gewinnt.", heute) == 1
     assert ws.wett_frist_tage("Who lasts longer tonight wins", heute) == 1

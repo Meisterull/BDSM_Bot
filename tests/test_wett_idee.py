@@ -384,6 +384,26 @@ def test_impuls_reihenfolge():
     assert sorted(n for n, _ in impulse._impuls_reihenfolge(k, "")) == ["coach_quiz", "wett_idee"]
 
 
+UNKLAR = ("Morgen Abend würfelt ihr einmal. Bei einer geraden Zahl bekommt er Kaffee ans Bett. "
+          "Bei einer ungeraden bestimmst du die Filmwahl.")
+
+
+def test_unklarer_sieger_loest_einen_retry_aus():
+    """18.11.2026: Eine Idee mit zwei Ausgängen, aber ohne „wettet, dass …" –
+    Ansage und Ergebnis-Meldung raten dann jede für sich, wer gewonnen hat.
+    Weicher Mangel: ein Retry mit Hinweis; bleibt er, geht die Idee trotzdem raus."""
+    assert cq._sieger_unklar(UNKLAR) and not cq._sieger_unklar(GUT)
+    w = _Welt([UNKLAR, GUT]).install()
+    assert _run(cq._wett_idee_generieren()) == GUT
+    assert len(w.retry_calls) == 2 and "worauf er wettet" in w.retry_calls[1]
+    assert "kein fertiger Nachrichtentext" not in w.retry_calls[1], "Drift-Hinweis nur bei Drift"
+    w = _Welt([UNKLAR, UNKLAR + " "]).install()
+    assert _run(cq._wett_idee_generieren()).strip() == UNKLAR and len(w.retry_calls) == 2
+    # Der Retry darf nichts verschlechtern: klarer Sieger, aber Drift → das Original bleibt.
+    w = _Welt([UNKLAR, DRIFT]).install()
+    assert _run(cq._wett_idee_generieren()) == UNKLAR
+
+
 def test_machbarkeit_im_wett_generator():
     """18.09.2026: Bedingung/Einsätze werden auf körperliche Machbarkeit geprüft –
     Mängel fahren im selben Retry mit; bleiben sie, geht nichts raus."""
@@ -551,6 +571,7 @@ def _run_alle():
     test_callback_neu_mit_deckel()
     test_callback_neu_doppeltipp_und_irrlaeufer()
     test_impuls_reihenfolge()
+    test_unklarer_sieger_loest_einen_retry_aus()
     test_machbarkeit_im_wett_generator()
     test_verlauf_im_prompt()
     test_schwerpunkt_prompt_auswahl_und_neu()

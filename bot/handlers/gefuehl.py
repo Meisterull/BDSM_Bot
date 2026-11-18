@@ -56,7 +56,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Persönliche Reaktion der Herrin auf die Gefühl-Antwort
     try:
-        reaktion = await grok.simple(fp.reaktion_auf_gefuehl(aufgabe, text, frage), max_tokens=250)
+        reaktion = await grok.simple(
+            fp.reaktion_auf_gefuehl(aufgabe, text, frage, erteilt_am=task.get("erteilt_am", "")),
+            max_tokens=250)
     except Exception as e:
         logger.error("Fehler bei Reaktion-auf-Gefühl: %s", e)
         reaktion = t("FALLBACK_GEFUEHL_REAKTION")
@@ -94,7 +96,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async def _domina_nachlauf() -> None:
         try:
             await _sende_bericht_an_domina(context, task_id, aufgabe, text,
-                                           level=level, erledigte=erledigte, frage=frage)
+                                           level=level, erledigte=erledigte, frage=frage,
+                                           erteilt_am=task.get("erteilt_am", ""))
         except Exception:
             logger.exception("Bericht an Domina fehlgeschlagen")
         try:
@@ -217,7 +220,7 @@ async def _streak_penalty_bei_negativ() -> None:
 
 async def _sende_bericht_an_domina(context, task_id: str, aufgabe: str, gefuehl: str,
                                    level: int | None = None, erledigte: int | None = None,
-                                   frage: str = "") -> None:
+                                   frage: str = "", erteilt_am: str = "") -> None:
     """EINE Nachricht an die Domina über die erledigte Aufgabe: Bericht + ein
     Gedanke des Coachs, die Bewertungsfrage als Schlusszeile. Die letzten
     brauchbaren Rückmeldungen gehen als Vergleichskontext mit."""
@@ -236,7 +239,8 @@ async def _sende_bericht_an_domina(context, task_id: str, aufgabe: str, gefuehl:
         [x.get("gefuehl", "") for x in erledigt_tasks if x.get("qdrant_point_id") != task_id], limit=3)
 
     prompt = fp.bericht_erledigt(aufgabe, gefuehl, vorherige_gefuehle=vorherige_gefuehle,
-                                 gefuehl_frage=frage, level=level, erledigte=erledigte)
+                                 gefuehl_frage=frage, level=level, erledigte=erledigte,
+                                 erteilt_am=erteilt_am)
     try:
         bericht = grok.clean_text(await grok.simple(prompt, reasoning=True))
         if not bericht:
@@ -247,17 +251,16 @@ async def _sende_bericht_an_domina(context, task_id: str, aufgabe: str, gefuehl:
         # der LLM-Bericht oben fasst bewusst nur zusammen). Zitiert wird die
         # AUFGABE, nicht seine Äußerung – der Satzbau muss das klar machen.
         bericht = f"✅ Er hat die Aufgabe „{aufgabe}“ erledigt und sich dazu geäußert."
-    # Domina zur Bewertung auffordern – Daten immer setzen, aber einen aktiven
-    # Domina-Flow nicht kapern: Bewertungs-Mode nur setzen, wenn sie frei ist.
+    # Die Bewertung wartet in den Knöpfen unter dem Bericht – KEIN Chat-Mode
+    # (handlers/bewertung): der Chat der Dom-Seite bleibt für alles andere frei.
+    from bot.handlers import bewertung  # lazy: zirkulären Import vermeiden
     try:
-        domina_chat = paare.dom_chat_id()
-        state.get(domina_chat)["bewertung_task_id"] = task_id
-        if state.get_mode(domina_chat) in ("chat", None):
-            state.set_mode(domina_chat, "aufgabe_bewertung")
+        await bewertung.merke_gefragt(task_id)
     except Exception:
-        logger.exception("Bewertungs-State konnte nicht gesetzt werden")
+        logger.exception("Bewertungsfrage konnte nicht an der Aufgabe vermerkt werden")
     await telegram_helper.send_domina(
-        context.bot, f"{bericht}\n\n{t('GEFUEHL_BEWERTUNG_FRAGE')}", parse_mode="Markdown")
+        context.bot, f"{bericht}\n\n{t('GEFUEHL_BEWERTUNG_FRAGE')}", parse_mode="Markdown",
+        reply_markup=bewertung.sterne_buttons(task_id))
 
 
 async def _update_sklave_persoenlichkeit(aufgabe: str, gefuehl: str, task: dict,

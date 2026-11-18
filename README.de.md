@@ -28,7 +28,7 @@ Der Bot begleitet die **dominante Seite** als Coach (klingt wie eine vertraute F
 
 > **Bot → devote Seite** *(Persona-Stimme)***:** Guten Morgen. Bevor du auch nur an Kaffee denkst: meine Stiefel. Bis neun makellos – ich *werde* nachsehen.
 
-Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Punkte und Streaks werden aktualisiert, und die dominante Seite bekommt einen Bericht mit der Bitte um eine Bewertung (1–5 ★) – die ins Lernsystem für die nächste Aufgabe fließt.
+Danach meldet sich der Sub zurück und erzählt, wie es sich angefühlt hat, Punkte und Streaks werden aktualisiert, und die dominante Seite bekommt einen Bericht mit Sterne-Knöpfen zur Bewertung (1–5 ★) – die ins Lernsystem für die nächste Aufgabe fließt.
 
 ---
 

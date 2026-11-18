@@ -1223,7 +1223,7 @@ MESSAGES = {
     "INVENTAR_FERTIG": "✅ Inventar gespeichert.",
 
     # --- Gefühl-/Erledigungs-Mechanik ---------------------------------------------------
-    "GEFUEHL_BEWERTUNG_FRAGE": "⭐ Wie fandest du, wie er das gemacht hat? Gib ihm 1-5.",
+    "GEFUEHL_BEWERTUNG_FRAGE": "⭐ Wie fandest du, wie er das gemacht hat?",
     "GEFUEHL_WUERFEL_ABZEICHEN": "🏅 Neue Abzeichen: {liste}",
     "GEFUEHL_PUNKTE": "⭐ +{punkte} Punkte _(gesamt: {gesamt})_",
     "GEFUEHL_STREAK_SUFFIX": "\n🔥 Streak: *{streak}*",
@@ -1406,10 +1406,11 @@ MESSAGES = {
     "BUTTON_GUT_NICHT_HEUTE": "👌 Gut, aber nicht heute",
     "TINYFB_FRAGE": (
         "💬 *Kurze Rückfrage zum heutigen Vorschlag*\n\n"
-        "Vorschlag (Kategorie: _{kategorien}_):\n"
+        "Vorschlag{kategorie}:\n"
         "_{inhalt}_\n\n"
         "Du hast ihn (noch) nicht weitergeleitet. Ein Tipp genügt:"
     ),
+    "TINYFB_KATEGORIE": " (Kategorie: _{kategorien}_)",
     "BUTTON_TINYFB_NEIN": "👎 Passte nicht",
     "BUTTON_TINYFB_G_THEMA": "Thema reizt mich nicht",
     "BUTTON_TINYFB_G_AUFWAND": "Zu aufwendig",
@@ -1485,13 +1486,15 @@ MESSAGES = {
     "EINSTELLUNGEN_GESPEICHERT": "✅ Gespeichert\\!",
 
     # --- Bewertung / Rest-Kleinkram ---------------------------------------------------------------------------------------
-    "BEWERTUNG_1_5": "Bitte bewerte mit 1-5",
+    "BUTTON_BEWERTUNG_KOMMENTAR": "✍️ Ihm etwas dazu sagen",
+    "BEWERTUNG_NOTIERT_TOAST": "⭐ {wert} von 5 – hab ich.",
+    "BEWERTUNG_SCHON": "Die hast du schon bewertet.",
+    "BEWERTUNG_GERADE_BELEGT": "Gerade läuft noch etwas anderes – schließ das erst ab und tipp dann noch einmal auf den Knopf.",
+    "BEWERTUNG_KOMMENTAR_BITTE": "Schreib mir, was er dazu hören soll – ich sag es ihm in deinem Ton. Doch nicht? Schick /ueberspringen.",
     "BEWERTUNG_KOMPLEX_HOCH": "📈 Deine letzten Aufgaben haben dir sehr gut gefallen – ich erhöhe die Komplexität!",
     "BEWERTUNG_KOMPLEX_NIEDRIG": "📉 Ich passe die Aufgaben-Komplexität an deine Präferenzen an.",
     "BEWERTUNG_KOMPLEX_NORMAL": "📊 Aufgaben-Komplexität zurück auf normal angepasst.",
     "BEWERTUNG_TIPP_PREFIX": "💡 {tipp}",
-    "BEWERTUNG_KOMMENTAR_FRAGE": "Hab ich. Magst du ihm noch was mitgeben? (sonst /ueberspringen)",
-    "BEWERTUNG_NOTIERT": "Hab ich – notiert.",
     "KETTE_NICHT_VORHANDEN": "⚠️ Diese Ketten-Aufgabe ist nicht mehr vorhanden.",
     "TRAINING_DEAKTIVIERT": "Training ist aktuell deaktiviert.",
     "SERIE_EINMALIG": "✅ Einmalige Aufgabe gespeichert und weitergeleitet.",

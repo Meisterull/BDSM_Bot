@@ -2,6 +2,7 @@
 Bestrafungs-Prompts.
 """
 from bot.prompts import coach_persona, rollen
+from bot.prompts.followup import bausteine
 
 
 def _dossier_kurz(dossier: str, limit: int) -> str:
@@ -75,6 +76,7 @@ def bestrafungsvorschlag(
     letzte_strafen: list = None,
     dossier: str = "",
     inventar_impuls: str = None,
+    erteilt_am: str = "",
 ) -> tuple[str, str]:
     s, d = rollen.sub(), rollen.dom()
     streak_info = (
@@ -101,7 +103,7 @@ Formuliere direkt an {d['real_akk']} (du-Form, {d['nom']} ist {'die Empfängerin
 Frage am Ende ob {d['nom']} diese Bestrafung anordnen möchte oder eine andere bevorzugt.
 KEIN [AUFGABE: ...] Tag. Kein Markdown."""
     user = (
-        f"{streak_info}Nicht erledigte Aufgabe: {aufgabe}\n"
+        f"{streak_info}Nicht erledigte Aufgabe: {bausteine.aufgabe_mit_zeitbezug(aufgabe, erteilt_am)}\n"
         f"{kontext}{impuls_str}"
     )
     return system, user
@@ -148,6 +150,7 @@ def eskalations_vorschlag(
     sklave_hard_limits: list = None,
     dossier: str = "",
     letzte_strafen: list = None,
+    erteilt_am: str = "",
 ) -> tuple[str, str]:
     s, d = rollen.sub(), rollen.dom()
     limits_str = ""
@@ -178,7 +181,7 @@ STRIKT:
 - Maximal 4-5 Sätze, ein zusammenhängender Gedanke.
 - Kein [AUFGABE: ...] Tag."""
     user = (
-        f"Letzte nicht erledigte Aufgabe: {aufgabe}\n"
+        f"Letzte nicht erledigte Aufgabe: {bausteine.aufgabe_mit_zeitbezug(aufgabe, erteilt_am)}\n"
         f"{limits_str}{dossier_str}{historie_str}"
     )
     return system, user

@@ -190,15 +190,21 @@ async def frage_stellen(bot, tiny_task_payload: dict) -> None:
     # LLM-Text landet im Template INNERHALB von _…_ → Marker vorher neutralisieren,
     # sonst bricht fast jeder Vorschlag das Markdown der ganzen Rückfrage.
     inhalt = telegram_helper.md_einbett_sicher(tiny_task_payload.get("inhalt", ""))
-    kategorien = tiny_task_payload.get("kategorien", [tiny_task_payload.get("kategorie", "?")])
+    # Ein Vorschlag kann ohne Kategorie gespeichert sein (keine war im Text
+    # belegt) – dann fällt die Klammer weg statt „(Kategorie: __)" zu zeigen
+    # (live 17.11.2026). „allgemein"/„?" sind Platzhalter, keine Auskunft.
+    kategorien = [k for k in (tiny_task_payload.get("kategorien")
+                              or [tiny_task_payload.get("kategorie", "")])
+                  if k and k not in ("?", "allgemein")]
 
     # Kategorie-Slugs tragen Underscores (Ruiniertes_Orgasmen) und stehen im
     # Template in _…_ – ohne Ersetzung kippt die Marker-Parität fast täglich.
-    kategorien_anzeige = ", ".join(kategorien).replace("_", " ")
+    kategorie_teil = (t("TINYFB_KATEGORIE", kategorien=", ".join(kategorien).replace("_", " "))
+                      if kategorien else "")
 
     await telegram_helper.send_domina(
         bot,
-        t("TINYFB_FRAGE", kategorien=kategorien_anzeige, inhalt=inhalt),
+        t("TINYFB_FRAGE", kategorie=kategorie_teil, inhalt=inhalt),
         parse_mode="Markdown",
         reply_markup=_tasten_frage(point_id),
     )

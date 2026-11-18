@@ -22,6 +22,32 @@ _PROFIL_BEHAUPTUNG_RE = re.compile(
     r"\b(notiert|verankert|eingetragen|hinzugef[üu]gt|gespeichert|vermerkt|merke ich mir|"
     r"ab (sofort|jetzt) geh[öo]rt)\b", re.I)
 
+# Bitten an den Bot, das eigene Profil zu pflegen ("Trag das bitte in mein
+# Profil ein", "Nimm das noch auf"): Verwaltung, kein Gesprächsinhalt. Den
+# Wunsch darin behandelt die Profil-Pflege (Vorschlag mit Knopf, Grenzen-Prüfung).
+_PROFIL_WORT = r"(?:vorlieben?|profil\w*|grenzen?|limits?|tabus?|no-?gos?|abneigung\w*|wunschliste)"
+_PFLEGE_VERB = (r"(?:eintrag\w*|eingetragen|trag\w*|hinzuf[üu]g\w*|hinzugef[üu]gt|f[üu]g\w*|"
+                r"fuege?\w*|erweiter\w*|erg[äa]nz\w*|aufnehm\w*|aufgenommen|nimm\w*|[äa]nder\w*|"
+                r"l[öo]sch\w*|streich\w*|entfern\w*|speicher\w*|notier\w*|aktualisier\w*|"
+                r"add|update|remove)")
+_PROFIL_BITTE_RE = re.compile(
+    rf"\b{_PROFIL_WORT}\b.{{0,60}}\b{_PFLEGE_VERB}\b|\b{_PFLEGE_VERB}\b.{{0,60}}\b{_PROFIL_WORT}\b",
+    re.I | re.S)
+# … aber nur als BITTE: mit „kannst du"/„bitte" oder als Befehlsform am Anfang.
+# „Meine Grenzen ändern sich gerade" ist eine Aussage und bleibt Gesprächsstoff.
+_BITT_FORM_RE = re.compile(
+    r"\b(?:kannst|k[öo]nntest|koenntest|w[üu]rdest|wuerdest|magst|willst|can|could)\s+(?:du|you)\b"
+    r"|\bbitte\b|\bplease\b"
+    r"|^\W*(?:trag|trage|f[üu]ge?|fuege?|nimm|streich|streiche|l[öo]sch|l[öo]sche|setz|setze|"
+    r"erg[äa]nze?|erweitere?|speichere?|notiere?|[äa]ndere?|entferne?|add|update|remove)\b",
+    re.I)
+# Der kurze Nachsatz dazu, ohne das Profil noch einmal zu nennen.
+_PFLEGE_NACHSATZ_RE = re.compile(
+    r"^\W*(?:(?:bitte|kannst du|k[öo]nntest du|und)\s+)*"
+    r"(?:f[üu]ge?|fuege?|trag|trage|nimm|speicher[en]?|notier[en]?|erg[äa]nze?)\s+"
+    r"(?:(?:es|das|dies|die|den|sie|ihn|mir|bitte|auch|noch)\s+){1,4}"
+    r"(?:hinzu|ein|auf|dazu)?\W*(?:bitte)?\W*$", re.I)
+
 # Rückmeldungen ohne Aussage (Live-Befund: aus einer Rückfrage wurde im Dossier
 # eine Charakter-Eigenschaft, eine Sterne-Ziffer stand als „Gefühl" im Prompt).
 _GEFUEHL_LEER = {"alles", "nichts", "nix", "ja", "nein", "ok", "okay", "gut", "passt",
@@ -118,6 +144,19 @@ def verlauf_bereinigt(entries: list[dict], max_alter_tage: int | None = None,
 
 def behauptet_profil_aenderung(text: str) -> bool:
     return bool(_PROFIL_BEHAUPTUNG_RE.search(text or ""))
+
+
+def ist_profil_bitte(text: str) -> bool:
+    """True für eine Bitte an den Bot, etwas im Profil einzutragen, zu ändern
+    oder zu streichen – auch für den kurzen Nachsatz („Trag es bitte ein").
+    Solche Nachrichten sind kein Stoff für „offene Fäden": Live 18.11.2026 las
+    das Modell eine solche Bitte als Wunsch an die Herrin."""
+    t = " ".join((text or "").split())
+    if not t:
+        return False
+    if len(t) <= 60 and _PFLEGE_NACHSATZ_RE.match(t):
+        return True
+    return bool(_PROFIL_BITTE_RE.search(t) and _BITT_FORM_RE.search(t))
 
 
 async def letzte_aufgaben(limit: int = 5, max_tage: int = 45, quelle: str | None = None) -> list[str]:

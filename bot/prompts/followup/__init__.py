@@ -39,6 +39,9 @@ _MODUL_VON = {
     "_versaeumnis_stufe": "versaeumnis",
     "_wie_lange_her": "wette_vorschlag",
     "aufgabe_an_sklaven": "sub_nachrichten",
+    "aufgabe_datiert": "bausteine",
+    "aufgabe_mit_zeitbezug": "bausteine",
+    "aufgaben_zeitbezug": "bausteine",
     "ausfuehrlicher_task_vorschlag": "aufgaben_vorschlag",
     "bericht_erledigt": "stimmung_fragen",
     "bericht_nicht_erledigt": "stimmung_fragen",
@@ -64,6 +67,7 @@ _MODUL_VON = {
     "wett_ergebnis_an_dom": "sub_nachrichten",
     "wett_idee": "wette_vorschlag",
     "wette_an_sklaven": "sub_nachrichten",
+    "zeitbezug_aus_datum": "bausteine",
 }
 
 

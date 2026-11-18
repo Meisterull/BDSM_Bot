@@ -30,22 +30,11 @@ def followup_frage(
             f"→ Bei negativer Stimmung: feiner, weniger Druck.\n"
             f"→ Bei positiver Stimmung: darf neugieriger, spielerischer sein.\n"
         )
-    zeit_label = "heute" if tage_her <= 0 else "gestern" if tage_her == 1 else f"vor {tage_her} Tagen"
-    if tage_her <= 0:
-        # Nachfrage am selben Tag: nichts umzurechnen. Der Umrechnungs-Satz
-        # unten ergab hier „'heute Abend' → 'heute Abend'" und „frag niemals
-        # 'heute', wenn es heute war" (Review D11).
-        zeit_hinweis = (
-            "ZEITBEZUG: Die Aufgabe ist von heute, du fragst am selben Tag nach. "
-            "Zeitwörter aus dem Aufgabentext ('heute Abend') stimmen noch.\n"
-        )
-    else:
-        zeit_hinweis = (
-            f"ZEITBEZUG: Die Aufgabe war für {zeit_label} gedacht, du fragst RÜCKBLICKEND. "
-            f"Übernimm Zeitwörter aus dem Aufgabentext NICHT wörtlich – rechne sie um "
-            f"(z.B. 'heute Abend' im Aufgabentext → '{zeit_label} Abend'). "
-            f"Frag niemals im Präsens 'heute', wenn es {zeit_label} war.\n"
-        )
+    # Am selben Tag gibt es nichts umzurechnen (Review D11); sonst stehen die
+    # Zeitwörter des Aufgabentexts als fertige Wendungen da – das frühere
+    # Beispiel „'heute Abend' → 'vor 2 Tagen Abend'" stand wörtlich so in der
+    # Frage an den Sub (live 18.11.2026).
+    zeit_hinweis = bausteine.aufgaben_zeitbezug(aufgabe, max(0, tage_her), rueckfrage=True) + "\n"
     system = (
         f"{bausteine._du_bist_dom()}. Frag {bausteine._sub_mit_poss('dein', 'akk')} jetzt – in der Ich-Form – ob {s['nom']} die Aufgabe erledigt hat.\n"
         f"Eine Frage, ein bis zwei Sätze, klar genug für Ja/Nein.\n"
@@ -117,11 +106,17 @@ def wette_an_sklaven(idee: str, einsatz: int = 0) -> tuple[str, str]:
         f"(dort bist DU ‚du‘, und {s['nom']} ist {s['label_nom']} in dritter Person). "
         f"Mach daraus deine eigene Wett-Ansage an {s['akk']} – Ich-Form, dein Ton, direkt an "
         f"{s['akk']} gesprochen, {s['akk']} sprichst du mit ‚du‘ an.\n"
-        f"Drei bis fünf Sätze: die Bedingung (messbar, bis wann), was {s['nom']} bei Sieg bekommt, "
-        f"was du bei Sieg bekommst – Einsätze und Richtung EXAKT wie in der Idee, nichts dazu "
-        f"erfinden. Zum Schluss fragst du, ob {s['nom']} die Wette annimmt – ablehnen darf "
-        f"{s['nom']}, aber das kostet {s['akk']} etwas, und was, entscheidest du. Keine Einleitung, "
-        f"keine Erklärung, kein Coach-Ton, keine Regeln oder Bot-Mechanik.\n"
+        f"Drei bis fünf Sätze: worauf {s['nom']} wettet (die Bedingung – messbar, bis wann – und "
+        f"bei welchem Ausgang {s['nom']} gewonnen hat), was {s['nom']} bei Sieg bekommt, was du bei "
+        f"Sieg bekommst – Einsätze und Richtung EXAKT wie in der Idee, nichts dazu erfinden. Zum "
+        f"Schluss fragst du, ob {s['nom']} die Wette annimmt. Ablehnen darf {s['nom']}, aber das "
+        f"kostet {s['akk']} etwas – WAS, sagst du jetzt nicht: Das legst du erst fest, wenn "
+        # Live 17.11.2026: „und was, entscheidest du" las das Modell als Auftrag,
+        # gleich einen Preis zu erfinden („… oder du lehnst ab und machst dafür
+        # X") – den kennt die Mechanik nicht, dort wählt die Dom-Seite erst nach
+        # einer Ablehnung.
+        f"{s['nom']} wirklich ablehnt. Nenne also keinen Preis und keine Strafe fürs Ablehnen. "
+        f"Keine Einleitung, keine Erklärung, kein Coach-Ton, keine Regeln oder Bot-Mechanik.\n"
         + (f"Erwähne beiläufig in EINEM Halbsatz, dass {einsatz} Punkte obendrauf stehen "
            f"(gewinnt {s['nom']}, bekommt {s['nom']} sie, verliert {s['nom']}, sind sie weg) – "
            f"die Punkte sind Beigabe, der Kern der Wette sind die Einsätze aus der Idee.\n"
@@ -191,8 +186,11 @@ def strafe_fuer_ablehnung(strafe: str) -> tuple[str, str]:
     return system, user
 
 
-def reaktion_auf_gefuehl(aufgabe: str, gefuehl: str, frage: str = "") -> tuple[str, str]:
-    """Kurze, persönliche Reaktion der Herrin auf die Gefühl-Antwort des Sklaven."""
+def reaktion_auf_gefuehl(aufgabe: str, gefuehl: str, frage: str = "",
+                         erteilt_am: str = "") -> tuple[str, str]:
+    """Kurze, persönliche Reaktion der Herrin auf die Gefühl-Antwort des Sklaven.
+    `erteilt_am` (ISO) ordnet die Zeitwörter des Aufgabentexts ein, wenn die
+    Aufgabe nicht von heute ist."""
     s = rollen.sub()
     system = (
         f"{bausteine._du_bist_dom()}. {bausteine._gross(bausteine._sub_mit_poss('dein'))} hat gerade beschrieben wie sich die Aufgabe angefühlt hat.\n"
@@ -205,7 +203,7 @@ def reaktion_auf_gefuehl(aufgabe: str, gefuehl: str, frage: str = "") -> tuple[s
     frage_zeile = (f"{bausteine.nutzer_text('Deine Frage an ' + s['akk'] + ' war', frage)}\n"
                    if (frage or "").strip() else "")
     user = (
-        f"Aufgabe (Kontext): {aufgabe}\n"
+        f"Aufgabe (Kontext): {bausteine.aufgabe_mit_zeitbezug(aufgabe, erteilt_am)}\n"
         f"{frage_zeile}"
         f"{bausteine.nutzer_text(bausteine._gross(s['poss']) + 'e Antwort', gefuehl)}"
     )
@@ -279,7 +277,7 @@ def reaktion_auf_stimmung(antwort: str, frage: str = "", klartext: str = "") -> 
     return system, user
 
 
-def reaktion_auf_nicht_erledigt(aufgabe: str) -> tuple[str, str]:
+def reaktion_auf_nicht_erledigt(aufgabe: str, erteilt_am: str = "") -> tuple[str, str]:
     """Reaktion der Herrin, wenn der Sklave 'Nein' auf die Followup-Frage geantwortet hat."""
     s, d = rollen.sub(), rollen.dom()
     system = (
@@ -289,7 +287,7 @@ def reaktion_auf_nicht_erledigt(aufgabe: str) -> tuple[str, str]:
         f"Ein Stich, eine Bemerkung, eine konkrete Ansage. Es kommt noch eine Strafe – aber die kommt extra.\n\n"
         f"{persona.fuer_sklaven_prompt()}"
     )
-    user = f"Aufgabe (Kontext): {aufgabe}"
+    user = f"Aufgabe (Kontext): {bausteine.aufgabe_mit_zeitbezug(aufgabe, erteilt_am)}"
     return system, user
 
 

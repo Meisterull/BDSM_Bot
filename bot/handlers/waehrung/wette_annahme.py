@@ -192,8 +192,7 @@ async def wette_anbieten(bot, idee: str, ansage: str, kennung: str) -> None:
 
 
 async def _wette_annehmen(bot, w: dict, automatisch: bool) -> None:
-    tage = waehrung.wett_frist_tage(w.get("idee", ""))
-    frist = waehrung.frist_iso(tage)
+    frist, tage = waehrung.wett_frist(w.get("idee", ""), w.get("angeboten_am", ""))
     einsatz = int(w.get("einsatz", waehrung.WETT_EINSATZ) or waehrung.WETT_EINSATZ)
     w.update({"status": "laeuft", "gestartet_am": kern._jetzt().isoformat(), "frist": frist,
               "angenommen": "automatisch" if automatisch else "tipp"})

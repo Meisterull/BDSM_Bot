@@ -7,7 +7,8 @@ reine Logik + Profil-Buchung; Nachrichten/Buttons wohnen in handlers/waehrung.
 """
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from bot import config
 from bot.services import qdrant
@@ -116,12 +117,11 @@ _TAGE_RE = re.compile(
 _STUNDEN_RE = re.compile(r"\b(\d{1,2})\s*(?:stunden|std|hours|h)\b", re.I)
 
 
-def wett_frist_tage(text: str, heute: date | None = None) -> int:
-    """Frist einer Wette in Tagen aus der Idee: „zwei Tage" / „3 Tage" / „24 Stunden"
-    → Zahl; „morgen" 1, „übermorgen" 2; Wochentag/Datum via datum_erkennung;
-    sonst WETT_FRIST_DEFAULT_TAGE. Immer 1..WETT_FRIST_MAX_TAGE."""
+def _wett_frist(text: str, heute: date | None = None) -> tuple[int, str]:
+    """(Tage bis zur Urteils-Frage, Art der Angabe: 'dauer' | 'tag' | 'ohne')."""
     t = (text or "").lower()
     tage: int | None = None
+    art = "dauer"
     m = _TAGE_RE.search(t)
     if m:
         w = m.group(1)
@@ -130,27 +130,79 @@ def wett_frist_tage(text: str, heute: date | None = None) -> int:
         m = _STUNDEN_RE.search(t)
         if m:
             tage = max(1, -(-int(m.group(1)) // 24))
-    if tage is None and "übermorgen" in t:
-        tage = 2
-    if tage is None and re.search(r"\b(morgen|tomorrow)\b", t):
-        tage = 1
-    # „heute Abend …" (Live-Render 16.09.: Wette spielt heute, Urteil morgen zur
-    # Followup-Zeit statt erst übermorgen)
-    if tage is None and re.search(r"\b(heute|tonight|today)\b", t):
-        tage = 1
     if tage is None:
+        # Die Idee nennt einen TAG („heute Abend", „bis morgen Abend", „bis
+        # Freitag"): Die Urteils-Frage kommt am Tag danach – dieselbe Regel wie
+        # die Nachfrage zu Termin-Aufgaben. Die Nachfrage-Zeit liegt am späten
+        # Nachmittag; für „morgen Abend" kam die Frage sonst vor dem Abend, um
+        # den es ging (live 18.11.2026). Nur eine Uhrzeit klar davor lässt sie
+        # am genannten Tag selbst.
         try:
             from bot.services import datum_erkennung
+            bezug = heute or datum_erkennung._heute()
             # Bezugsdatum durchreichen – sonst rechnet der Wochentag ab dem
             # echten Heute und die Differenz gegen ein übergebenes `heute` kippt.
-            termin = datum_erkennung.finde_termin(text, heute)
-            if termin:
-                tage = (termin[0] - (heute or date.today())).days
+            termin = datum_erkennung.finde_spaetesten_termin(text, bezug)
+            if termin is None and re.search(r"\b(heute|tonight|today)\b", t):
+                termin = bezug
+            if termin is not None:
+                tage = datum_erkennung.nachfrage_tage(termin, text, bezug)
+                art = "tag"
         except Exception:
+            logger.exception("Wett-Frist: Tagesangabe nicht auswertbar – Standardfrist")
             tage = None
     if tage is None:
-        tage = WETT_FRIST_DEFAULT_TAGE
-    return max(1, min(WETT_FRIST_MAX_TAGE, int(tage)))
+        tage, art = WETT_FRIST_DEFAULT_TAGE, "ohne"
+    return max(1, min(WETT_FRIST_MAX_TAGE, int(tage))), art
+
+
+def wett_frist_tage(text: str, heute: date | None = None) -> int:
+    """Tage bis zur Urteils-Frage einer Wette (sie kommt zur Nachfrage-Zeit des
+    Paares), gezählt ab `heute`: Dauer („zwei Tage" / „3 Tage" / „24 Stunden") →
+    so viele Tage; ein genannter Tag („heute Abend", „morgen", Wochentag,
+    Datum) → der Tag DANACH; sonst WETT_FRIST_DEFAULT_TAGE. Immer
+    1..WETT_FRIST_MAX_TAGE."""
+    return _wett_frist(text, heute)[0]
+
+
+def wett_frist(idee: str, angeboten_am: str = "", jetzt: datetime | None = None) -> tuple[str, int]:
+    """Frist einer eben angenommenen Wette: (UTC-ISO der Urteils-Frage, Tage bis
+    dahin ab heute).
+
+    Tagesangaben der Idee („morgen Abend") zählen ab dem Tag, an dem sie dem Sub
+    angeboten wurde – nimmt er erst am nächsten Morgen an, bleibt „morgen"
+    derselbe Abend. Eine Dauer zählt ab der Annahme; liegt die schon hinter der
+    heutigen Nachfrage-Zeit, wäre die Dauer zur Nachfrage-Zeit des letzten Tages
+    noch nicht um – dann ein Tag mehr. Nie in der Vergangenheit: mindestens die
+    nächste Nachfrage-Zeit."""
+    from bot.services import persona_config   # lazy: persona_config importiert qdrant
+    tz = ZoneInfo(config.TIMEZONE)
+    jetzt_l = (jetzt or datetime.now(timezone.utc)).astimezone(tz)
+    stunde, minute = map(int, persona_config.zeit("followup_time").split(":"))
+
+    def _nachfrage(tag: date) -> datetime:
+        return datetime.combine(tag, time(stunde, minute), tzinfo=tz)
+
+    heute = jetzt_l.date()
+    basis = heute
+    try:
+        angeboten = datetime.fromisoformat(angeboten_am)
+        if angeboten.tzinfo is None:
+            angeboten = angeboten.replace(tzinfo=timezone.utc)
+        tag = angeboten.astimezone(tz).date()
+        if timedelta(0) <= heute - tag <= timedelta(days=2):
+            basis = tag
+    except (TypeError, ValueError):
+        pass
+    tage, art = _wett_frist(idee, basis)
+    if art != "tag":
+        basis = heute
+        if art == "dauer" and jetzt_l > _nachfrage(heute):
+            tage = min(WETT_FRIST_MAX_TAGE, tage + 1)
+    ziel = _nachfrage(basis + timedelta(days=tage))
+    if ziel <= jetzt_l:
+        ziel = _nachfrage(heute) if jetzt_l < _nachfrage(heute) else _nachfrage(heute + timedelta(days=1))
+    return ziel.astimezone(timezone.utc).isoformat(), (ziel.date() - heute).days
 
 
 def frist_iso(tage: int) -> str:

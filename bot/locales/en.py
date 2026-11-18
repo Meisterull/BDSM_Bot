@@ -1215,7 +1215,7 @@ MESSAGES = {
     "INVENTAR_FERTIG": "✅ Inventory saved.",
 
     # --- Gefühl-/Erledigungs-Mechanik ---------------------------------------------------
-    "GEFUEHL_BEWERTUNG_FRAGE": "⭐ How do you think he did? Give him 1-5.",
+    "GEFUEHL_BEWERTUNG_FRAGE": "⭐ How do you think he did?",
     "GEFUEHL_WUERFEL_ABZEICHEN": "🏅 New badges: {liste}",
     "GEFUEHL_PUNKTE": "⭐ +{punkte} points _(total: {gesamt})_",
     "GEFUEHL_STREAK_SUFFIX": "\n🔥 Streak: *{streak}*",
@@ -1396,10 +1396,11 @@ MESSAGES = {
     "BUTTON_GUT_NICHT_HEUTE": "👌 Good, but not today",
     "TINYFB_FRAGE": (
         "💬 *Quick question about today's suggestion*\n\n"
-        "Suggestion (category: _{kategorien}_):\n"
+        "Suggestion{kategorie}:\n"
         "_{inhalt}_\n\n"
         "You haven't forwarded it (yet). One tap is enough:"
     ),
+    "TINYFB_KATEGORIE": " (category: _{kategorien}_)",
     "BUTTON_TINYFB_NEIN": "👎 Didn't fit",
     "BUTTON_TINYFB_G_THEMA": "Topic doesn't appeal to me",
     "BUTTON_TINYFB_G_AUFWAND": "Too much effort",
@@ -1474,13 +1475,15 @@ MESSAGES = {
     "EINSTELLUNGEN_GESPEICHERT": "✅ Saved\\!",
 
     # --- Bewertung / Rest-Kleinkram ---------------------------------------------------------------------------------------
-    "BEWERTUNG_1_5": "Please rate 1-5",
+    "BUTTON_BEWERTUNG_KOMMENTAR": "✍️ Tell him something about it",
+    "BEWERTUNG_NOTIERT_TOAST": "⭐ {wert} out of 5 – got it.",
+    "BEWERTUNG_SCHON": "You've already rated that one.",
+    "BEWERTUNG_GERADE_BELEGT": "Something else is still open – finish that first, then tap the button again.",
+    "BEWERTUNG_KOMMENTAR_BITTE": "Tell me what he should hear about it – I'll say it in your tone. Changed your mind? Send /ueberspringen.",
     "BEWERTUNG_KOMPLEX_HOCH": "📈 You really enjoyed your recent tasks – I'm raising the complexity!",
     "BEWERTUNG_KOMPLEX_NIEDRIG": "📉 I'm adjusting the task complexity to your preferences.",
     "BEWERTUNG_KOMPLEX_NORMAL": "📊 Task complexity adjusted back to normal.",
     "BEWERTUNG_TIPP_PREFIX": "💡 {tipp}",
-    "BEWERTUNG_KOMMENTAR_FRAGE": "Got it. Want to give him a note as well? (otherwise /ueberspringen)",
-    "BEWERTUNG_NOTIERT": "Got it – noted.",
     "KETTE_NICHT_VORHANDEN": "⚠️ This chain task no longer exists.",
     "TRAINING_DEAKTIVIERT": "Training is currently disabled.",
     "SERIE_EINMALIG": "✅ One-time task saved and forwarded.",

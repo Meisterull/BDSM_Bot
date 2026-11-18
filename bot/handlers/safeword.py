@@ -92,7 +92,7 @@ async def _resume(bot: Bot) -> None:
     state.set_paused(False)
     # Not-Stopp bleibt Not-Stopp: Modes hart auf chat – aber die State-Keys des
     # abgebrochenen Flows mit aufräumen, sonst fehlrouten Leichen (z.B.
-    # bewertung_task_id) die nächste Eingabe (Review D6).
+    # kommentar_task_id) die nächste Eingabe (Review D6).
     state.set_mode(paar.dom_chat_id, "chat")
     state.set_mode(paar.sub_chat_id, "chat")
     state.clear_flow_keys(paar.dom_chat_id)
