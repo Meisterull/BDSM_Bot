@@ -446,6 +446,29 @@ _PRUEF_ART = {
 }
 
 
+# Wie die Prüfung die Klammer hinter einem Inventar-Eintrag liest (Live-Befund
+# 21.11.2026): Ein bloßes Stichwort für einen Anlass las sie als „nur dafür" und
+# verwarf jede andere Verwendung des Gegenstands – auch eine, die als Vorliebe
+# eingetragen ist. Bindend bleibt, was die Angabe über Rollen und Mechanik sagt,
+# und jede ausdrückliche Einschränkung.
+# Echt-Test der Fassungen: „zählt nicht die einzig erlaubten Zwecke auf" ließ
+# auch vertauschte Rollen durch; „Rollen und Funktion gelten immer" las den
+# Anlass wieder als Funktion. Erst die Dreiteilung Rollen / Mechanik / Anlass
+# samt dem benannten Schein-Mangel („für X gedacht, nicht für Y") hielt beides.
+_INVENTAR_LESEREGEL = (
+    "So liest du die Benutzungsangaben im Inventar:\n"
+    "- ROLLEN: Was die Angabe darüber sagt, wer den Gegenstand trägt, wer wo sitzt oder liegt, an wem er "
+    "benutzt wird oder für wen er ist, gilt immer – vertauschte Rollen sind ein Mangel.\n"
+    "- MECHANIK: Was die Angabe darüber sagt, wie der Gegenstand befestigt ist und was er blockiert oder "
+    "freilässt, gilt immer, wenn er benutzt wird.\n"
+    "- ANLASS: Nennt die Angabe ein Spiel oder eine Praktik (oft nur ein Stichwort), ist das ein Beispiel für "
+    "die Verwendung und KEIN Verbot anderer Verwendungen. Derselbe Gegenstand darf auch bei anderer "
+    "Gelegenheit, auf andere Weise und an einer anderen Körperstelle benutzt werden, solange es körperlich "
+    "geht und die Rollen gleich bleiben. „Ist für X gedacht, nicht für Y\" ist deshalb kein Mangel.\n"
+    "- Ausdrückliche Einschränkungen („nur\", „nie\", „ausschließlich\") gelten wörtlich."
+)
+
+
 def machbarkeits_pruefung(vorschlag: str, inventar: list = None, art: str = "aufgabe") -> tuple[str, str]:
     """Zweiter Durchlauf nach der Generierung (services/machbarkeit): reine
     Mechanik-Prüfung, kein Geschmacks- oder Moralurteil. Antwort als JSON, damit
@@ -468,6 +491,7 @@ def machbarkeits_pruefung(vorschlag: str, inventar: list = None, art: str = "auf
         "4. Allein/zu zweit: Was eine Person allein tun soll, geht allein.\n"
         f"5. Anatomie: dominante Seite = {_koerper(rollen.dom_geschlecht())}, devote Seite = "
         f"{_koerper(rollen.sub_geschlecht())}. Spielzeug/Strapon ejakuliert nie.\n\n"
+        f"{_INVENTAR_LESEREGEL}\n\n"
         "Melde nur klare Widersprüche – keine Spitzfindigkeiten und nichts, was sich mit gesundem "
         "Menschenverstand von selbst regelt.\n"
         'Antworte NUR als JSON: {"ok": true} oder {"ok": false, "maengel": ["…"]} – höchstens drei '

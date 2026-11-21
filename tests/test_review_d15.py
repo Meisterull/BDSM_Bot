@@ -11,6 +11,10 @@ Regressions-Tests zur Log-Durchsicht vom 21.11.2026. Drei Befunde:
      Gesicht, stumme Zeichen per Finger)
   4. Netz unter dem Gedanken im Hinweis: keine behaupteten Gewohnheiten („das
      hilft meistens"), keine Rückfrage am Ende
+  5. Machbarkeits-Prüfung: ein Anlass-Stichwort hinter einem Inventar-Eintrag
+     ist kein Verbot anderer Verwendungen; Rollen, Mechanik und ausdrückliche
+     Einschränkungen bleiben bindend (das Urteil selbst fällt das Modell – hier
+     ist nur der Auftrag prüfbar)
 
 Alle Beispiele sind erfunden (Muster, keine Live-Inhalte).
 
@@ -430,6 +434,29 @@ async def test_hinweis_laeuft_durch_das_netz():
         db_progress.save_training, st.grok.simple, st.telegram_helper.send_domina = orig
 
 
+# --------------------------------------------------------------------------
+# 5 – Machbarkeits-Prüfung liest einen Anlass nicht als Verbot
+# --------------------------------------------------------------------------
+
+def test_pruefung_liest_anlass_nicht_als_verbot():
+    inventar = ["Schürze (trägt nur er)", "Holzlöffel (Kochen)", "Hocker (sie sitzt, er kniet davor)"]
+    for art in ("aufgabe", "wette", "strafe"):
+        system, user = fp.machbarkeits_pruefung("Er rührt den Teig mit dem Holzlöffel.", inventar, art=art)
+        # die drei Lesarten einer Angabe – und was davon bindet
+        assert "ROLLEN:" in system and "vertauschte Rollen sind ein Mangel" in system, system
+        assert "MECHANIK:" in system and "ANLASS:" in system
+        assert "KEIN Verbot anderer Verwendungen" in system and "solange es körperlich geht" in system
+        assert "die Rollen gleich bleiben" in system
+        assert "ist deshalb kein Mangel" in system                       # der benannte Schein-Mangel
+        assert "Ausdrückliche Einschränkungen" in system and "gelten wörtlich" in system
+        # die Regel steht bei den Prüfpunkten, vor der Ausgabe-Vorgabe; das Inventar bleibt Daten
+        assert system.index("5. Anatomie") < system.index("So liest du die Benutzungsangaben") \
+            < system.index("Melde nur klare Widersprüche")
+        assert "Holzlöffel (Kochen)" in user and "Holzlöffel" not in system
+    # der alte Prüfpunkt zur Haltung bleibt – wer wo liegt oder sitzt, gilt weiter
+    assert "wer wo liegt oder sitzt, gilt genau das" in fp.machbarkeits_pruefung("x", inventar)[0]
+
+
 def main():
     for coro in (test_nachbessern_und_letzter_halt, test_tipp_speichert_gesagtes_und_hinweis_zeigt_frage,
                  test_hinweis_laeuft_durch_das_netz):
@@ -437,7 +464,8 @@ def main():
         print(f"✅ {coro.__name__}")
     for fn in (test_prompt_klartext_uebersetzt_nur, test_netz_sagt_mehr, test_hinweis_text,
                test_vanilla_hinweis_bleibt_beim_gesagten, test_zutaten_gesten,
-               test_gewohnheiten_fallen_weg, test_rueckfrage_am_ende_faellt_weg):
+               test_gewohnheiten_fallen_weg, test_rueckfrage_am_ende_faellt_weg,
+               test_pruefung_liest_anlass_nicht_als_verbot):
         fn()
         print(f"✅ {fn.__name__}")
     print("\nAlle Tests zur Log-Durchsicht vom 21.11.2026 grün.")
