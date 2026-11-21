@@ -704,6 +704,21 @@ async def alle(h, phase, w):
         await h.press(S, "stimmung:4")
         e = await qdrant.get_latest_stimmung("sklave") or {}
         print(f"   fester Knopf: {e.get('zusammenfassung')!r}")
+        # 4) Klartext sagt mehr als der Knopf → ein Nachbesserungs-Versuch; bleibt es dabei,
+        #    fällt der Klartext weg und gespeichert wird das Etikett
+        ueberzogen = ('{"antworten": [{"knopf": "Dies und das", "klartext": "Gedanken: zerstreut, überfordert"},'
+                      '{"knopf": "Der Haushalt", "klartext": "Gedanken: starke Belastung"},'
+                      '{"knopf": "Kaum etwas", "klartext": "Gedanken: wenig"}]}')
+        w.OVERRIDES.append((frage_muster, "Was geht dir heute am ehesten durch den Sinn?"))
+        w.OVERRIDES.append((muster, ueberzogen))
+        w.OVERRIDES.append((muster + r"[\s\S]*mehr hineingelegt", ueberzogen))
+        vor = w.ZAEHLER["n"]
+        await h.job("stimmung_job", tagesjobs.stimmung_job)
+        print(f"   überzogen: {w.ZAEHLER['n'] - vor} Prompts | Knöpfe S: {w.kn(h, S)}")
+        await h.press(S, "Dies und das")
+        e = await qdrant.get_latest_stimmung("sklave") or {}
+        print(f"   Tipp: gespeichert {e.get('zusammenfassung')!r} | Knopf-Feld: {e.get('knopf')!r} "
+              f"| Frage dabei: {bool(e.get('frage'))}")
         config.STIMMUNG_ENABLED = False
     await phase(h, "46 Stimmungsfrage", p46)
 

@@ -513,6 +513,12 @@ async def _sende_festen_vorschlag(bot: Bot) -> bool:
 
 
 async def _send_tiny_task_vorschlag(bot: Bot) -> None:
+    # Solange der Vorschlag entsteht, startet kein Coach-Impuls (basis.in_arbeit).
+    with basis.in_arbeit(basis.TAGES_VORSCHLAG):
+        await _tiny_task_vorschlag_senden(bot)
+
+
+async def _tiny_task_vorschlag_senden(bot: Bot) -> None:
     try:
         if basis._flow_aktiv(paare.dom_chat_id(), "Tiny-Task-Vorschlag"):
             return

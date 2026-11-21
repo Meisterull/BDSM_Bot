@@ -6,6 +6,7 @@ Domina erzeugen (Bestrafungsvorschlag, Coach-Feedback, Wochenplan etc.).
 Konsistente Stimme über alle Pfade hinweg.
 """
 import random
+import re
 
 from bot.prompts import rollen
 
@@ -38,8 +39,12 @@ _SCHWIERIGKEIT_LABELS = {
 }
 
 
-def schwierigkeit_zeile(schwierigkeit: str) -> str:
+def schwierigkeit_zeile(schwierigkeit: str, mit_dauer: bool = True) -> str:
+    """`mit_dauer=False` für Prompts, deren Auftrag die Dauer schon festlegt
+    (Tiny-Rahmen): dort stand sonst „15-30 Min." neben „Tiny: 5-15 Min"."""
     label = _SCHWIERIGKEIT_LABELS.get(schwierigkeit, _SCHWIERIGKEIT_LABELS["normal"])
+    if not mit_dauer:
+        label = re.sub(r"\s*\([^)]*Min\.\)\s*$", "", label)
     return f"Aufgaben-Komplexität: {schwierigkeit} → {label}"
 
 

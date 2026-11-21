@@ -153,7 +153,8 @@ ANTWORT_ANZAHL = 4
 ANTWORT_MAX_ZEICHEN = 28
 
 
-def stimmung_antworten(frage: str, nachbessern: bool = False) -> tuple[str, str]:
+def stimmung_antworten(frage: str, nachbessern: bool = False,
+                       zu_viel: list[str] | None = None) -> tuple[str, str]:
     """Kurze Antworten zum Antippen, passend zu GENAU dieser Stimmungsfrage.
 
     Die Frage wird täglich frisch und oft bildhaft gestellt; eine feste Skala
@@ -161,7 +162,16 @@ def stimmung_antworten(frage: str, nachbessern: bool = False) -> tuple[str, str]
     unbeantwortet. Zu jeder Antwort gehört ein Klartext: Der wird gespeichert
     und steht später als „Aktuelle Stimmung" in anderen Prompts – er muss ohne
     die Frage verständlich sein. Bewusst ohne Rollen-Wörter: die Frage kann an
-    jede der beiden Personen gehen (Vanilla)."""
+    jede der beiden Personen gehen (Vanilla).
+
+    Der Klartext ÜBERSETZT nur (Live-Befund 21.11.2026): Der Auftrag „was sie
+    über die Stimmung sagt" ließ das Modell aus einer unbestimmten Antwort einen
+    Befund machen und aus einem genannten Thema eine Belastung – die Person
+    tippt aber nur das Etikett an und sieht den Klartext nie. Die feste Form
+    „Thema: Aussage" hält ihn am Gesagten: Ohne sie wiederholte er entweder nur
+    das Etikett (ohne die Frage unverständlich) oder deutete (Echt-Test am
+    selben Tag). `zu_viel` = Wörter aus dem ersten Versuch, die über das Etikett
+    hinausgingen (Netz darunter: handlers/stimmung._sagt_mehr)."""
     from bot.services import persona_config
     system = (
         "Unter einer Frage nach der Stimmung stehen Antworten zum Antippen. Du schreibst, was die "
@@ -177,14 +187,28 @@ def stimmung_antworten(frage: str, nachbessern: bool = False) -> tuple[str, str]
         f"- Kurz wie ein Knopf: zwei bis fünf Wörter, höchstens {ANTWORT_MAX_ZEICHEN} Zeichen, in den eigenen "
         "Worten der Person (Ich-Form oder Stichwort) – ohne Anrede, ohne Emoji, ohne Anführungszeichen, "
         "ohne Punkt am Ende.\n"
-        "- Zu jeder Antwort ein Klartext: was sie über die Stimmung sagt – drei bis acht Wörter als "
-        "Stichworte OHNE Subjekt und ohne Pronomen (nicht „sie ist …\", nicht „er fühlt …\"), nüchtern, "
-        "OHNE das Bild der Frage, verständlich für jemanden, der die Frage nicht kennt.\n"
+        "- Zu jeder Antwort ein Klartext, verständlich für jemanden, der die Frage nicht kennt. Form: zuerst das "
+        "Thema der Frage als ein oder zwei Hauptwörter (ohne „Frage nach\"), dann ein Doppelpunkt, dann was die "
+        "Antwort dazu sagt – in gewöhnlichen Worten, OHNE Subjekt und ohne Pronomen (nicht „sie ist …\", nicht "
+        "„er fühlt …\"), nüchtern, zusammen höchstens acht Wörter.\n"
+        "- Spricht die Frage in einem Bild (Wetter, Landschaft, Gegenstand), ist das Thema das, wofür das Bild "
+        "steht – etwa Stimmung, Anspannung oder Kraft –, nie das Bild selbst. Auch die Antwort wird dann in "
+        "gewöhnliche Worte übersetzt, so zurückhaltend wie möglich; Wörter aus dem Bild kommen im Klartext "
+        "nicht vor.\n"
+        "- Der Klartext sagt NICHT MEHR als die Antwort: keine Verstärkung, kein Gefühl und kein Befund, den die "
+        "Antwort nicht selbst nennt, keine Ursache und keine Folge. Nennt die Antwort nur ein Thema, nennt der "
+        "Klartext dieses Thema und lässt offen, wie es der Person damit geht. Bleibt die Antwort unbestimmt, "
+        "bleibt auch der Klartext unbestimmt.\n"
         'Antworte NUR mit JSON in dieser Form: {"antworten": [{"knopf": "…", "klartext": "…"}]}'
         f"{persona_config.sprache_anweisung()}"
     )
     user = bausteine.nutzer_text("Die Frage", frage)
-    if nachbessern:
+    woerter = [w for w in (zu_viel or []) if w]
+    if woerter:
+        user += ("\n\nDein erster Versuch hat in den Klartext mehr hineingelegt, als auf dem Knopf steht "
+                 f"({', '.join(woerter[:6])}). Jetzt wirklich: Der Klartext gibt nur wieder, was die Antwort "
+                 "selbst sagt – ohne diese Wörter, ohne Verstärkung, ohne Befund. Nur das JSON.")
+    elif nachbessern:
         user += (f"\n\nDein erster Versuch war unbrauchbar (Antworten zu lang für einen Knopf oder kein "
                  f"gültiges JSON). Jetzt wirklich: höchstens {ANTWORT_MAX_ZEICHEN} Zeichen je Antwort, nur das JSON.")
     return system, user

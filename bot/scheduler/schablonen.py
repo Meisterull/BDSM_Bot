@@ -170,6 +170,119 @@ def _meta_rueckfrage_entfernen(text: str) -> str:
     return rest if len(rest) >= 40 else t
 
 
+# ---------------------------------------------------------------------------
+# Einweg-Mitteilungen (Stimmungs-Hinweis an die andere Seite): ein Gedanke zu
+# EINER Antwort, auf den niemand antworten muss. Zwei Marotten des Modells
+# überleben die Prompt-Regel (Echt-Test 21.11.2026) und fallen deshalb hier weg:
+#  - behauptete Gewohnheiten („das hilft meistens", „wie immer", „mal wieder"):
+#    der Auftrag kennt eine einzige Antwort, keine Vorgeschichte;
+#  - eine Rückfrage am Ende: der Coach-Stil lädt zum Weiterreden ein, die
+#    Mitteilung soll aber ohne Antwort auskommen.
+_NW = r"(?<![\wäöüß])"          # kein Wortzeichen davor
+_NN = r"(?![\wäöüß])"           # kein Wortzeichen danach
+# Wendungen (Gruppe „wendung"): lassen sich überall herauslösen. Einzelne
+# Häufigkeits-Adverbien (Gruppe „adverb") stehen im Deutschen gern an erster
+# Stelle eines Hauptsatzes – dort bräche das bloße Streichen die Wortstellung.
+_GEWOHNHEIT_RE = re.compile(
+    _NW + r"(?:(?P<wendung>"
+    r"bei\s+(?:ihm|ihr)\s+(?:meistens|meist|oft|immer|h[äa]e?ufig|normalerweise)|"
+    r"(?:so\s+)?wie\s+(?:immer|so\s+oft|[üu]e?blich|gewohnt)|"
+    r"mal\s+wieder|als\s+sonst|sonst\s+(?:auch|immer)|as\s+(?:always|usual)"
+    r")|(?P<adverb>"
+    r"erfahrungsgem[äa]e?(?:ß|ss)|normalerweise|[üu]e?blicherweise|in\s+(?:aller|der)\s+Regel|jedes\s+Mal|"
+    r"meistens|meist|(?<!zu\s)(?<!so\s)(?<!wie\s)(?<!sehr\s)(?:oft|h[äa]e?ufig)|"
+    r"usually|normally|typically|most\s+of\s+the\s+time|every\s+time|"
+    r"(?<!too\s)(?<!so\s)(?<!how\s)often"
+    r"))" + _NN, re.I)
+_TRENNER = r"(?:\s*[,;:–—]\s*|\s+-\s+)"
+# Angehängte Berufung auf ihre Gewohnheit oder ihr Wissen („… – so wie du das
+# sonst auch machst", „…, du kennst ihn ja"): fällt als ganzer Teilsatz weg.
+_WIE_DU_SONST_RE = re.compile(
+    _TRENNER + r"(?:so\s+)?wie\s+du\s+(?:das|es)\s+[^,.!?–—\n]{0,40}?"
+    + _NW + r"(?:sonst|immer|meistens|meist|oft|gewohnt)" + _NN + r"[^,.!?–—\n]{0,25}?"
+    + _NW + r"(?:tust|machst|bist)" + _NN, re.I)
+_KENNST_JA_RE = re.compile(
+    _TRENNER + r"(?:du\s+kennst\s+(?:ihn|sie)\s+ja|(?:so\s+)?wie\s+du\s+(?:ihn|sie)\s+kennst)" + _NN, re.I)
+_SATZANFANG_DAVOR_RE = re.compile(r"(?:\A|[.!?…][\"“”«»']?\s+|\n)[\s\"„“«»'(*_]*\Z")
+_TRENNER_DAVOR_RE = re.compile(r"(?:\s*[,;:–—]|\s+-)\s*\Z")
+_TEILSATZ_ENDE_RE = re.compile(r"[,;:–—]|\s-\s|[.!?…]")
+_BUCHSTABE_RE = re.compile(r"[A-Za-zÄÖÜäöüß]")
+
+
+def _gross_ab_erstem_buchstaben(text: str) -> str:
+    m = _BUCHSTABE_RE.search(text)
+    if not m:
+        return text
+    return text[:m.start()] + text[m.start()].upper() + text[m.start() + 1:]
+
+
+def _gewohnheiten_entfernen(text: str) -> str:
+    """Nimmt Häufigkeits- und Gewohnheits-Behauptungen aus einer Mitteilung.
+    Mitten im Teilsatz fällt nur das Wort weg („das bringt ihn meistens zum
+    Reden" → „das bringt ihn zum Reden"). Steht es am Anfang eines Satzes oder
+    Teilsatzes, bräche das die Wortstellung – dort fällt der Teilsatz weg.
+    Bleibt zu wenig übrig, bleibt der Text unverändert."""
+    original = (text or "").strip()
+    t = _KENNST_JA_RE.sub("", _WIE_DU_SONST_RE.sub("", original))
+    for m in reversed(list(_GEWOHNHEIT_RE.finditer(t))):   # von hinten: Positionen bleiben gültig
+        a, b = m.start(), m.end()
+        davor, danach = t[:a], t[b:]
+        ende = _TEILSATZ_ENDE_RE.search(danach)
+        if _SATZANFANG_DAVOR_RE.search(davor):
+            # Satzanfang: bis einschließlich des nächsten Trenners weg, der Rest beginnt groß
+            rest = danach[ende.end():] if ende else ""
+            t = davor + _gross_ab_erstem_buchstaben(rest.lstrip(" \t"))
+        elif m.group("adverb") and (tr := _TRENNER_DAVOR_RE.search(davor)):
+            # Adverb am Anfang eines Teilsatzes: Trenner davor und der Teilsatz weg, das Folgende bleibt
+            t = davor[:tr.start()] + (danach[ende.start():] if ende else "")
+        else:
+            t = davor.rstrip(" \t") + " " + danach.lstrip(" \t")
+    t = re.sub(r"[ \t]{2,}", " ", t)
+    t = re.sub(r"[ \t]+([,.;:!?…])", r"\1", t)
+    t = re.sub(r"[ \t]+\n", "\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t).strip()
+    if len(t) < 40 or len(t) < 0.4 * len(original):
+        return original
+    return t
+
+
+# Fragen, die den Gedanken selbst tragen (ein Vorschlag in Frageform), bleiben.
+_VORSCHLAGS_FRAGE_RE = re.compile(
+    r"^[\s\"„“«»'(*_]*(?:wie\s+w[äa]e?r|warum\s+nicht|vielleicht|was,?\s+wenn|und\s+wenn|frag\w*\s|"
+    r"how\s+about|why\s+not|what\s+if|maybe|ask\s)", re.I)
+
+
+def _rueckfrage_am_ende_entfernen(text: str, mindest_rest: int = 60) -> str:
+    """Schneidet Fragesätze am ENDE einer Mitteilung ab, die eine Antwort der
+    Empfängerin erwarten. Es bleiben: ein Vorschlag in Frageform („Wie wär's,
+    wenn …?"), eine Frage in Anführungszeichen (ein Satz, den SIE sagen
+    könnte) und alles, wenn danach zu wenig übrig bliebe."""
+    t = (text or "").strip()
+    teile = re.split(r"((?<=[.!?…])\s+)", t)        # Satz, Lücke, Satz, Lücke, …, Satz
+    n = (len(teile) + 1) // 2                       # Zahl der Sätze
+    behalten = n
+    while behalten > 0 and not _BUCHSTABE_RE.search(teile[2 * (behalten - 1)]):
+        behalten -= 1                               # Emoji/Zeichen ganz am Schluss
+    gefunden = False
+    while behalten > 0:
+        satz = teile[2 * (behalten - 1)]
+        if not re.search(r"\?[\s*_]*$", satz) or _VORSCHLAGS_FRAGE_RE.search(satz):
+            break
+        behalten -= 1
+        gefunden = True
+    if not gefunden:
+        return t
+    rest = "".join(teile[:2 * behalten - 1]).rstrip() if behalten else ""
+    return rest if len(rest) >= mindest_rest else t
+
+
+def mitteilung_bereinigen(text: str) -> str:
+    """Netz für Einweg-Mitteilungen: keine behaupteten Gewohnheiten, keine
+    Rückfrage am Ende. Die Prompt-Regeln dazu stehen in
+    prompts/followup/bausteine (STIMMUNG_BEIM_GESAGTEN, MITTEILUNG_OHNE_RUECKFRAGE)."""
+    return _rueckfrage_am_ende_entfernen(_gewohnheiten_entfernen(text))
+
+
 def _eigener_name_entfernen(text: str) -> str:
     """Schneidet den eigenen Namen als Einstieg einer fertigen Coach-Nachricht
     weg („<Name>, kurz und bündig: …" → „Kurz und bündig: …"). Der Coach
@@ -252,6 +365,20 @@ _ZUTATEN_MUSTER: list[tuple[str, re.Pattern, frozenset]] = [
     # Vorschläge in einer Woche, obwohl Kategorien und Praktiken wechselten.
     ("Dusche/Bad als Schauplatz",
      re.compile(r"dusch|badewanne|wasserstrahl", re.I),
+     frozenset()),
+    # Gesten als Zutat (Live-Befund 21.11.2026): Steht ein Stoff auf der
+    # Sperrliste, behält das Modell gern die Geste und tauscht nur den Stoff –
+    # die Wiederholung bleibt, die Liste sieht sie nicht. Solche Gesten stehen
+    # deshalb selbst hier, unabhängig davon, womit sie ausgeführt werden.
+    ("Tropfen aufs Gesicht (egal womit)",
+     # im selben Satz – oder das Gesicht als Ziel am Satzende und die Tropfen im nächsten
+     re.compile(r"tropf\w*[^.!?\n]{0,60}(?:gesicht|stirn|wange)|(?:gesicht|stirn|wange)[^.!?\n]{0,60}tropf|"
+                r"(?:auf|aufs|ins|in|über)\s+(?:\w+\s+)?(?:gesicht|stirn|wange)\w*[.!?]\s+[^.!?\n]{0,40}tropf", re.I),
+     frozenset({"Speichelspiel"})),
+    ("Stumme Zeichen per Finger oder Antippen",
+     re.compile(r"finger\w*[^.!?\n]{0,30}(?:schulter|hei(?:ß|ss)t)|finger\w*\s+heb|"
+                r"(?:tipp|klopf)\w*[^.!?\n]{0,30}schulter|schulter[^.!?\n]{0,30}(?:tipp|klopf)|"
+                r"fingerschnipp|schnipp\w*[^.!?\n]{0,15}finger", re.I),
      frozenset()),
 ]
 

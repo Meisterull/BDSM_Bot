@@ -302,7 +302,8 @@ def stimmung_hinweis(rolle: str, antwort: str, frage: str = "", klartext: str = 
         f"{stimme_block(andere_rolle(rolle))}\n\n"
         f"{_gross(von)} hat dir gerade gesagt, wie es {ich['dat']} geht. Sag {partner['name_dat']} locker "
         f"Bescheid, wie die Stimmung ist, und gib EINEN kleinen, konkreten Gedanken mit, wie {partner['nom']} "
-        f"darauf eingehen könnte. 1-3 Sätze, Du-Form, kein Bericht-Format, keine Floskeln, kein Zitat in Anführungszeichen.\n\n"
+        f"darauf eingehen könnte. 1-3 Sätze, Du-Form, kein Bericht-Format, keine Floskeln, kein Zitat in Anführungszeichen.\n"
+        f"{bausteine.STIMMUNG_BEIM_GESAGTEN}\n{bausteine.MITTEILUNG_OHNE_RUECKFRAGE}\n\n"
         f"{kurz_stil()}"
     )
     return system, bausteine.stimmungs_daten(f"Stimmungs-Nachricht von {von}", antwort, frage, klartext,

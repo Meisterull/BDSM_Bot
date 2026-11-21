@@ -88,6 +88,12 @@ _impuls_claim: datetime | None = None
 
 _WUNSCH_WETTE_VERSUCHE = 3
 
+# Vorgemerkter Coach-Impuls: Der Würfel hatte entschieden, aber der
+# Tages-Vorschlag entstand gerade (basis.in_arbeit). Der nächste Tick holt den
+# Impuls ohne neuen Wurf nach – sonst hinge er wieder am Würfelglück.
+_COACH_VORGEMERKT_MAX = timedelta(hours=2)
+_coach_vorgemerkt: dict = {}   # paar_id -> Zeitpunkt des Wurfs
+
 
 def _wett_fenster_offen(jetzt_lokal: datetime) -> bool:
     """True, wenn WETT_IMPULS_FENSTER gesetzt ist und `jetzt_lokal` darin liegt –
@@ -315,6 +321,10 @@ async def coach_impuls_job(bot: Bot) -> None:
         await qdrant.patch_profile_fields("domina", {"coach_wette_wunsch": None})
         logger.info("Wunsch-Wettvorschlag vom %s verfallen – nicht zugestellt.", wunsch.get("datum"))
     elif wunsch and str(wunsch.get("datum", "")) == heute:
+        if basis.ist_in_arbeit(basis.TAGES_VORSCHLAG):
+            # Der Wunsch bleibt im Profil stehen – der nächste Tick nimmt ihn.
+            logger.info("Wunsch-Wettvorschlag wartet – der Tages-Vorschlag entsteht gerade.")
+            return
         mein_claim = datetime.now(timezone.utc)
         _impuls_claim = mein_claim  # Spiel-Impuls im selben Tick fernhalten
         schwerpunkt = str(wunsch.get("schwerpunkt") or "")
@@ -347,10 +357,23 @@ async def coach_impuls_job(bot: Bot) -> None:
     if grund:
         _log_sperre("Coach-Impuls", "Spiel-Impuls", grund)
         return
-    wurf = random.random()
-    if wurf >= config.COACH_IMPULS_CHANCE:
-        logger.info("Coach-Impuls: Würfel dagegen (%.2f ≥ %.2f)",
-                    wurf, config.COACH_IMPULS_CHANCE)
+    pid = paare.aktueller_kontext()
+    vorgemerkt = _coach_vorgemerkt.pop(pid, None)
+    if vorgemerkt and jetzt - vorgemerkt < _COACH_VORGEMERKT_MAX:
+        logger.info("Coach-Impuls: vorgemerkter Wurf wird nachgeholt.")
+    else:
+        vorgemerkt = None
+        wurf = random.random()
+        if wurf >= config.COACH_IMPULS_CHANCE:
+            logger.info("Coach-Impuls: Würfel dagegen (%.2f ≥ %.2f)",
+                        wurf, config.COACH_IMPULS_CHANCE)
+            return
+    if basis.ist_in_arbeit(basis.TAGES_VORSCHLAG):
+        # Nicht parallel zum Tages-Vorschlag erzeugen: die Wett-Idee soll ihn
+        # kennen (Zutaten-Sperre). Der Wurf bleibt für den nächsten Tick gültig.
+        _coach_vorgemerkt[pid] = vorgemerkt or jetzt
+        logger.info("Coach-Impuls vorgemerkt – der Tages-Vorschlag entsteht gerade; "
+                    "der nächste Tick holt ihn nach.")
         return
     # In-Prozess-Claim synchron nach dem Würfel (s. Kommentar am Spiel-Impuls).
     if _impuls_claim and datetime.now(timezone.utc) - _impuls_claim < _IMPULS_KOLLISION:

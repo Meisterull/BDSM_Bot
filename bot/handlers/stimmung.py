@@ -20,6 +20,15 @@ kurzer LLM-Aufruf zu jeder Frage vier Antworten zum Antippen samt Klartext
 der Klartext – der steht später als „Aktuelle Stimmung" in anderen Prompts und
 muss ohne die Frage verständlich sein. Die fünf festen Knöpfe bleiben als
 Rückfall (Standardfrage, LLM-Fehler, unbrauchbare Ausgabe).
+
+KLARTEXT BLEIBT BEIM GESAGTEN (21.11.2026): Der Klartext stammt vom Modell,
+die Person sieht ihn nie – er darf deshalb nicht mehr sagen als das Etikett.
+Prompt-Regel in stimmung_antworten, darunter ein Wort-Netz (`_sagt_mehr`) mit
+einem Nachbesserungs-Versuch; hilft der nicht, fällt der überzogene Klartext
+weg und gespeichert wird das Etikett. Der Hinweis an die andere Seite zeigt
+Frage und Antwort wörtlich (`_hinweis_text`), nicht den Klartext; der Gedanke
+darunter läuft durch `schablonen.mitteilung_bereinigen` (keine behaupteten
+Gewohnheiten, keine Rückfrage am Ende).
 """
 import difflib
 import logging
@@ -74,6 +83,35 @@ _ANGEHAENGTES_DU_RE = re.compile(r",\s*du(?=\s*[?.!…]*\s*$)", re.I)
 
 def _ohne_angehaengtes_du(frage: str) -> str:
     return _ANGEHAENGTES_DU_RE.sub("", frage or "")
+
+
+# Andere Ersatz-Anreden („…, mein Süßer?", „Schatz, …"): Die Persona kennt
+# genau EINE Anrede; setzt der Prompt sie aus, weicht das Modell gern auf einen
+# Kosenamen aus (live 20.11.2026). Bewusst eine kurze Liste gängiger Kosewörter –
+# ein allgemeines „Komma + Wort am Satzende" träfe auch echte Satzteile.
+_KOSEWORT = (r"(?:mein(?:e[rs]?)?\s+)?(?:lieb(?:e[rs]?|ste[rs]?|ling)|kleine[rs]?|süße[rs]?|suesse[rs]?|"
+             r"schatz|schätzchen|hübsche[rs]?|freundchen|sklav(?:e|in))(?:\s+[a-zäöüß]+)?")
+_KOSE_AM_ENDE_RE = re.compile(rf",\s*(?P<wort>{_KOSEWORT})(?=\s*[?.!…]*\s*$)", re.I)
+_KOSE_AM_ANFANG_RE = re.compile(rf"^\s*(?P<wort>{_KOSEWORT})\s*,\s*", re.I)
+_KOSE_MITTEN_RE = re.compile(rf",\s*(?P<wort>{_KOSEWORT})\s*(?=,)", re.I)
+
+
+def _ohne_ersatz_anrede(frage: str, anrede: str = "") -> str:
+    """Entfernt einen Kosenamen, der nicht die eingestellte Anrede ist – am
+    Satzende, am Anfang oder zwischen zwei Kommas. Die eingestellte Anrede
+    selbst bleibt unangetastet."""
+    text = frage or ""
+    eigene = " ".join((anrede or "").lower().split())
+
+    def _weg(m: re.Match) -> str:
+        return m.group(0) if " ".join(m.group("wort").lower().split()) == eigene else ""
+
+    text = _KOSE_MITTEN_RE.sub(_weg, text)
+    text = _KOSE_AM_ENDE_RE.sub(_weg, text)
+    neu = _KOSE_AM_ANFANG_RE.sub(_weg, text)
+    if neu != text and neu:
+        neu = neu[:1].upper() + neu[1:]
+    return neu
 
 # Merkmarke statt Mode: bis wann eine getippte Nachricht als Stimmungs-Antwort
 # zählt (Dauer = STALE_STIMMUNG_SECONDS, wie früher der Mode).
@@ -134,22 +172,132 @@ def _optionen_lesen(roh: str) -> list[dict]:
     return optionen if len(optionen) >= _MIN_OPTIONEN else []
 
 
+# --- Netz unter der Klartext-Regel -------------------------------------------
+# Die Person tippt nur das Etikett an und sieht den Klartext nie; gespeichert
+# und weitergereicht wird aber der Klartext. Sagt er mehr als das Etikett –
+# einen Befund oder eine Verstärkung, die weder auf dem Knopf noch in der Frage
+# steht –, landet in den Prompts und im Hinweis an die andere Seite etwas, das
+# niemand gesagt hat (Live-Befund 21.11.2026: aus einer unbestimmten Antwort
+# wurde ein Befund, der noch den Aufgaben-Vorschlag des Abends einfärbte).
+# Erkannt wird das an Wörtern, nicht am Sinn: lieber einmal zu oft nachbessern
+# lassen als einen Befund durchwinken. Alltägliche Stimmungswörter (müde,
+# unruhig, angespannt …) stehen bewusst NICHT hier – ohne sie ließe sich ein
+# Bild nicht übersetzen. Je Familie: gilt als gedeckt, wenn Knopf oder Frage
+# ein Wort derselben Familie enthalten. Die meisten Stämme zählen auch mitten
+# im Wort (Zusammensetzungen); wo das falsche Freunde träfe („gemeinsam",
+# „unbelastet", „Fürsorge"), nur am Wortanfang (_WA) bzw. ohne die Vorsilbe.
+_WA = r"(?<![\wäöüß])"
+_BEFUND_FAMILIEN: tuple[re.Pattern, ...] = tuple(
+    re.compile(muster, re.I) for muster in (
+        r"[üu]e?berforder|[üu]e?berlast|[üu]e?berw[äa]e?ltig|overwhelm",
+        (r"(?<!für)(?<!vor)(?<!ver)(?<!ent)(?<!be)sorge(?!n?frei)|" + _WA + r"besorgt|" + _WA + r"besorgnis|"
+         r"kummer|" + _WA + r"worr(?:y|ie)"),
+        (r"angst(?!frei)|" + _WA + r"(?:ver)?(?:ä|ae)ngst|panik|" + _WA + r"panisch|" + _WA + r"anxi|"
+         + _WA + r"panic"),
+        r"krise|verzweif|ausgebrannt|burn.?out|crisis|desperat|despair",
+        r"depress|deprimi|niedergeschlagen|apath",
+        r"hoffnungslos|hilflos|ziellos|orientierungslos|" + _WA + r"mutlos|hopeless|helpless|aimless",
+        _WA + r"(?:ver)?einsam|" + _WA + r"lonel",
+        _WA + r"traurig|" + _WA + r"trauer|" + _WA + r"grie[fv]",
+        r"(?<!un)belast|" + _WA + r"distress",
+    ))
+_STEIGERUNG = (r"sehr|stark(?:e[rsnm]?)?|st[äa]e?rker\w*|extrem\w*|v[öo]e?llig\w*|total\w*|massiv\w*|heftig\w*|"
+               r"akut\w*|enorm\w*|hochgradig\w*|[äa]e?u(?:ß|ss)erst|zutiefst|"
+               r"very|extremely|totally|completely|deeply|strongly|severe\w*|utterly|intense\w*|highly")
+_STEIGERUNG_RE = re.compile(_WA + r"(?:" + _STEIGERUNG + r")(?![\wäöüß])", re.I)
+# Auf dem Knopf zählt auch die Umgangssprache als Verstärkung – wer „gar
+# nichts" oder „voll durch" antippt, hat selbst zugespitzt.
+_KNOPF_STEIGERUNG_RE = re.compile(
+    _WA + r"(?:" + _STEIGERUNG + r"|mega|richtig|ziemlich|komplett\w*|absolut\w*|voll\w*|ganz|riesig\w*|"
+    r"riesen\w*|randvoll|nur noch|gar|[üu]e?berhaupt|kaum|null|nichts mehr|am ende|echt|super\w*|wahnsinnig\w*|"
+    r"really)(?![\wäöüß])", re.I)
+# Eine Verneinung davor im selben Satzteil dreht den Befund um („keine Sorgen"),
+# ebenso eine direkt hinter dem Doppelpunkt der Form „Thema: Aussage".
+_VERNEINT_RE = re.compile(
+    _WA + r"(?:kein\w*|nicht|ohne|nie|kaum|wenig\w*|frei von|weder|no|not|without|hardly|free of)"
+    r"(?![\wäöüß])[^,;:–—/]*$", re.I)
+_VERNEINT_DANACH_RE = re.compile(
+    r"^[\wäöüß]*\s*:\s*(?:kein\w*|nicht|ohne|nie|kaum|wenig\w*|gering\w*|null|none|no|not|low|little)"
+    r"(?![\wäöüß])", re.I)
+
+
+def _sagt_mehr(knopf: str, klartext: str, frage: str = "") -> list[str]:
+    """Wörter im Klartext, die über Knopf und Frage hinausgehen: ein Befund,
+    den keiner von beiden nennt, oder eine Verstärkung, die der Knopf nicht
+    hat. Leer = der Klartext bleibt beim Gesagten (soweit an Wörtern prüfbar)."""
+    gedeckt = f"{knopf or ''} {frage or ''}"
+    klartext = klartext or ""
+    funde: list[str] = []
+    for familie in _BEFUND_FAMILIEN:
+        if familie.search(gedeckt):
+            continue
+        for m in familie.finditer(klartext):
+            if _VERNEINT_RE.search(klartext[:m.start()]) or _VERNEINT_DANACH_RE.match(klartext[m.end():]):
+                continue
+            funde.append(_ganzes_wort(klartext, m.start(), m.end()))
+    if not _KNOPF_STEIGERUNG_RE.search(knopf or ""):
+        funde.extend(m.group(0) for m in _STEIGERUNG_RE.finditer(klartext))
+    return list(dict.fromkeys(funde))
+
+
+_WORTZEICHEN_RE = re.compile(r"[\wäöüß]")
+
+
+def _ganzes_wort(text: str, start: int, ende: int) -> str:
+    """Das Wort um einen Treffer herum – der Stamm allein („sorge" aus einer
+    Zusammensetzung) sagt dem Modell beim Nachbessern nicht, was gemeint ist."""
+    while start > 0 and _WORTZEICHEN_RE.match(text[start - 1]):
+        start -= 1
+    while ende < len(text) and _WORTZEICHEN_RE.match(text[ende]):
+        ende += 1
+    return text[start:ende]
+
+
+def _zu_viel_deutung(optionen: list[dict], frage: str) -> list[str]:
+    """Alle Wörter über alle Antworten, die mehr sagen als ihr Knopf."""
+    funde: list[str] = []
+    for o in optionen:
+        funde.extend(_sagt_mehr(o.get("knopf", ""), o.get("klartext", ""), frage))
+    return list(dict.fromkeys(funde))
+
+
+def _ohne_ueberzogenen_klartext(optionen: list[dict], frage: str) -> list[dict]:
+    """Letzter Halt nach dem Nachbessern: Der Knopf bleibt, ein Klartext, der
+    immer noch mehr sagt als er, fällt weg. Gespeichert wird dann, was die
+    Person angetippt hat – ihre Worte, mit der Frage am Eintrag."""
+    return [{**o, "klartext": ""} if _sagt_mehr(o.get("knopf", ""), o.get("klartext", ""), frage) else o
+            for o in optionen]
+
+
 async def _antwort_optionen(frage: str) -> list[dict]:
     """Antworten zum Antippen, passend zu dieser Frage. Leer bei der
     statischen Standardfrage, bei LLM-Fehlern und bei unbrauchbarer Ausgabe –
-    der Aufrufer zeigt dann die festen Knöpfe."""
+    der Aufrufer zeigt dann die festen Knöpfe. Ein Satz Antworten, dessen
+    Klartext mehr sagt als die Knöpfe, wird einmal nachgebessert; hilft das
+    nicht, bleiben die Knöpfe und die überzogenen Klartexte fallen weg."""
     if not frage or frage == _fallback_frage():
         return []
+    brauchbar: list[dict] = []      # formal in Ordnung, Klartext evtl. überzogen
+    zu_viel: list[str] = []
     try:
         for versuch in range(_OPTIONEN_VERSUCHE):
-            roh = await grok.simple(fp.stimmung_antworten(frage, nachbessern=versuch > 0), max_tokens=400)
+            roh = await grok.simple(
+                fp.stimmung_antworten(frage, nachbessern=versuch > 0, zu_viel=zu_viel), max_tokens=400)
             optionen = _optionen_lesen(roh)
-            if optionen:
+            if not optionen:
+                logger.info("Antwort-Knöpfe zur Stimmungsfrage unbrauchbar (Versuch %d).", versuch + 1)
+                zu_viel = []
+                continue
+            zu_viel = _zu_viel_deutung(optionen, frage)
+            if not zu_viel:
                 return optionen
-            logger.info("Antwort-Knöpfe zur Stimmungsfrage unbrauchbar (Versuch %d).", versuch + 1)
+            brauchbar = optionen
+            logger.info("Klartext der Antwort-Knöpfe sagt mehr als die Knöpfe (Versuch %d): %s",
+                        versuch + 1, ", ".join(zu_viel))
     except Exception as e:
-        logger.warning("Antwort-Knöpfe zur Stimmungsfrage fehlgeschlagen – feste Knöpfe: %s", e)
-    return []
+        logger.warning("Antwort-Knöpfe zur Stimmungsfrage fehlgeschlagen%s: %s",
+                       "" if brauchbar else " – feste Knöpfe", e)
+    return _ohne_ueberzogenen_klartext(brauchbar, frage)
 
 
 def _merke_offen(chat_id: str, frage: str = "") -> None:
@@ -229,6 +377,10 @@ async def _frage_text(rolle: str = paare.ROLLE_SUB) -> tuple[str, str]:
             else:
                 prompt = fp.stimmung_abfragen(vermeiden=sperre, richtung=richtung)
             text = _ohne_angehaengtes_du((await grok.simple(prompt, max_tokens=120)).strip())
+            if not modi.ist_vanilla():
+                # Vanilla hat keine Anrede-Regel; dort darf ein Kosename stehen.
+                from bot.services import persona_config
+                text = _ohne_ersatz_anrede(text, persona_config.sklave_anrede() or "")
             if text and not _zu_aehnlich(text, vorherige):
                 return text, richtung
             logger.info("Stimmungs-Frage zu ähnlich zu den letzten (Versuch %d, Richtung '%s') – Retry.",
@@ -423,6 +575,32 @@ async def handle_antwort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                                frage=frage)
 
 
+def _hinweis_bereinigt(hinweis: str) -> str:
+    """Der Gedanke unter dem Kopf ohne behauptete Gewohnheiten („das hilft
+    meistens") und ohne Rückfrage am Ende – die Prompt-Regeln dazu hält das
+    Modell nur teilweise ein (Echt-Test 21.11.2026)."""
+    from bot.scheduler import schablonen  # lazy: der Scheduler lädt seinerseits Handler
+    sauber = schablonen.mitteilung_bereinigen(hinweis)
+    if sauber.split() != (hinweis or "").split():       # reine Leerraum-Glättung nicht melden
+        logger.info("Stimmungs-Hinweis bereinigt (Gewohnheit/Rückfrage): %d → %d Zeichen.",
+                    len(hinweis or ""), len(sauber))
+    return sauber
+
+
+def _hinweis_text(schluessel: str, hinweis: str, antwort: str, frage: str = "", klartext: str = "",
+                  **platzhalter) -> str:
+    """Nachricht an die andere Seite: Kopf plus Gedanke dazu. Gab es eine Frage,
+    stehen Frage und Antwort wörtlich im Kopf (Live-Befund 21.11.2026: dort
+    stand nur der Klartext, also die Deutung des Modells – was gefragt und was
+    angetippt wurde, war nicht zu sehen). Ohne Frage (feste Knöpfe, Meldung aus
+    eigenem Antrieb) bleibt es bei der einen Zeile."""
+    sicher = telegram_helper.md_einbett_sicher
+    if (frage or "").strip():
+        return t(f"{schluessel}_FRAGE", frage=sicher(" ".join(frage.split())),
+                 antwort=sicher(" ".join((antwort or "").split())), hinweis=hinweis, **platzhalter)
+    return t(schluessel, antwort=sicher(klartext or antwort), hinweis=hinweis, **platzhalter)
+
+
 async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten, *,
                                frage: str = "", klartext: str = "") -> None:
     """Gemeinsamer Weg für Knopf und Text: speichern, In-Persona-Reaktion,
@@ -473,17 +651,16 @@ async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten, *,
         f"{coach_persona.fuer_coach_prompt()}\n\n"
         f"Sag der Domina locker Bescheid, wie seine Stimmung ist, und gib ihr einen kurzen, "
         f"konkreten Gedanken, wie sie darauf eingehen könnte. 1-3 Sätze, du-Form, "
-        f"kein Bericht-Format, keine Floskeln."
+        f"kein Bericht-Format, keine Floskeln.\n"
+        f"{fp.STIMMUNG_BEIM_GESAGTEN}\n{fp.MITTEILUNG_OHNE_RUECKFRAGE}"
     )
     try:
-        hinweis = await grok.simple(
+        hinweis = _hinweis_bereinigt(await grok.simple(
             fp.stimmungs_daten("Seine Stimmungs-Nachricht", antwort, frage, klartext,
                                frage_label="Die Frage an ihn"),
-            system=system)
+            system=system))
         await telegram_helper.send_domina(
-            bot,
-            t("STIMMUNG_HINWEIS_AN_DOMINA", antwort=telegram_helper.md_einbett_sicher(klartext or antwort),
-              hinweis=hinweis),
+            bot, _hinweis_text("STIMMUNG_HINWEIS_AN_DOMINA", hinweis, antwort, frage, klartext),
             parse_mode="Markdown",
         )
         logger.info("Stimmungs-Hinweis an Domina gesendet.")
@@ -508,13 +685,13 @@ async def _vanilla_reaktion_und_hinweis(bot, chat_id: str, rolle: str, antwort: 
     andere = vp.andere_rolle(rolle)
     try:
         system, user = vp.stimmung_hinweis(rolle, antwort, frage, klartext)
-        hinweis = await grok.simple(user, system=system)
+        hinweis = _hinweis_bereinigt(await grok.simple(user, system=system))
         ich = vp.person(rolle)
         von = ich["anrede"] or ("deine Partnerin" if ich["fem"] else "dein Partner")
         await telegram_helper.send_an(
             bot, paare.paar_im_kontext(), andere,
-            t("STIMMUNG_HINWEIS_AN_PARTNER", name=telegram_helper.escape_md(von),
-              antwort=telegram_helper.md_einbett_sicher(klartext or antwort), hinweis=hinweis),
+            _hinweis_text("STIMMUNG_HINWEIS_AN_PARTNER", hinweis, antwort, frage, klartext,
+                          name=telegram_helper.escape_md(von)),
             parse_mode="Markdown",
         )
         logger.info("Stimmungs-Hinweis (Vanilla) an %s gesendet.", andere)

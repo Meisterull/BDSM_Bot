@@ -287,7 +287,10 @@ def _aufgaben_kontext(
     bewertung_str = f"\n{bewertungs_kontext}" if bewertungs_kontext else ""
     vertrauens_str = f"\n{vertrauens_kontext}" if vertrauens_kontext else ""
     from bot.prompts import coach_persona
-    schwierigkeit_str = "\n" + coach_persona.schwierigkeit_zeile(schwierigkeit) + "\n"
+    # Werktags gibt der Tiny-Rahmen die Dauer vor – die Stufe nennt hier nur,
+    # wie anspruchsvoll es sein darf (sonst zwei Zeitangaben im selben Prompt).
+    schwierigkeit_str = ("\n" + coach_persona.schwierigkeit_zeile(schwierigkeit, mit_dauer=False)
+                         + " (die Dauer gibt der Tiny-Rahmen vor)\n")
     if ausfuehrlich:
         # D9/A1: "niedrig → kurze Aufgaben" widersprach dem Wochenend-Auftrag
         # "anspruchsvoll, mehrschichtig" im selben Prompt (live gerendert 15.08.).

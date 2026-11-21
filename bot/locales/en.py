@@ -301,6 +301,7 @@ MESSAGES = {
     ),
     "STIMMUNG_FRAGE_VANILLA": "How are you doing right now? What's your mood? 💞",
     "STIMMUNG_HINWEIS_AN_PARTNER": "💭 {name}'s mood: _{antwort}_\n\n{hinweis}",
+    "STIMMUNG_HINWEIS_AN_PARTNER_FRAGE": "💭 {name}'s mood\nQuestion: _{frage}_\nAnswer: _{antwort}_\n\n{hinweis}",
     "FALLBACK_VANILLA_CHAT": "I'm briefly unavailable right now. Write to me again in a moment.",
     "VANILLA_IMPULS_PREFIX": "💡 ",
     "COMMON_NICHT_IM_VANILLA": "This command does not exist in vanilla mode. /help shows what is available.",
@@ -488,6 +489,7 @@ MESSAGES = {
     "STIMMUNG_WERT_4": "good – relaxed and content",
     "STIMMUNG_WERT_5": "fired up – wide awake and full of energy",
     "STIMMUNG_HINWEIS_AN_DOMINA": "💭 Your slave's mood: _{antwort}_\n\n{hinweis}",
+    "STIMMUNG_HINWEIS_AN_DOMINA_FRAGE": "💭 Your slave's mood\nQuestion: _{frage}_\nAnswer: _{antwort}_\n\n{hinweis}",
     # --- Button-Labels -----------------------------------------------------------
     "BUTTON_ANNEHMEN": "✅ Accept",
     "BUTTON_ABLEHNEN": "❌ Decline",

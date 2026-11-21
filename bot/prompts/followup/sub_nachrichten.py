@@ -128,7 +128,8 @@ def wette_an_sklaven(idee: str, einsatz: int = 0) -> tuple[str, str]:
     return system, user
 
 
-def wett_ergebnis_an_dom(idee: str, sub_gewonnen: bool, automatisch: bool = False) -> tuple[str, str]:
+def wett_ergebnis_an_dom(idee: str, sub_gewonnen: bool, automatisch: bool = False,
+                         ansage: str = "") -> tuple[str, str]:
     """Wette entschieden (handlers/waehrung): der Coach sagt der Dom-Seite, was
     jetzt ansteht – Einsatz exakt aus der Abmachung. Owner-Wunsch 17.09.2026:
     hat sie gewonnen, darf es gemein und anfeuernd sein („Hab Spaß und zeig
@@ -160,6 +161,24 @@ def wett_ergebnis_an_dom(idee: str, sub_gewonnen: bool, automatisch: bool = Fals
         f"keine Anrede-Floskel, keine Anführungszeichen, kein Markdown, keine Frage am Schluss."
     )
     user = bausteine.nutzer_text("Abmachung der Wette", idee)
+    ansage = (ansage or "").strip()
+    if ansage:
+        # Die Ansage ist das, was der Sub gehört hat – und danach hat er
+        # „gewonnen"/„verloren" gemeldet. Ohne sie deutete dieser Prompt die
+        # Idee für sich und nannte der Dom-Seite den Einsatz des ANDEREN
+        # Ausgangs (live 19.11.2026: angesagt war Sieg bei X, gemeldet wurde
+        # der Einsatz für „nicht X").
+        art = "die" if d["nom"] == "sie" else "der"
+        system += (
+            f"\nMASSGEBLICH dafür, bei welchem Ausgang {s['nom']} gewonnen hat, ist die ANSAGE unten: "
+            f"So hat {art} {d['real']} {s['dat']} die Wette angesagt, und danach hat {s['nom']} "
+            f"„{'gewonnen' if sub_gewonnen else 'verloren'}“ gemeldet. In der Ansage spricht {art} "
+            f"{d['real']} selbst – „ich“ ist {d['nom']}, „du“ ist {s['label_nom']}. Lies daraus ab, "
+            f"welcher Ausgang als {s['poss']} Sieg gilt, und nenne den Einsatz, der zu GENAU dem "
+            f"gemeldeten Ausgang gehört. Sagt die Ansage dazu nichts Eindeutiges, gilt die Abmachung. "
+            f"Was in der Ansage zum Ablehnen steht, ist erledigt – erwähne es nicht.\n"
+        )
+        user += "\n" + bausteine.nutzer_text("Ansage an " + s["akk"] + " (so wurde die Wette angesagt)", ansage)
     return system, user
 
 

@@ -148,7 +148,8 @@ async def _einsatz_text(w: dict, ergebnis: str, automatisch: bool = False) -> st
     from bot.prompts import followup as fp
     try:
         text = grok.clean_text(await grok.simple(
-            fp.wett_ergebnis_an_dom(idee, sub_gewonnen=(ergebnis == "gewonnen"), automatisch=automatisch),
+            fp.wett_ergebnis_an_dom(idee, sub_gewonnen=(ergebnis == "gewonnen"), automatisch=automatisch,
+                                    ansage=tts.entferne_sprech_tags(str(w.get("ansage") or ""))),
             max_tokens=250, reasoning=True))
         if not text:
             return _abmachung(w)

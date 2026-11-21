@@ -31,6 +31,24 @@ def stimmungs_daten(antwort_label: str, antwort: str, frage: str = "", klartext:
     return "\n".join(teile)
 
 
+# Für jeden Text, der eine Stimmungs-Antwort an die ANDERE Person weitergibt.
+# Rollenneutral formuliert (gilt auch im Vanilla-Modus). Der Kopf der Nachricht
+# zeigt Frage und Antwort bereits wörtlich; der Gedanke darunter soll sie nicht
+# größer machen, als sie war – und keine Gewohnheiten dazuerfinden (im
+# Echt-Test behauptete er sonst gern, was „meistens" hilft).
+STIMMUNG_BEIM_GESAGTEN = (
+    "Bleib bei dem, was gesagt wurde: Gib die Antwort nicht größer oder ernster wieder, als sie ist, "
+    "und unterstelle kein Gefühl, das nicht genannt wurde. Behaupte auch nichts darüber, wie die Person "
+    "sonst ist oder was bei ihr meistens hilft – das weißt du nicht."
+)
+# Der Coach-Stil lädt im Chat zum Weiterreden ein; eine Mitteilung soll ohne
+# Antwort auskommen. Netz unter beiden Regeln: scheduler/schablonen.mitteilung_bereinigen.
+MITTEILUNG_OHNE_RUECKFRAGE = (
+    "Das ist eine fertige Mitteilung, kein Gespräch: Stell der Person, der du schreibst, keine Frage und "
+    "gib keinen Anstoß zum Antworten – auch wenn dein Stil sonst zum Weiterreden einlädt."
+)
+
+
 def _gross(text: str) -> str:
     """Erstes Zeichen groß, Rest unangetastet (str.capitalize() würde den Rest
     kleinschreiben und z.B. 'dem Sklaven' → 'Dem sklaven' zerstören)."""

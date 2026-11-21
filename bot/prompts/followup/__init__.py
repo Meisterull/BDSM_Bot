@@ -25,6 +25,8 @@ from bot.prompts import persona, rollen  # noqa: F401
 _MODUL_VON = {
     "ANTWORT_ANZAHL": "stimmung_fragen",
     "ANTWORT_MAX_ZEICHEN": "stimmung_fragen",
+    "MITTEILUNG_OHNE_RUECKFRAGE": "bausteine",
+    "STIMMUNG_BEIM_GESAGTEN": "bausteine",
     "_GEFUEHL_FRAGEN": "stimmung_fragen",
     "_PRUEF_ART": "aufgaben_vorschlag",
     "_STIMMUNG_RICHTUNGEN": "stimmung_fragen",

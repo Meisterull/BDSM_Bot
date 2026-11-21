@@ -3,6 +3,7 @@ Scheduler-Grundgerüst: Job-Guards, Fangnetz, Nachholen blockierter Einmal-Jobs,
 
 Aus bot/scheduler/followup.py herausgelöst (Wartbarkeits-Umbau 05.11.2026).
 """
+import contextlib
 import functools
 from contextvars import ContextVar
 import logging
@@ -32,6 +33,36 @@ _blockiert_cv: ContextVar = ContextVar("job_blockiert", default=None)
 _nachhol_lauf: ContextVar = ContextVar("nachhol_lauf", default=False)
 
 _nachhol: dict = {}   # (paar_id, job_name) -> {"fn", "chat", "seit", "max_stunden"}
+
+
+# ---------------------------------------------------------------------------
+# Laufende Erzeugung, auf die ein anderer Job Rücksicht nimmt
+# ---------------------------------------------------------------------------
+# Der Tages-Vorschlag braucht über das Reasoning-Modell rund eine Minute. Fiel
+# in dieser Zeit ein Coach-Impuls-Tick, entstand die Wett-Idee parallel – ihre
+# Zutaten-Sperre kannte den Vorschlag des Abends noch nicht, und beide Texte
+# drehten sich um dasselbe Element (live 19.11.2026). Nur im Speicher: ein
+# Neustart beendet auch den laufenden Job.
+TAGES_VORSCHLAG = "tages_vorschlag"
+_IN_ARBEIT_MAX = timedelta(minutes=10)   # ein hängender Lauf sperrt nicht ewig
+_in_arbeit: dict = {}   # (paar_id, name) -> Startzeit (UTC)
+
+
+@contextlib.contextmanager
+def in_arbeit(name: str):
+    """Markiert für die Dauer des Blocks, dass `name` für das Paar im Kontext
+    gerade erzeugt wird (s. ist_in_arbeit)."""
+    schluessel = (paare.aktueller_kontext(), name)
+    _in_arbeit[schluessel] = datetime.now(timezone.utc)
+    try:
+        yield
+    finally:
+        _in_arbeit.pop(schluessel, None)
+
+
+def ist_in_arbeit(name: str) -> bool:
+    start = _in_arbeit.get((paare.aktueller_kontext(), name))
+    return bool(start and datetime.now(timezone.utc) - start < _IN_ARBEIT_MAX)
 
 
 def _melde_blockiert(chat_id: str) -> None:

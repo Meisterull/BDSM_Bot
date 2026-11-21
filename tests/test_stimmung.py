@@ -457,7 +457,10 @@ async def test_passende_antworten_klick_und_text():
         assert FRAGE in reaktion[1] and "Voller Bahnhof" in reaktion[1] and "unruhig, viel im Kopf" in reaktion[1]
         hinweis = next(p for p in prompts if "Die Frage an ihn" in p[1])
         assert "auf die Frage nach seiner Stimmung geantwortet" in hinweis[0] and "Gemeint ist damit" in hinweis[1]
-        assert "unruhig, viel im Kopf" in _st.telegram_helper.send_domina.await_args.args[1]
+        # Im Kopf des Hinweises stehen Frage und Antwort wörtlich, nicht der Klartext (21.11.2026)
+        gesendet = _st.telegram_helper.send_domina.await_args.args[1]
+        assert f"Frage: _{FRAGE}_" in gesendet and "Antwort: _Voller Bahnhof_" in gesendet, gesendet
+        assert "unruhig, viel im Kopf" not in gesendet
         assert not _st.wartet_auf_antwort(sub)
 
         # zweiter Tipp auf dieselbe Nachricht, kaputte ID, unbekanntes Format: nichts dazu
