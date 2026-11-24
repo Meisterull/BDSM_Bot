@@ -204,10 +204,27 @@ async def alle(h, phase, w):
 
     # ------------------------------------------------ 15 Wochenplan
     async def p15():
+        from bot.handlers import wochenplanung
+        # Lesbarer Plan statt des Platzhalter-Satzes: sonst gibt es weder den Knopf
+        # zum Übernehmen noch einen Eintrag im Verlauf der Wochenpläne.
+        tage = (("Montag", "Dienst", "Er deckt um acht den Tisch und wartet, bis du dich setzt."),
+                ("Dienstag", "Psycho", "Er schreibt dir drei Sätze dazu, was ihn heute beschäftigt hat."),
+                ("Mittwoch", "Demütigung", "Er bittet laut um Erlaubnis, bevor er sich setzen darf."),
+                ("Donnerstag", "Orgasmusverweigerung", "Er darf sich berühren, bis du Schluss sagst – kommen darf er nicht."),
+                ("Freitag", "Spanking", "Zehn Schläge mit der flachen Hand, er zählt leise mit."),
+                ("Samstag", "Objektifizierung", "Er hält zehn Minuten still und trägt dabei dein Glas."),
+                ("Sonntag", "Bestrafung", "Für jedes Widerwort der Woche steht er eine Minute in der Ecke."))
+        plan = "🗓 Wochenplan\n\n" + "\n\n".join(
+            f"{tag} – {kat}\nAufgabe: {aufgabe}\nWarum: Passt an dem Tag gut." for tag, kat, aufgabe in tage
+        ) + "\n\nKurzer Schluss ohne Frage."
         await aufraeumen()
         await h.send(D, "/wochenplanung")
+        w.OVERRIDES.append((r"einen Wochenplan für", plan))
         await h.send(D, "Abwechslung, abends höchstens 30 Minuten")
-        await h.press(D, "wochenplan:alle")
+        verlauf = wochenplanung._verlauf(await qdrant.get_user_profile("domina") or {})
+        print(f"   Verlauf der Wochenpläne: {len(verlauf)} | jüngster: {verlauf[0] if verlauf else None}")
+        gedrueckt = await h.press(D, "wochenplan:alle")
+        print(f"   übernommen: {gedrueckt} | {modi()}")
         await dialog()
     await phase(h, "15 Wochenplan übernehmen", p15)
 
@@ -696,6 +713,9 @@ async def alle(h, phase, w):
         await h.send(S, "eher müde, aber ganz zufrieden")
         e = await qdrant.get_latest_stimmung("sklave") or {}
         print(f"   getippt: {e.get('zusammenfassung')!r} | Frage dabei: {bool(e.get('frage'))} | {modi()}")
+        # Die Reaktion liegt samt Bauform am Eintrag; die Form wechselt von Mal zu Mal.
+        letzte = await qdrant.get_recent_stimmung_reaktionen(limit=4, user_id="sklave")
+        print(f"   Reaktion am Eintrag: {bool(e.get('reaktion'))} | Bauformen zuletzt: {[x['form'] for x in letzte]}")
         # 3) unbrauchbare Ausgabe (Platzhalter-JSON) → Nachbesserung, dann feste Knöpfe
         w.OVERRIDES.append((frage_muster, fragen[2]))
         vor = w.ZAEHLER["n"]
@@ -705,7 +725,7 @@ async def alle(h, phase, w):
         e = await qdrant.get_latest_stimmung("sklave") or {}
         print(f"   fester Knopf: {e.get('zusammenfassung')!r}")
         # 4) Klartext sagt mehr als der Knopf → ein Nachbesserungs-Versuch; bleibt es dabei,
-        #    fällt der Klartext weg und gespeichert wird das Etikett
+        #    fällt der Klartext weg und gespeichert wird das Etikett mit der Frage dahinter
         ueberzogen = ('{"antworten": [{"knopf": "Dies und das", "klartext": "Gedanken: zerstreut, überfordert"},'
                       '{"knopf": "Der Haushalt", "klartext": "Gedanken: starke Belastung"},'
                       '{"knopf": "Kaum etwas", "klartext": "Gedanken: wenig"}]}')

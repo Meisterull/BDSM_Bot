@@ -257,7 +257,8 @@ async def test_tipp_speichert_gesagtes_und_hinweis_zeigt_frage():
         # Tipp auf die erste Antwort: ihr Klartext war überzogen und ist weggefallen
         await st.callback_button(_tap(knoepfe[0].callback_data, tasten, 91), ctx)
         stimmung = [d for d in gespeichert if d["typ"] == "stimmung"]
-        assert stimmung == [{"typ": "stimmung", "zusammenfassung": "Dies und das", "frage": FRAGE}], stimmung
+        assert stimmung == [{"typ": "stimmung", "zusammenfassung": st._mit_frage("Dies und das", FRAGE),
+                             "frage": FRAGE}], stimmung
         hinweis = next(p for p in prompts if "Die Frage an ihn" in p[1])
         assert fp.STIMMUNG_BEIM_GESAGTEN in hinweis[0] and "Gemeint ist damit" not in hinweis[1], hinweis
         gesendet = st.telegram_helper.send_domina.await_args.args[1]

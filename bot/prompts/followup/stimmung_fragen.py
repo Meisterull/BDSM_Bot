@@ -42,7 +42,9 @@ _STIMMUNG_RICHTUNGEN = [
     "welche Unterstützung heute gebraucht wird",
     "wie der Körper sich heute anfühlt",
     "worauf heute Lust wäre und worauf gar nicht",
-    "ein Wetter-Bild für den heutigen Tag",
+    # Nicht „ein Wetter-Bild für den heutigen Tag": daraus wurde eine Behauptung über das
+    # Wetter von heute, auf die sich nur mit „passt"/„falsch" antworten ließ (24.11.2026).
+    "welches Wetter-Bild zur eigenen Verfassung passt",
     "was bei einem Gespräch von Angesicht zu Angesicht zuerst käme",
     "ob der Tag so läuft wie vorgestellt",
 ]
@@ -134,6 +136,11 @@ def stimmung_abfragen(vermeiden: list[str] | None = None,
         f"{bausteine._du_bist_dom()}. Frag {bausteine._sub_mit_poss('dein', 'akk')} kurz nach {s['poss']}er aktuellen Stimmung – "
         "Ich-Form, ein bis zwei Sätze, offen formuliert, in deinem Ton. "
         "Keine Aufgabe, keine Liste, keine Erklärung, keine Anführungszeichen.\n"
+        # Live-Befund 24.11.2026: Die Frage stellte ein Wetter-Bild als Tatsache hin und fragte,
+        # wie es sich anfühlt – die Antworten konnten dann nur noch „passt"/„falsch" sagen.
+        f"Du fragst, du stellst nichts fest: Behaupte nichts über den Tag, das Wetter oder {s['poss']}e Lage, "
+        f"worauf {s['nom']} dann nur noch reagieren kann. Nutzt du ein Bild, dann fragst du, welches Bild "
+        f"für {s['akk']} passt.\n"
         f"Richtung diesmal: {frage} – Tonlage: {tonlage}.\n"
         "Die Richtung ist ein Stichwort NUR für dich: formuliere daraus deine eigene "
         "Frage. Übernimm die Stichwort-Formulierung NICHT wörtlich und schreib sie "
@@ -154,7 +161,8 @@ ANTWORT_MAX_ZEICHEN = 28
 
 
 def stimmung_antworten(frage: str, nachbessern: bool = False,
-                       zu_viel: list[str] | None = None) -> tuple[str, str]:
+                       zu_viel: list[str] | None = None,
+                       ohne_bezug: list[str] | None = None) -> tuple[str, str]:
     """Kurze Antworten zum Antippen, passend zu GENAU dieser Stimmungsfrage.
 
     Die Frage wird täglich frisch und oft bildhaft gestellt; eine feste Skala
@@ -171,7 +179,14 @@ def stimmung_antworten(frage: str, nachbessern: bool = False,
     „Thema: Aussage" hält ihn am Gesagten: Ohne sie wiederholte er entweder nur
     das Etikett (ohne die Frage unverständlich) oder deutete (Echt-Test am
     selben Tag). `zu_viel` = Wörter aus dem ersten Versuch, die über das Etikett
-    hinausgingen (Netz darunter: handlers/stimmung._sagt_mehr)."""
+    hinausgingen (Netz darunter: handlers/stimmung._sagt_mehr).
+
+    Der Klartext NENNT DEN BEZUG (Live-Befund 24.11.2026): Bewertet eine Antwort
+    nur, was die Frage beschreibt („passt", „stimmt nicht"), stand im
+    Klartext ein allgemeines Thema mit der bloßen Bewertung dahinter – ohne die
+    Frage unverständlich, und die Stellen, die ihn lesen, deuteten ihn als
+    Aussage über die Person. `ohne_bezug` = solche Klartexte aus dem ersten
+    Versuch (Netz darunter: handlers/stimmung._klartext_bezugslos)."""
     from bot.services import persona_config
     system = (
         "Unter einer Frage nach der Stimmung stehen Antworten zum Antippen. Du schreibst, was die "
@@ -194,7 +209,12 @@ def stimmung_antworten(frage: str, nachbessern: bool = False,
         "- Spricht die Frage in einem Bild (Wetter, Landschaft, Gegenstand), ist das Thema das, wofür das Bild "
         "steht – etwa Stimmung, Anspannung oder Kraft –, nie das Bild selbst. Auch die Antwort wird dann in "
         "gewöhnliche Worte übersetzt, so zurückhaltend wie möglich; Wörter aus dem Bild kommen im Klartext "
-        "nicht vor.\n"
+        "nicht vor (einzige Ausnahme: der nächste Punkt).\n"
+        "- Bewertet eine Antwort nur das, was die Frage selbst behauptet oder beschreibt (sie sagt etwa, dass es "
+        "passt, nicht stimmt, nicht dazugehört, oder wählt eine von zwei genannten Seiten), dann ist das Thema "
+        "genau diese Beschreibung aus der Frage in wenigen Worten – hier ausdrücklich mit den Worten der Frage, "
+        "auch wenn es ein Bild ist – und dahinter steht die Bewertung. Ein allgemeines Thema mit einer bloßen "
+        "Bewertung dahinter versteht niemand, der die Frage nicht kennt.\n"
         "- Der Klartext sagt NICHT MEHR als die Antwort: keine Verstärkung, kein Gefühl und kein Befund, den die "
         "Antwort nicht selbst nennt, keine Ursache und keine Folge. Nennt die Antwort nur ein Thema, nennt der "
         "Klartext dieses Thema und lässt offen, wie es der Person damit geht. Bleibt die Antwort unbestimmt, "
@@ -204,11 +224,17 @@ def stimmung_antworten(frage: str, nachbessern: bool = False,
     )
     user = bausteine.nutzer_text("Die Frage", frage)
     woerter = [w for w in (zu_viel or []) if w]
+    bezugslos = [k for k in (ohne_bezug or []) if k]
     if woerter:
         user += ("\n\nDein erster Versuch hat in den Klartext mehr hineingelegt, als auf dem Knopf steht "
                  f"({', '.join(woerter[:6])}). Jetzt wirklich: Der Klartext gibt nur wieder, was die Antwort "
                  "selbst sagt – ohne diese Wörter, ohne Verstärkung, ohne Befund. Nur das JSON.")
-    elif nachbessern:
+    if bezugslos:
+        user += ("\n\nIn deinem ersten Versuch lassen diese Klartexte offen, worauf sich die Antwort bezieht: "
+                 + "; ".join(bezugslos[:4]) + ". Wer die Frage nicht kennt, versteht sie nicht. Nur diese änderst du: "
+                 "Nenne dort als Thema das, was die Frage beschreibt, in wenigen Worten, und dahinter die Bewertung. "
+                 "Die übrigen Klartexte bleiben, wie sie sind. Nur das JSON.")
+    if not woerter and not bezugslos and nachbessern:
         user += (f"\n\nDein erster Versuch war unbrauchbar (Antworten zu lang für einen Knopf oder kein "
                  f"gültiges JSON). Jetzt wirklich: höchstens {ANTWORT_MAX_ZEICHEN} Zeichen je Antwort, nur das JSON.")
     return system, user

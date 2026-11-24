@@ -29,6 +29,22 @@ weg und gespeichert wird das Etikett. Der Hinweis an die andere Seite zeigt
 Frage und Antwort wörtlich (`_hinweis_text`), nicht den Klartext; der Gedanke
 darunter läuft durch `schablonen.mitteilung_bereinigen` (keine behaupteten
 Gewohnheiten, keine Rückfrage am Ende).
+
+KLARTEXT NENNT DEN BEZUG (24.11.2026): Bewertet eine Antwort nur, was die
+Frage beschreibt („passt", „stimmt nicht"), stand als Klartext eine
+bloße Bewertung da – ohne die Frage unverständlich und von den Lesern als
+Aussage über die Person gedeutet. Jetzt verlangt der Auftrag den Bezug, ein
+Netz (`_klartext_bezugslos`) bessert einmal nach, und ohne brauchbaren Klartext
+steht die Frage hinter der Antwort (`_mit_frage`, auch bei getippten
+Antworten). Die Frage selbst soll nichts mehr feststellen, worauf sich nur
+reagieren lässt (`_stellt_etwas_fest`).
+
+REAKTION WECHSELT DIE FORM (22.11.2026): Die Reaktion der Herrin auf die
+Antwort war jeden Tag gleich gebaut und kündigte meist etwas an, das nie kam.
+Jetzt wählt der Code eine von fünf Bauformen (nie eine der letzten drei), der
+Auftrag nennt die letzten Reaktionen und verbietet Ankündigungen; darunter ein
+Netz (`_reaktion_maengel`) mit einem Nachbesserungs-Versuch. Die Reaktion liegt
+samt Bauform am Stimmungs-Eintrag (`reaktion`, `reaktion_form`).
 """
 import difflib
 import logging
@@ -112,6 +128,20 @@ def _ohne_ersatz_anrede(frage: str, anrede: str = "") -> str:
     if neu != text and neu:
         neu = neu[:1].upper() + neu[1:]
     return neu
+
+# Eine Frage, die erst etwas über den Tag oder die Person feststellt und dann nur
+# wissen will, wie sich „das" anfühlt: Darauf lässt sich bloß mit „passt" oder
+# „stimmt nicht" antworten (Live-Befund 24.11.2026). Erkannt an einem
+# Aussagesatz vor der Frage und einem Rückbezug in der Frage selbst.
+_RUECKBEZUG_RE = re.compile(r"(?<![\wäöüß])(?:das|dies|damit|dabei|darin|davon|dazu|daran)(?![\wäöüß])", re.I)
+
+
+def _stellt_etwas_fest(frage: str) -> bool:
+    saetze = [x.strip() for x in re.split(r"(?<=[.!?…])\s+", (frage or "").strip()) if x.strip()]
+    if len(saetze) < 2 or not saetze[-1].endswith("?"):
+        return False
+    return any(x.endswith(".") for x in saetze[:-1]) and bool(_RUECKBEZUG_RE.search(saetze[-1]))
+
 
 # Merkmarke statt Mode: bis wann eine getippte Nachricht als Stimmungs-Antwort
 # zählt (Dauer = STALE_STIMMUNG_SECONDS, wie früher der Mode).
@@ -253,6 +283,69 @@ def _ganzes_wort(text: str, start: int, ende: int) -> str:
     return text[start:ende]
 
 
+# --- Netz: Klartext ohne Bezug -------------------------------------------------
+# Bewertet eine Antwort nur, was die Frage beschreibt („passt", „stimmt
+# nicht"), und steht im Klartext bloß ein allgemeines Thema mit dieser
+# Bewertung dahinter, dann ist er ohne die Frage nicht zu verstehen. Gespeichert
+# stand so „Thema: falsch" als aktuelle Stimmung – Reaktion und Vorschlag lasen
+# das als Aussage über die Person (Live-Befund 24.11.2026).
+# Als benannter Bezug gilt ein Thema mit wenigstens einem eigenen Inhaltswort
+# („Volles Haus: passt nicht") – Füllwörter, Bewertungswörter und die allgemeinen
+# Stimmungs-Hauptwörter zählen dafür nicht („Passt zu Kopf: ja" bleibt bezugslos).
+_BEWERTUNGS_KERN = (
+    r"ja|nein|doch|jein|passt|passend|unpassend|stimmt|stimmig|unstimmig|trifft\s+(?:es\s+)?(?:nicht\s+)?zu|"
+    r"richtig|falsch|beides|weder\s+noch|keins?\s+von\s+beide[mn]|das\s+(?:erste|zweite|letzte|eine|andere)|"
+    r"ersteres|letzteres|genau(?:\s+so)?|genauso|ebenso|auch(?:\s+so)?|dasselbe|das\s+gleiche|gleich|"
+    r"unver(?:ä|ae)ndert|wie\s+immer|(?:irgendwo\s+)?dazwischen|mittendrin|kommt\s+drauf\s+an|"
+    r"yes|no|both|neither|fits|wrong|right|same"
+)
+_BEWERTUNG_RE = re.compile(
+    r"^(?:(?:es|das)\s+)?(?:(?:f(?:ü|ue)hlt\s+sich|ist|wirkt|feels|is)\s+)?"
+    r"(?:(?:eher|ganz|gar|(?:ü|ue)berhaupt|absolut|voll|total|ziemlich|so|kaum|nicht|gut|genau|irgendwie|not|quite)\s+)*"
+    r"(?:" + _BEWERTUNGS_KERN + r")"
+    r"(?:\s+(?:nicht|gut|genau|zu\s+mir|f(?:ü|ue)r\s+mich|an|so|eher|schon|auch|at\s+all))*$", re.I)
+_THEMA_OHNE_GEWICHT = frozenset((
+    # Füllwörter
+    "der die das den dem des ein eine einen einem einer zu zum zur auf in im an am mit und oder für von vom bei "
+    "aus heute heutig heutige heutiger heutiges heutigen gerade jetzt noch schon eher ganz sehr mein meine dein "
+    "deine the a of to my today "
+    # Bewertungswörter
+    "passt stimmt fühlt trifft fits feels "
+    # allgemeine Stimmungs-Hauptwörter
+    "stimmung gefühl gefühle befinden laune lage zustand tag kopf gedanken körper kraft energie lust antwort "
+    "frage moment mood feeling day head"
+).split())
+_FRAGE_IM_EINTRAG_MAX = 200
+
+
+def _klartext_bezugslos(klartext: str) -> bool:
+    """Bloße Bewertung hinter einem Thema ohne eigenes Inhaltswort?"""
+    thema, trenner, aussage = (klartext or "").partition(":")
+    if not trenner:
+        thema, aussage = "", klartext or ""
+    aussage = _normalisiere(aussage)
+    if not aussage or not _BEWERTUNG_RE.match(aussage):
+        return False
+    return not any(len(w) >= 3 and w not in _THEMA_OHNE_GEWICHT for w in _normalisiere(thema).split())
+
+
+def _ohne_bezug(optionen: list[dict]) -> list[str]:
+    """Die Klartexte, die offen lassen, worauf sich ihre Antwort bezieht."""
+    return [o["klartext"] for o in optionen if _klartext_bezugslos(o.get("klartext", ""))]
+
+
+def _mit_frage(antwort: str, frage: str) -> str:
+    """Eine Antwort ohne Klartext so, dass sie für sich steht: mit ihrer Frage
+    dahinter. Rund zehn Stellen lesen `zusammenfassung` als „Aktuelle Stimmung"
+    und kennen die Frage nicht – ein „passt schon" allein sagt ihnen nichts."""
+    frage = " ".join((frage or "").split())
+    if not frage:
+        return antwort
+    if len(frage) > _FRAGE_IM_EINTRAG_MAX:
+        frage = frage[:_FRAGE_IM_EINTRAG_MAX - 1].rstrip() + "…"
+    return f"{antwort} (Antwort auf die Frage: {frage})"
+
+
 def _zu_viel_deutung(optionen: list[dict], frage: str) -> list[str]:
     """Alle Wörter über alle Antworten, die mehr sagen als ihr Knopf."""
     funde: list[str] = []
@@ -261,12 +354,17 @@ def _zu_viel_deutung(optionen: list[dict], frage: str) -> list[str]:
     return list(dict.fromkeys(funde))
 
 
+def _klartext_unbrauchbar(o: dict, frage: str) -> bool:
+    return bool(_sagt_mehr(o.get("knopf", ""), o.get("klartext", ""), frage)) \
+        or _klartext_bezugslos(o.get("klartext", ""))
+
+
 def _ohne_ueberzogenen_klartext(optionen: list[dict], frage: str) -> list[dict]:
     """Letzter Halt nach dem Nachbessern: Der Knopf bleibt, ein Klartext, der
-    immer noch mehr sagt als er, fällt weg. Gespeichert wird dann, was die
-    Person angetippt hat – ihre Worte, mit der Frage am Eintrag."""
-    return [{**o, "klartext": ""} if _sagt_mehr(o.get("knopf", ""), o.get("klartext", ""), frage) else o
-            for o in optionen]
+    immer noch mehr sagt als er oder seinen Bezug nicht nennt, fällt weg.
+    Gespeichert wird dann, was die Person angetippt hat – ihre Worte, mit der
+    Frage dahinter (`_mit_frage`)."""
+    return [{**o, "klartext": ""} if _klartext_unbrauchbar(o, frage) else o for o in optionen]
 
 
 async def _antwort_optionen(frage: str) -> list[dict]:
@@ -277,23 +375,34 @@ async def _antwort_optionen(frage: str) -> list[dict]:
     nicht, bleiben die Knöpfe und die überzogenen Klartexte fallen weg."""
     if not frage or frage == _fallback_frage():
         return []
-    brauchbar: list[dict] = []      # formal in Ordnung, Klartext evtl. überzogen
+    brauchbar: list[dict] = []      # formal in Ordnung, einzelne Klartexte evtl. überzogen oder ohne Bezug
+    fehl_bisher: int | None = None
     zu_viel: list[str] = []
+    ohne_bezug: list[str] = []
     try:
         for versuch in range(_OPTIONEN_VERSUCHE):
             roh = await grok.simple(
-                fp.stimmung_antworten(frage, nachbessern=versuch > 0, zu_viel=zu_viel), max_tokens=400)
+                fp.stimmung_antworten(frage, nachbessern=versuch > 0, zu_viel=zu_viel, ohne_bezug=ohne_bezug),
+                max_tokens=400)
             optionen = _optionen_lesen(roh)
             if not optionen:
                 logger.info("Antwort-Knöpfe zur Stimmungsfrage unbrauchbar (Versuch %d).", versuch + 1)
-                zu_viel = []
+                zu_viel, ohne_bezug = [], []
                 continue
             zu_viel = _zu_viel_deutung(optionen, frage)
-            if not zu_viel:
+            ohne_bezug = _ohne_bezug(optionen)
+            if not zu_viel and not ohne_bezug:
                 return optionen
-            brauchbar = optionen
-            logger.info("Klartext der Antwort-Knöpfe sagt mehr als die Knöpfe (Versuch %d): %s",
-                        versuch + 1, ", ".join(zu_viel))
+            # Es gilt der Satz mit den wenigsten unbrauchbaren Klartexten (der frühere bei Gleichstand).
+            fehl = sum(1 for o in optionen if _klartext_unbrauchbar(o, frage))
+            if fehl_bisher is None or fehl < fehl_bisher:
+                brauchbar, fehl_bisher = optionen, fehl
+            if zu_viel:
+                logger.info("Klartext der Antwort-Knöpfe sagt mehr als die Knöpfe (Versuch %d): %s",
+                            versuch + 1, ", ".join(zu_viel))
+            if ohne_bezug:
+                logger.info("Klartext der Antwort-Knöpfe nennt seinen Bezug nicht (Versuch %d): %s",
+                            versuch + 1, "; ".join(ohne_bezug))
     except Exception as e:
         logger.warning("Antwort-Knöpfe zur Stimmungsfrage fehlgeschlagen%s: %s",
                        "" if brauchbar else " – feste Knöpfe", e)
@@ -381,9 +490,11 @@ async def _frage_text(rolle: str = paare.ROLLE_SUB) -> tuple[str, str]:
                 # Vanilla hat keine Anrede-Regel; dort darf ein Kosename stehen.
                 from bot.services import persona_config
                 text = _ohne_ersatz_anrede(text, persona_config.sklave_anrede() or "")
-            if text and not _zu_aehnlich(text, vorherige):
+            vorgabe = bool(text) and _stellt_etwas_fest(text)
+            if text and not vorgabe and not _zu_aehnlich(text, vorherige):
                 return text, richtung
-            logger.info("Stimmungs-Frage zu ähnlich zu den letzten (Versuch %d, Richtung '%s') – Retry.",
+            logger.info("Stimmungs-Frage %s (Versuch %d, Richtung '%s') – Retry.",
+                        "stellt etwas fest, statt zu fragen" if vorgabe else "zu ähnlich zu den letzten",
                         versuch, richtung)
             if text:
                 sperre.append(text)
@@ -393,8 +504,8 @@ async def _frage_text(rolle: str = paare.ROLLE_SUB) -> tuple[str, str]:
         # KEIN Ausweichen auf den letzten Kandidaten: der ist als zu ähnlich
         # ERKANNT worden. Genau der ging bisher trotzdem raus – am 26./27.08.2026
         # zeichengleich an zwei Tagen hintereinander.
-        logger.warning("Alle %d Stimmungs-Versuche zu ähnlich – statischer Standardtext "
-                       "statt Wiederholung.", len(kandidaten))
+        logger.warning("Alle %d Stimmungs-Versuche verworfen (zu ähnlich oder mit Vorgabe statt Frage) – "
+                       "statischer Standardtext.", len(kandidaten))
     return _fallback_frage(), ""
 
 
@@ -601,6 +712,210 @@ def _hinweis_text(schluessel: str, hinweis: str, antwort: str, frage: str = "", 
     return t(schluessel, antwort=sicher(klartext or antwort), hinweis=hinweis, **platzhalter)
 
 
+# --- Reaktion auf die Antwort -------------------------------------------------
+# Ohne Vorgabe baute das Modell die Reaktion Tag für Tag gleich (Antwort
+# wiederholen, deuten, zum Erzählen auffordern) und kündigte dabei regelmäßig
+# etwas für „gleich" oder den Abend an, das nie kam – auf diese Nachricht folgt
+# ja nichts (Log-Durchsicht 22.11.2026). Deshalb wählt der Code die Bauform und
+# kennt die letzten Reaktionen (sie liegen am Stimmungs-Eintrag); darunter ein
+# Netz mit einem Nachbesserungs-Versuch. Erkannt wird an Wörtern, nicht am Sinn.
+_REAKTION_VERSUCHE = 3
+_REAKTION_MERKE = 4          # so viele letzte Reaktionen zählen als „zuletzt"
+_REAKTION_FORM_PAUSE = 3     # eine Bauform kommt frühestens nach so vielen anderen wieder
+_REAKTION_REST_MIN = 15      # so viel muss bleiben, wenn ein Ankündigungs-Satz gestrichen wird
+_WE = r"(?![\wäöüß])"
+_BALD_RE = re.compile(
+    _WA + r"(?:gleich|nachher|sp(?:ä|ae)ter|bald|demn(?:ä|ae)chst|in\s+k(?:ü|ue)rze|heute\s+(?:abend|nacht|noch)|"
+    r"noch\s+heute|soon|later|tonight|shortly|in\s+a\s+(?:moment|minute|bit))" + _WE, re.I)
+_ICH_RE = re.compile(_WA + r"(?:ich|i(?:'ll|'m)?)(?![\wäöüß'])", re.I)
+_DU_RE = re.compile(_WA + r"(?:du|you)" + _WE, re.I)
+# Was ihm „gleich" geschieht – eine Ankündigung auch ohne „ich".
+_DIR_GESCHIEHT_RE = re.compile(
+    _WA + r"(?:bekommst|kriegst|erlebst|sp(?:ü|ue)rst|merkst|lernst|wirst|wird|bist\s+du\s+(?:dran|f(?:ä|ae)llig)|"
+    r"gibt\s+es|gibt's|you(?:'ll|\s+will)|you(?:'re|\s+are)\s+going\s+to)" + _WE, re.I)
+# Futur mit ihm als Ziel, auch ohne Zeitwort. Bewusst eng: „da werde ich
+# neugierig" oder „ich werde nicht schlau aus dir" sind keine Ankündigung.
+_ICH_WERDE_DICH_RE = re.compile(
+    _WA + r"(?:ich\s+werde|werde\s+ich)\s+(?:dich|dir|dein\w*)" + _WE
+    + r"|" + _WA + r"ich\s+(?:dich|dir)" + _WE + r"[^.!?]*" + _WA + r"werde" + _WE
+    + r"|" + _WA + r"(?:i'll|i\s+will|i'm\s+going\s+to|i\s+am\s+going\s+to)" + _WE, re.I)
+# „heute" allein ist kein Zeitwort der Ankündigung („wie war dein Tag heute?").
+# Es zählt erst mit ihr als Handelnder und ihm als Ziel im selben Teilsatz –
+# und nicht in der Vergangenheit („ich habe dich heute vermisst").
+_HEUTE_RE = re.compile(_WA + r"(?:heute|today)" + _WE, re.I)
+_DICH_RE = re.compile(_WA + r"(?:dich|dir|you)" + _WE, re.I)
+_UM_DICH_RE = re.compile(_WA + r"um\s+(?:dich|dir)" + _WE, re.I)
+_VERGANGEN_RE = re.compile(_WA + r"(?:habe|hab|hatte|war|gewesen|gehabt|was|were|have|had)" + _WE, re.I)
+# „…, das gleich zu ändern": Ankündigung als Infinitiv, ohne „ich".
+_ZU_INFINITIV_RE = re.compile(_WA + r"(?:zu\s+[a-zäöüß]+e?n|[a-zäöüß]+zu[a-zäöüß]+e?n)" + _WE, re.I)
+_SATZ_TRENNER_RE = re.compile(r"(?<=[.!?…])\s+")
+_TEIL_TRENNER_RE = re.compile(r"[,;:]|\s[–—-]\s")
+
+
+def _saetze(text: str) -> list[str]:
+    return [x.strip() for x in _SATZ_TRENNER_RE.split((text or "").strip()) if x.strip()]
+
+
+def _ankuendigungen(text: str) -> list[str]:
+    """Sätze, die etwas für gleich, nachher oder heute noch in Aussicht stellen.
+    Ein Zeitwort zählt nur zusammen mit ihr als Handelnder (oder mit dem, was
+    ihm geschieht) im selben Teilsatz – „ob du gleich noch so redest" ist keine
+    Ankündigung. Steht das Zeitwort für sich („Heute Abend, wenn …, zeige ich"),
+    genügt ein „ich" irgendwo im Satz."""
+    aus = []
+    for satz in _saetze(text):
+        if _ICH_WERDE_DICH_RE.search(satz):
+            aus.append(satz)
+            continue
+        for teil in _TEIL_TRENNER_RE.split(satz):
+            if _BALD_RE.search(teil):
+                if _ICH_RE.search(teil) or _DIR_GESCHIEHT_RE.search(teil) or (
+                        not _DU_RE.search(teil) and _ICH_RE.search(satz)) or (
+                        _ZU_INFINITIV_RE.search(teil) and not _DU_RE.search(satz)):
+                    aus.append(satz)
+                    break
+            elif _HEUTE_RE.search(teil) and not _VERGANGEN_RE.search(teil) and (
+                    _UM_DICH_RE.search(teil) or (_ICH_RE.search(teil) and _DICH_RE.search(teil))):
+                aus.append(satz)
+                break
+    return aus
+
+
+def _ohne_ankuendigung(text: str) -> str:
+    """Letzter Halt: streicht die Ankündigungs-Sätze, wenn danach noch etwas
+    Tragfähiges übrig ist – sonst bleibt der Text, wie er ist."""
+    treffer = set(_ankuendigungen(text))
+    if not treffer:
+        return text
+    rest = " ".join(x for x in _saetze(text) if x not in treffer).strip()
+    return rest if len(rest) >= _REAKTION_REST_MIN else text
+
+
+_AUSRUFE = frozenset({"ah", "aha", "ach", "oh", "oha", "och", "na", "nun", "so", "soso", "hm", "tja", "also",
+                      "well"})
+
+
+def _wiederholt_antwort(reaktion: str, antwort: str) -> bool:
+    """Steigt die Reaktion damit ein, die Antwort im Wortlaut zu wiederholen
+    (höchstens ein Ausruf davor)? Gilt ab zwei Wörtern Antwort, verglichen
+    werden ihre ersten bis zu drei Wörter. Ein einzelnes Wort aufzugreifen oder
+    die Antwort mitten im Satz zu zitieren ist erwünscht und zählt nicht."""
+    kern = _normalisiere(antwort).split()[:3]
+    if len(kern) < 2:
+        return False
+    r = _normalisiere(reaktion).split()
+    if r and r[0] in _AUSRUFE and r[:len(kern)] != kern:
+        r = r[1:]
+    return r[:len(kern)] == kern
+
+
+def _wortfolgen(text: str, n: int = 3) -> list[str]:
+    w = _normalisiere(text).split()
+    return [" ".join(w[i:i + n]) for i in range(len(w) - n + 1)]
+
+
+def _reaktion_maengel(text: str, vorherige: list[str], antwort: str, frage: str = "") -> list[str]:
+    """Woran die Reaktion nachgebessert werden muss – in Worten, die so auch im
+    Nachbesserungs-Auftrag stehen können. Leer = in Ordnung."""
+    maengel = [f"kündigt etwas an („{x[:70]}“) – nichts, was du vorhast, und kein Zeitwort wie gleich, nachher, "
+               f"später oder heute noch" for x in _ankuendigungen(text)]
+    if _wiederholt_antwort(text, antwort):
+        maengel.append("steigt mit der Antwort im Wortlaut ein")
+    alte = {a for v in vorherige for a in fp.teilsatz_anfaenge(v)}
+    gleiche = [a for a in fp.teilsatz_anfaenge(text) if a in alte]
+    if gleiche:
+        maengel.append("beginnt wie zuletzt mit " + ", ".join(f"„{g}“" for g in gleiche))
+    # Wendungen von zuletzt mitten im Satz: drei Wörter am Stück, die schon in
+    # einer der letzten Reaktionen standen. Was aus seiner Antwort oder der
+    # Frage stammt, zählt nicht – das darf sie aufgreifen.
+    eigene = set(_wortfolgen(antwort)) | set(_wortfolgen(frage))
+    alt_folgen = {f for v in vorherige for f in _wortfolgen(v)} - eigene
+    # … und Lieblingswendungen: zwei Wörter am Stück, die in mindestens zwei der
+    # letzten Reaktionen standen (reine Füllwort-Paare zählen nicht).
+    je_reaktion = [set(_wortfolgen(v, 2)) for v in vorherige]
+    eigene_paare = set(_wortfolgen(antwort, 2)) | set(_wortfolgen(frage, 2))
+    alt_folgen |= {f for paare_ in je_reaktion for f in paare_
+                   if sum(1 for andere in je_reaktion if f in andere) >= 2
+                   and any(len(w) >= 5 for w in f.split()) and f not in eigene_paare}
+    wieder = [f for f in dict.fromkeys(_wortfolgen(text) + _wortfolgen(text, 2)) if f in alt_folgen
+              and not any(f.startswith(g) or g.startswith(f) for g in gleiche)]
+    if wieder:
+        maengel.append("greift Wendungen von zuletzt wieder auf („" + "“, „".join(wieder[:3]) + "“)")
+    elif not gleiche and _zu_aehnlich(text, vorherige):
+        maengel.append("ist einer der letzten Reaktionen zu ähnlich")
+    return maengel
+
+
+def _bauform_wahl(letzte_formen: list[str]) -> str:
+    """Eine Bauform, die unter den letzten _REAKTION_FORM_PAUSE Reaktionen nicht
+    vorkam (jüngste zuerst übergeben)."""
+    alle = fp.reaktion_bauformen()
+    gesperrt = {f for f in letzte_formen[:_REAKTION_FORM_PAUSE] if f}
+    return random.choice([f for f in alle if f not in gesperrt] or alle)
+
+
+def _ohne_anrede(text: str, anrede: str) -> str:
+    """Nimmt die eingestellte Anrede heraus, wo sie als Anrede steht – hinter
+    einem Komma oder am Satzanfang vor einem Komma. Für die Tage, an denen sie
+    aussetzt; mitten im Satz ohne Kommas bleibt sie stehen."""
+    anrede = " ".join((anrede or "").split())
+    if not anrede or not text:
+        return text or ""
+    a = r"\s+".join(re.escape(w) for w in anrede.split())
+    neu = re.sub(rf",\s*{a}(?=\s*(?:[,.!?…;:]|[–—-]\s|$))", "", text, flags=re.I)
+    neu = re.sub(rf"(^|(?<=[.!?…]\s)){a}\s*,\s*(\w)", lambda m: m.group(1) + m.group(2).upper(), neu, flags=re.I)
+    return neu
+
+
+async def _reaktion_text(rolle: str, antwort: str, frage: str, klartext: str) -> tuple[str, str]:
+    """Reaktion der Herrin auf die Stimmungs-Antwort: (Text, Bauform). Scheitert
+    schon der erste Aufruf, geht der Fehler an den Aufrufer (Textkonserve)."""
+    try:
+        letzte = await qdrant.get_recent_stimmung_reaktionen(limit=_REAKTION_MERKE, user_id=rolle)
+    except Exception as e:
+        logger.warning("Letzte Stimmungs-Reaktionen nicht ladbar (keine Abwechslungs-Vorgabe): %s", e)
+        letzte = []
+    vorherige = [e.get("reaktion", "") for e in letzte if e.get("reaktion")]
+    bauform = _bauform_wahl([e.get("form", "") for e in letzte])
+    from bot.services import persona_config
+    anrede = (persona_config.sklave_anrede() or "").strip()
+    anrede_aus = bool(anrede) and sum(1 for v in vorherige if anrede.lower() in v.lower()) >= 2
+
+    beste = None                    # (Text, Mängel, Bauform) des bisher besten Versuchs
+    hinweis, form = None, bauform
+    for versuch in range(1, _REAKTION_VERSUCHE + 1):
+        # Letzter Versuch nach lauter Ankündigungen: andere Bauform. In mancher Form
+        # (ein einzelner Satz) kam das Modell im Echt-Test nicht davon los – und
+        # dort bleibt nach dem Streichen des Satzes nichts übrig.
+        if versuch == _REAKTION_VERSUCHE and versuch > 1 and beste and _ankuendigungen(beste[0]):
+            form = _bauform_wahl([form] + [e.get("form", "") for e in letzte])
+        try:
+            text = (await grok.simple(
+                fp.reaktion_auf_stimmung(antwort, frage, klartext, vorherige=vorherige, bauform=form,
+                                         anrede_aus=anrede_aus, nachbessern=hinweis),
+                max_tokens=250)).strip()
+        except Exception:
+            if beste is None:
+                raise
+            logger.warning("Stimmungs-Reaktion: Nachbesserung fehlgeschlagen – der bisher beste Versuch gilt.",
+                           exc_info=True)
+            break
+        text = " ".join(text.split())     # ein, zwei Sätze: Zeilenumbrüche des Modells sind hier nur Rauschen
+        if anrede_aus:
+            text = _ohne_angehaengtes_du(_ohne_ersatz_anrede(_ohne_anrede(text, anrede), anrede))
+        maengel = _reaktion_maengel(text, vorherige, antwort, frage) if text else ["leer"]
+        if beste is None or len(maengel) < len(beste[1]):
+            beste = (text, maengel, form)
+        if not maengel:
+            break
+        logger.info("Stimmungs-Reaktion mit Mängeln (Versuch %d, Form '%s': %s)%s", versuch, form,
+                    "; ".join(maengel), " – noch einmal." if versuch < _REAKTION_VERSUCHE else ".")
+        hinweis = maengel
+    if not beste or not beste[0]:
+        raise ValueError("Stimmungs-Reaktion leer")
+    return _ohne_ankuendigung(beste[0]), beste[2]
+
+
 async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten, *,
                                frage: str = "", klartext: str = "") -> None:
     """Gemeinsamer Weg für Knopf und Text: speichern, In-Persona-Reaktion,
@@ -617,14 +932,16 @@ async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten, *,
 
     # Stimmung dauerhaft speichern, damit sie in Prompts/Dossier einfließt.
     # `zusammenfassung` lesen ~10 Stellen als „Aktuelle Stimmung": für eine
-    # angetippte Antwort steht dort der Klartext, nicht das Etikett.
-    daten = {"typ": "stimmung", "zusammenfassung": klartext or antwort}
+    # angetippte Antwort steht dort der Klartext, nicht das Etikett. Gibt es
+    # keinen (getippte Antwort, Klartext verworfen), steht die Frage dahinter.
+    daten = {"typ": "stimmung", "zusammenfassung": klartext or _mit_frage(antwort, frage)}
     if frage:
         daten["frage"] = frage
     if klartext:
         daten["knopf"] = antwort
+    punkt_id = None
     try:
-        await qdrant.save_training(rolle, daten)
+        punkt_id = await qdrant.save_training(rolle, daten)
     except Exception as e:
         logger.error("Fehler beim Speichern der Stimmung: %s", e)
 
@@ -634,13 +951,21 @@ async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten, *,
 
     # In-Persona-Reaktion an den Sklaven (statt Textkonserve)
     from bot.prompts import followup as fp
+    bauform = ""
     try:
-        reaktion = await grok.simple(fp.reaktion_auf_stimmung(antwort, frage, klartext), max_tokens=250)
+        reaktion, bauform = await _reaktion_text(rolle, antwort, frage, klartext)
     except Exception as e:
         logger.error("Fehler bei Stimmungs-Reaktion: %s", e)
         reaktion = t("FALLBACK_STIMMUNG_REAKTION")
     await antworten(reaktion)
     state.add_message(chat_id, "assistant", reaktion)
+    # Reaktion an den Stimmungs-Eintrag: die nächsten Reaktionen setzen sich
+    # davon ab. Die Textkonserve (kein Modell) gehört nicht dazu.
+    if punkt_id and bauform:
+        try:
+            await qdrant.update_training(punkt_id, {"reaktion": reaktion, "reaktion_form": bauform})
+        except Exception as e:
+            logger.warning("Stimmungs-Reaktion nicht am Eintrag gemerkt: %s", e)
 
     # Natürlicher Hinweis an die Domina (Coach-Stimme, kein Bericht-Format, kein Pathos)
     from bot.prompts import coach_persona

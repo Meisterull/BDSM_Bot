@@ -31,6 +31,70 @@ def _vorschlag_abschluss(inhalt: str) -> str:
     return saetze[-1][:90] if saetze else ""
 
 
+# --- Stimmung als Schluss-Begründung ---------------------------------------------
+# Die Begründung „warum jetzt" zog das Modell fast jedes Mal aus der Stimmung und
+# stellte sie als Satz ans Ende („Er ist gerade … drauf, deshalb …") – trotz der
+# Sperre für verbrauchte Abschlüsse (Log-Durchsicht 24.11.2026). Stand so ein Satz
+# in einem der letzten beiden Vorschläge, setzt die Stimmung als Begründung aus:
+# Der Auftrag sagt es, und ein Satz, der trotzdem kommt, fällt hier weg.
+_STIMMUNGS_ZEIT = (r"(?:gerade(?!\s+(?:erst|noch|so|mal|eben|dabei|dran))|momentan|im\s+Moment|zurzeit|zur\s+Zeit|"
+                   r"aktuell|derzeit|right\s+now|currently)")
+_STIMMUNGS_WORT = r"(?:drauf|gelaunt|gestimmt|stimmung|laune|mood)"
+
+
+def _stimmungs_satz_re() -> re.Pattern:
+    """Satz, der seinen Zustand im Moment feststellt: Subjekt ist die Sub-Seite
+    (Pronomen oder eingestellte Anrede), dahinter „ist/wirkt gerade …" oder ein
+    Stimmungs-Wort („… drauf")."""
+    from bot.prompts import rollen
+    try:
+        from bot.services import persona_config
+        anrede = " ".join((persona_config.sklave_anrede() or "").split())
+    except Exception:
+        anrede = ""
+    subjekt = [re.escape(rollen.sub()["nom"]), "he", "she"]
+    if anrede:
+        subjekt.append(r"\s+".join(re.escape(w) for w in anrede.split()))
+    return re.compile(
+        r"^\W*(?:(?:der|die|dein|deine)\s+)?(?:" + "|".join(subjekt) + r")\s+(?:ist|wirkt|scheint|klingt|is|seems)\s+"
+        r"(?:" + _STIMMUNGS_ZEIT + r"(?![\wäöüß])|[^.!?\n]{0,60}?(?<![\wäöüß])" + _STIMMUNGS_WORT + r"(?![\wäöüß]))",
+        re.IGNORECASE)
+
+
+def _schluss_saetze(text: str) -> list[str]:
+    """Die Sätze des letzten Absatzes – dort steht die Begründung."""
+    absaetze = [a for a in re.split(r"\n\s*\n", (text or "").strip()) if a.strip()]
+    if not absaetze:
+        return []
+    return [x.strip() for x in re.split(r"(?<=[.!?…])\s+", absaetze[-1].strip()) if x.strip()]
+
+
+def _stimmungs_satz(text: str) -> str:
+    """Der Satz im Schluss-Absatz, der die Stimmung feststellt – leer, wenn keiner."""
+    muster = _stimmungs_satz_re()
+    return next((x for x in _schluss_saetze(text) if muster.search(x)), "")
+
+
+def stimmung_setzt_aus(letzte_volltexte: list) -> bool:
+    """Stand die Stimmung in einem der letzten beiden Vorschläge als Schluss-
+    Begründung? Dann ist sie heute nicht dran (jüngster Vorschlag zuerst)."""
+    return any(_stimmungs_satz(v) for v in (letzte_volltexte or [])[:2])
+
+
+def _stimmungs_satz_entfernen(text: str) -> str:
+    """Nimmt den Stimmungs-Satz aus dem Schluss-Absatz. Bleibt der Absatz dadurch
+    leer, fällt er ganz weg; der Rest des Vorschlags bleibt unverändert."""
+    satz = _stimmungs_satz(text)
+    if not satz:
+        return text
+    kopf, trenner, schluss = (text or "").rstrip().rpartition("\n\n")
+    rest = [x for x in _schluss_saetze(schluss) if x != satz]
+    neu = " ".join(rest)
+    if not kopf.strip() and not neu:
+        return text                      # der Vorschlag bestünde nur aus diesem Satz
+    return (kopf + trenner + neu).rstrip() if neu else kopf.rstrip()
+
+
 # Deterministischer Schablonen-Detektor (D9/DIV1/3/5): die Prompt-Verbote in
 # _formel_verbot verlieren gegen die Modell-Präferenz (Diversitäts-Messung
 # 15.08.: „Das passt …, weil" trotz Verbot in ~60 % der Outputs, „Wie wär's"

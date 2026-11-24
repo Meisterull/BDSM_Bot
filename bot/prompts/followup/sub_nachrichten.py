@@ -3,6 +3,8 @@ Prompts für Nachrichten an den Sub: Follow-up, Aufgabe, Wette, Strafe, Reaktion
 
 Herausgelöst aus bot/prompts/followup.py (Wartbarkeits-Umbau 05.11.2026). Öffentlicher Zugriff weiterhin über bot.prompts.followup.
 """
+import re
+
 from bot import config
 from bot.prompts import persona, rollen
 from bot.prompts.followup import bausteine
@@ -276,20 +278,115 @@ def kette_anpassung(naechste_aufgabe: str, vorheriges_gefuehl: str, stimmung: st
     return system, user
 
 
-def reaktion_auf_stimmung(antwort: str, frage: str = "", klartext: str = "") -> tuple[str, str]:
+# Bauformen der Reaktion auf eine Stimmungs-Antwort. Die Form wählt der Aufrufer
+# (handlers/stimmung), nicht das Modell: Ohne Vorgabe baute es die Reaktion Tag
+# für Tag gleich – Antwort wiederholen, deuten, etwas ankündigen, zum Erzählen
+# auffordern (Log-Durchsicht 22.11.2026). Bewusst Beschreibungen und keine
+# Mustersätze: fertige Sätze schreibt das schnelle Modell ab.
+_REAKTION_BAUFORMEN = {
+    "ein_satz": "Genau EIN Satz, trocken hingeworfen – danach ist Schluss. Keine Frage.",
+    "frage": "Genau EINE Frage und sonst nichts – ein ganzer Satz, mit dem du etwas Bestimmtes wissen willst, "
+             "das offen geblieben ist. Kein Kommentar davor oder danach.",
+    "umdrehen": "Zwei Sätze: Du nimmst die Antwort anders, als sie gemeint war, und bleibst dabei. "
+                "Der zweite Satz ist eine Feststellung – keine Frage, keine Aufforderung.",
+    "lesen": "Zwei Sätze: erst deine Deutung der Lage – als Feststellung in direkter Anrede –, "
+             "dann dein Urteil darüber. Keine Frage, keine Aufforderung.",
+    "nachhaken": "Zwei Sätze: ein knapper Kommentar, dann eine Frage nach genau dem, was die Antwort offen lässt.",
+}
+
+# Satzende, Gedankenstrich, Strichpunkt und Doppelpunkt trennen Teilsätze – ein
+# Komma nicht (dahinter beginnt selten ein neuer Anlauf).
+_TEILSATZ_GRENZE_RE = re.compile(r"[.!?…]+|\s+[–—-]\s+|[;:]\s+")
+_ANFANG_MAX = 14
+
+
+def reaktion_bauformen() -> list[str]:
+    """Die möglichen Bauformen – der Aufrufer wählt, damit er über mehrere
+    Tage hinweg wechseln kann (handlers/stimmung)."""
+    return list(_REAKTION_BAUFORMEN)
+
+
+def teilsatz_anfaenge(text: str, woerter: int = 2) -> list[str]:
+    """Die ersten `woerter` Wörter jedes Satzes und jedes Gedankenstrich-Teils,
+    kleingeschrieben und ohne Satzzeichen. Daran erkennt handlers/stimmung eine
+    Reaktion, die wie die letzten gebaut ist – und genau diese Wortfolgen
+    stehen deshalb auch im Auftrag."""
+    aus, gesehen = [], set()
+    for teil in _TEILSATZ_GRENZE_RE.split(text or ""):
+        w = re.sub(r"[^\w ]", " ", teil.lower()).split()
+        if len(w) < woerter:
+            continue
+        anfang = " ".join(w[:woerter])
+        if anfang not in gesehen:
+            gesehen.add(anfang)
+            aus.append(anfang)
+    return aus
+
+
+def reaktion_auf_stimmung(antwort: str, frage: str = "", klartext: str = "", *,
+                          vorherige: list[str] | None = None, bauform: str = "",
+                          anrede_aus: bool = False,
+                          nachbessern: list[str] | None = None) -> tuple[str, str]:
     """Kurze, persönliche Reaktion der Herrin, wenn der Sklave seine Stimmung mitteilt.
     `frage` = die Stimmungsfrage, auf die er antwortet (leer bei /stimmung aus
-    eigenem Antrieb mit Standardfrage); `klartext` = Bedeutung einer angetippten Antwort."""
+    eigenem Antrieb mit Standardfrage); `klartext` = Bedeutung einer angetippten Antwort.
+    `bauform` = Schlüssel aus reaktion_bauformen(), `vorherige` = die letzten
+    Reaktionen (jüngste zuerst), `anrede_aus` = die Anrede stand zuletzt fast
+    immer drin und setzt heute aus, `nachbessern` = Mängel des ersten Versuchs."""
     s = rollen.sub()
     anlass = (f"hat gerade auf deine Frage nach {s['poss']}er Stimmung geantwortet" if (frage or "").strip()
               else f"hat dir gerade von sich aus {s['poss']}e Stimmung mitgeteilt")
+    form = _REAKTION_BAUFORMEN.get(bauform)
+    if form:
+        auftrag = (f"- Form heute: {form}\n"
+                   f"- Ich-Form. Bleib bei dem, was {s['nom']} gesagt hat – aber wiederhole die Antwort nicht erst "
+                   f"im Wortlaut, um sie dann zu kommentieren; höchstens EIN Wort daraus greifst du auf.\n"
+                   f"- Direkte Anrede: Du redest MIT {s['dat']} (du, dich, dir), nie in der dritten Person über "
+                   f"{s['akk']} – und über {s['akk']} selbst, nicht über „deine Antwort\" oder „deine Worte\".\n"
+                   f"- Die Form geht deiner Stil-Regel zum Offenhalten des Gesprächs vor: Verlangt sie keine "
+                   f"Frage, dann stellst du keine und forderst auch nicht zum Erzählen auf.\n")
+    else:
+        auftrag = (f"- Ein bis drei Sätze, Ich-Form. Greife konkret auf, was {s['nom']} sagt "
+                   f"(ein Wort, eine Wendung) und spiel damit.\n")
+    # Die Nachricht kommt aus einem Zeit-Job oder nach einem Knopfdruck – es folgt
+    # nichts darauf. Angekündigtes („gleich", „heute Abend") blieb deshalb immer aus.
+    auftrag += (f"- Die Nachricht steht für sich: Du bist gerade nicht bei {s['dat']}, und danach kommt von dir "
+                f"nichts weiter. Kündige deshalb nichts an, was du gleich, nachher oder heute noch mit {s['dat']} "
+                f"machst oder {s['dat']} gibst, und stell keine Szene in Aussicht.\n"
+                f"- KEINE bürokratische Bestätigung ('notiert', 'informiert', 'weitergeleitet'), keine "
+                f"generische Floskel, keine Verabschiedung. Du redest nicht in der dritten Person über dich.\n")
+    # Von den letzten Reaktionen gehen NUR die Satzanfänge in den Auftrag, nicht
+    # der Wortlaut: Mit den vollen Texten davor übernahm das schnelle Modell im
+    # Echt-Test deren Wendungen in die neue Reaktion (22.11.2026).
+    anfaenge = [a for v in (vorherige or []) for a in teilsatz_anfaenge(v)]
+    anfaenge = list(dict.fromkeys(anfaenge))[:_ANFANG_MAX]
+    if anfaenge:
+        auftrag += f"- Deine letzten Reaktionen auf {s['poss']}e Stimmung waren alle ähnlich gebaut – heute anders.\n"
+    # Auch der Anfang der Antwort selbst steht in der Sperre: Die allgemeine Regel
+    # oben hielt das Modell bei kurzen Antworten nicht davon ab, mit ihnen einzusteigen.
+    gesperrt = list(dict.fromkeys(teilsatz_anfaenge(antwort)[:1] + anfaenge))
+    if gesperrt:
+        auftrag += ("- Beginne keinen Satz und keinen Teilsatz mit einer dieser Wortfolgen: "
+                    + ", ".join(f'"{a}"' for a in gesperrt) + ".\n")
+    if anrede_aus:
+        try:
+            from bot.services import persona_config
+            anrede = (persona_config.sklave_anrede() or "").strip()
+        except Exception:
+            anrede = ""
+        if anrede:
+            # Nicht „nur ‚du'" schreiben: das Modell hängt sonst ein „…, du" an (s. stimmung_abfragen).
+            auftrag += (f"- Die Anrede „{anrede}\" stand zuletzt in fast jeder Reaktion. Heute kommt sie NICHT "
+                        f"vor – auch kein Ersatz dafür und kein angehängtes „du\" am Satzende.\n")
+    if nachbessern:
+        auftrag += ("- Dein erster Versuch ging so nicht: " + "; ".join(nachbessern)
+                    + ". Schreib die Reaktion neu – in der Form von oben, ohne das.\n")
     system = (
-        f"{bausteine._du_bist_dom()}. {bausteine._gross(bausteine._sub_mit_poss('dein'))} {anlass}.\n"
-        f"Reagiere darauf – ein bis drei Sätze, Ich-Form. Greife konkret auf, was {s['nom']} sagt "
-        f"(ein Wort, eine Wendung) und spiel damit.\n"
-        f"KEINE bürokratische Bestätigung ('notiert', 'informiert', 'weitergeleitet'), keine "
-        f"generische Floskel, keine Verabschiedung. Du redest nicht in der dritten Person über dich.\n\n"
-        f"{persona.fuer_sklaven_prompt()}"
+        f"{bausteine._du_bist_dom()}. {bausteine._gross(bausteine._sub_mit_poss('dein'))} {anlass}. "
+        f"Du reagierst darauf.\n\n"
+        f"{persona.fuer_sklaven_prompt()}\n\n"
+        f"FÜR DIESE NACHRICHT (geht den Stil-Regeln oben vor):\n"
+        f"{auftrag}"
     )
     user = bausteine.stimmungs_daten(bausteine._gross(s["poss"]) + "e Stimmungs-Nachricht", antwort,
                                      frage, klartext, frage_label="Deine Frage")

@@ -72,6 +72,7 @@ def _aufgaben_kontext(
     kombi_vorlieben: list = None,
     inventar_impuls: str = None,
     domina_grenzen: list = None,
+    stimmung_nicht_nennen: bool = False,
 ) -> str:
     """Gemeinsamer Kontext-Block für tiny_task_vorschlag und
     ausfuehrlicher_task_vorschlag – Profil-Daten + alle Hinweis-Bausteine.
@@ -284,6 +285,15 @@ def _aufgaben_kontext(
             f"→ Bei schlechter Stimmung eher sanftere, aufbauende Aufgaben vorschlagen. "
             f"Bei guter Stimmung darf es anspruchsvoller sein.\n"
         )
+        # Live-Befund 24.11.2026: Die Stimmung stand in fast jedem Vorschlag als
+        # Schluss-Begründung, und dabei wurde sie umgedeutet. Der Aufrufer setzt sie
+        # als Begründung aus, wenn sie zuletzt schon dort stand.
+        if stimmung_nicht_nennen:
+            stimmung_str += ("→ Das steuert nur Ton und Intensität: ERWÄHNE die Stimmung in der Nachricht heute NICHT "
+                             "und begründe den Vorschlag nicht mit ihr – sie war zuletzt jedes Mal die Begründung.\n")
+        else:
+            stimmung_str += ("→ Erwähnst du die Stimmung in der Nachricht, dann so, wie sie dasteht – nicht "
+                             "umgedeutet und nicht größer gemacht.\n")
     bewertung_str = f"\n{bewertungs_kontext}" if bewertungs_kontext else ""
     vertrauens_str = f"\n{vertrauens_kontext}" if vertrauens_kontext else ""
     from bot.prompts import coach_persona
@@ -505,6 +515,16 @@ def machbarkeits_pruefung(vorschlag: str, inventar: list = None, art: str = "auf
     return system, user
 
 
+def _begruendungs_quellen(s: dict, kwargs: dict) -> str:
+    """Woraus die Begründung „warum jetzt" kommen darf. Stand die Stimmung zuletzt
+    schon als Begründung da (Aufrufer: scheduler/tiny_task), fällt sie heute raus –
+    und die Begründung soll nicht wieder der letzte Satz sein."""
+    if kwargs.get("stimmung_nicht_nennen"):
+        return (f"wie {s['nom']} zuletzt reagiert hat, was ansteht, was ihr länger nicht hattet – heute NICHT "
+                f"{s['poss']}e Stimmung; und stell die Begründung nicht wieder als letzten Satz hin")
+    return f"wie {s['nom']} zuletzt reagiert hat, Stimmung, was ansteht"
+
+
 def tiny_task_vorschlag(**kwargs) -> tuple[str, str]:
     """Täglicher kleiner Aufgaben-Vorschlag (Werktag). Parameter siehe _aufgaben_kontext."""
     from bot.prompts import coach_persona
@@ -516,7 +536,7 @@ def tiny_task_vorschlag(**kwargs) -> tuple[str, str]:
 Der Vorschlag soll:
 - Einfach umsetzbar sein (Tiny: 5-15 Min)
 - Zu Level und Komplexität passen
-- Eine kurze Begründung dabeihaben (1 Satz), warum das JETZT dran ist – aus Beobachtbarem (wie {s['nom']} zuletzt reagiert hat, Stimmung, was ansteht), nicht "weil Abwechslung wichtig ist" und NIE als Profil-Abgleich ("trifft/holt genau {s['poss']}e Vorliebe/Rolle") – verrate nicht, was auf {s['poss']}er Vorlieben-Liste steht
+- Eine kurze Begründung dabeihaben (1 Satz), warum das JETZT dran ist – aus Beobachtbarem ({_begruendungs_quellen(s, kwargs)}), nicht "weil Abwechslung wichtig ist" und NIE als Profil-Abgleich ("trifft/holt genau {s['poss']}e Vorliebe/Rolle") – verrate nicht, was auf {s['poss']}er Vorlieben-Liste steht
 - Sich von den letzten Vorschlägen klar absetzen, nicht nur Variation
 
 {_formel_verbot()}
@@ -537,7 +557,7 @@ def ausfuehrlicher_task_vorschlag(**kwargs) -> tuple[str, str]:
 Der Vorschlag soll:
 - Detailliert sein, darf 2-3 Phasen haben
 - Zu Level und Komplexität passen
-- Eine kurze Begründung dabeihaben (1 Satz), warum das JETZT dran ist – aus Beobachtbarem (wie {s['nom']} zuletzt reagiert hat, Stimmung, was ansteht), nicht "weil Abwechslung wichtig ist" und NIE als Profil-Abgleich ("trifft/holt genau {s['poss']}e Vorliebe/Rolle") – verrate nicht, was auf {s['poss']}er Vorlieben-Liste steht
+- Eine kurze Begründung dabeihaben (1 Satz), warum das JETZT dran ist – aus Beobachtbarem ({_begruendungs_quellen(s, kwargs)}), nicht "weil Abwechslung wichtig ist" und NIE als Profil-Abgleich ("trifft/holt genau {s['poss']}e Vorliebe/Rolle") – verrate nicht, was auf {s['poss']}er Vorlieben-Liste steht
 - Sich von den letzten Vorschlägen klar absetzen
 
 {_formel_verbot()}

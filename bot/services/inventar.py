@@ -407,12 +407,16 @@ def waehle_impuls(vorhanden_liste: list[str], zuletzt_liste: list[str],
     return wahl(kandidaten)
 
 
-async def impuls_wahl(chance: float | None = None) -> str | None:
+async def impuls_wahl(chance: float | None = None, ohne=None) -> str | None:
     """Würfelt den AUSSTATTUNGS-IMPULS für einen Generator-Lauf: None bei leerer
     Liste, Abwesenheit oder verlorenem Chance-Wurf. Der gewählte Gegenstand
-    wandert in die Sperrliste (persistiert best-effort, Cache in jedem Fall)."""
+    wandert in die Sperrliste (persistiert best-effort, Cache in jedem Fall).
+    `ohne` = Prüfung je Eintrag: Gegenstände, für die sie wahr ist, stehen
+    diesmal nicht zur Wahl (Wochenplan: Geräte eines pausierten Themas)."""
     from bot.services import persona_config  # lazy: zirkelfrei
     liste = vorhanden()
+    if ohne:
+        liste = [e for e in liste if not ohne(e)]
     if not liste:
         return None
     if persona_config.ist_abwesend():

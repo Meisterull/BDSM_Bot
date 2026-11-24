@@ -78,7 +78,7 @@ def _mit_stubs(eintraege, antworten):
 # --------------------------------------------------------------------------
 
 async def test_alle_versuche_zu_aehnlich_faellt_auf_standardtext():
-    restore = _mit_stubs([{"zusammenfassung": WETTER, "richtung": "ein Wetter-Bild für den heutigen Tag"}],
+    restore = _mit_stubs([{"zusammenfassung": WETTER, "richtung": "welches Wetter-Bild zur eigenen Verfassung passt"}],
                          [WETTER] * 5)
     try:
         frage, richtung = await _st._frage_text()
@@ -93,13 +93,13 @@ async def test_alle_versuche_zu_aehnlich_faellt_auf_standardtext():
 # --------------------------------------------------------------------------
 
 async def test_frische_frage_wird_mit_richtung_zurueckgegeben():
-    restore = _mit_stubs([{"zusammenfassung": WETTER, "richtung": "ein Wetter-Bild für den heutigen Tag"}],
+    restore = _mit_stubs([{"zusammenfassung": WETTER, "richtung": "welches Wetter-Bild zur eigenen Verfassung passt"}],
                          ["Sag mir, wie viel Kraft heute noch in dir steckt."])
     try:
         frage, richtung = await _st._frage_text()
         assert frage == "Sag mir, wie viel Kraft heute noch in dir steckt."
         assert richtung in _fp.stimmung_richtungen()
-        assert richtung != "ein Wetter-Bild für den heutigen Tag"
+        assert richtung != "welches Wetter-Bild zur eigenen Verfassung passt"
     finally:
         restore()
 
@@ -112,7 +112,7 @@ async def test_verworfener_kandidat_geht_in_die_naechste_sperrliste():
     prompts = []
     orig_q, orig_g = db_vorschlaege.get_recent_stimmung_eintraege, _st.grok.simple
     db_vorschlaege.get_recent_stimmung_eintraege = AsyncMock(
-        return_value=[{"zusammenfassung": WETTER, "richtung": "ein Wetter-Bild für den heutigen Tag"}])
+        return_value=[{"zusammenfassung": WETTER, "richtung": "welches Wetter-Bild zur eigenen Verfassung passt"}])
     antworten = [WETTER, "Sag mir, wie schwer der Tag heute auf dir liegt."]
 
     async def _simple(prompt, **k):
@@ -283,7 +283,9 @@ async def test_frage_ohne_mode_knopf_und_getippte_antwort():
         await _st.frage_stellen(bot)
         assert _st.wartet_auf_antwort(sub)
         await _st.handle_antwort(_text("müde, aber zufrieden"), ctx)
-        assert [d["zusammenfassung"] for d in gespeichert if d["typ"] == "stimmung"][-1] == "müde, aber zufrieden"
+        # ohne Klartext steht die Frage dahinter – die Leser des Eintrags kennen sie sonst nicht
+        assert [d["zusammenfassung"] for d in gespeichert if d["typ"] == "stimmung"][-1] == \
+            "müde, aber zufrieden (Antwort auf die Frage: Eine frische Frage an dich?)"
         assert not _st.wartet_auf_antwort(sub)
 
         # … nach Ablauf des Fensters nicht mehr
@@ -475,12 +477,12 @@ async def test_passende_antworten_klick_und_text():
         u = _tap(f"stimmung:w:{fremd_id}:0", alt_tasten, mid=80)
         await _st.callback_button(u, ctx)
         assert [d for d in gespeichert if d["typ"] == "stimmung"][-1] == {
-            "typ": "stimmung", "zusammenfassung": "Stiller See", "frage": FRAGE}
+            "typ": "stimmung", "zusammenfassung": _st._mit_frage("Stiller See", FRAGE), "frage": FRAGE}
         # … und ohne Etikett in der Nachricht gar nichts
         await _st.callback_button(_tap(f"stimmung:w:{fremd_id}:3", alt_tasten, mid=81), ctx)
         assert len([d for d in gespeichert if d["typ"] == "stimmung"]) == 2
 
-        # Getippte Antwort: Rohtext bleibt die Stimmung, die Frage hängt am Eintrag und im Prompt
+        # Getippte Antwort: Rohtext bleibt die Stimmung (mit der Frage dahinter), die Frage hängt am Eintrag und im Prompt
         prompts.clear()
         await _st.frage_stellen(bot)
         text = MagicMock()
@@ -489,7 +491,7 @@ async def test_passende_antworten_klick_und_text():
         text.message.reply_text = AsyncMock()
         await _st.handle_antwort(text, ctx)
         assert [d for d in gespeichert if d["typ"] == "stimmung"][-1] == {
-            "typ": "stimmung", "zusammenfassung": "eher Bahnhof, aber es geht", "frage": FRAGE}
+            "typ": "stimmung", "zusammenfassung": _st._mit_frage("eher Bahnhof, aber es geht", FRAGE), "frage": FRAGE}
         assert any("auf deine Frage nach" in p[0] and FRAGE in p[1] for p in prompts)
         assert "stimmung_offen_frage" not in _state.get(sub)
     finally:

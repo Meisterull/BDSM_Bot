@@ -279,6 +279,9 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     mehrstufig_bremse = sum(
         1 for v in letzte_tiny_volltexte[:3] if schablonen._STUFEN_RE.search(v)
     ) >= 2
+    # Stand die Stimmung in einem der letzten beiden Vorschläge als Schluss-
+    # Begründung, setzt sie heute als Begründung aus (höchstens jeder dritte).
+    stimmung_nicht_nennen = schablonen.stimmung_setzt_aus(letzte_tiny_volltexte)
 
     # Letzte Inspirationen für Cross-Kontext laden
     letzte_inspirationen = await qdrant.get_recent_inspirationen(limit=5)
@@ -406,6 +409,7 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         inventar_impuls=inventar_impuls,
         # Persönliche Grenzen der Domina fürs LLM sichtbar (nicht nur im Wort-Check).
         domina_grenzen=domina_profile.get("grenzen", []) or [],
+        stimmung_nicht_nennen=stimmung_nicht_nennen,
     )
 
 
@@ -667,6 +671,12 @@ async def _tiny_task_vorschlag_senden(bot: Bot) -> None:
         if ohne_namen != vorschlag:
             logger.info("Eigenen Namen am Anfang des Vorschlags entfernt.")
             vorschlag = ohne_namen
+        # Netz unter der Vorgabe „heute nicht mit der Stimmung begründen".
+        if kwargs.get("stimmung_nicht_nennen"):
+            ohne_stimmung = schablonen._stimmungs_satz_entfernen(vorschlag)
+            if ohne_stimmung != vorschlag:
+                logger.info("Stimmungs-Satz am Schluss entfernt (stand zuletzt schon als Begründung da).")
+                vorschlag = ohne_stimmung
 
         # Kürzen falls zu lang (Telegram Limit 4096, Prefix ~50 Zeichen)
         if len(vorschlag) > 4000:

@@ -5,6 +5,7 @@ Aus bot/scheduler/followup.py herausgelöst (Wartbarkeits-Umbau 05.11.2026).
 """
 import logging
 import random
+import re
 from datetime import datetime, timezone, timedelta
 from telegram import Bot
 from qdrant_client import models as qm
@@ -161,32 +162,121 @@ async def lernkurve_job(bot: Bot) -> None:
         logger.info("Lernkurve-Job übersprungen – keine Task-Aktivität im Zeitraum.")
         return
 
-    # Ohne Bewertungen stand hier „0★" – das Modell kommentierte dann einen
-    # Durchschnitt, den es nicht gibt (Review D11).
-    kategorien_str = ", ".join(f"{k} {n}×" for k, n in (daten.get("kategorien") or {}).items()) or "keine"
-    bewertung_str = f"{daten['avg_bewertung']}★" if daten.get("avg_bewertung") else "noch keine Bewertungen abgegeben"
-
-    system = f"""Du schaust mit der Domina auf die letzten 2 Wochen – wie eine vertraute Freundin, die ihr ehrliches Feedback gibt.
-
-{coach_persona.fuer_coach_prompt()}
-
-Inhaltlich: was lief gut, was nicht, was wäre als nächstes dran. Aber NICHT als nummerierte Liste mit "1. Was gut lief: …". Lass es fließen wie ein Gespräch. 4-6 Sätze insgesamt. Konkret, nicht hohl. Kein [AUFGABE: ...] Tag."""
-    prompt = f"""{coach_persona.level_zeile(level)}
-Erledigte Tasks: {daten['erledigt']}
-Nicht erledigte Tasks (lag am Sklaven): {daten['nicht_erledigt']}
-An der Domina selbst hängen geblieben (keine Zeit – zählt nicht gegen den Sklaven):
-{versaeumt_str or 'nichts'}
-Kategorien: {kategorien_str}
-Durchschnittliche Bewertung: {bewertung_str}
-Beispiel-Tasks: {', '.join(daten['task_details'])}"""
-
     try:
-        analyse = await grok.simple(prompt, system=system, reasoning=True)
+        analyse = await _lernkurve_text(level, daten, versaeumt_str, await _lernkurve_gespraeche())
         if basis._nach_llm_verworfen(paare.dom_chat_id(), "Lernkurve"):
             return
         await telegram_helper.send_domina(bot, t("LERNKURVE_PREFIX", analyse=analyse), parse_mode="Markdown")
     except Exception as e:
         logger.exception("Fehler beim Lernkurve-Job")
+
+
+# --- Lernkurve: Auftrag und Netz -------------------------------------------------
+# Die Lernkurve sah nur die Aufgaben, die über den Bot liefen, und las daraus die
+# ganze Zeit der beiden: Liefen wenige darüber, hielt sie der Dom-Seite die Menge
+# und fehlende Bewertungen vor – auch wenn die Gespräche mit dem Coach ein anderes
+# Bild zeigten (Log-Durchsicht 24.11.2026). Jetzt sagt der Auftrag, was die Zahlen
+# zeigen und was nicht, die jüngsten Gespräche liegen bei, und ein Netz fängt
+# Mengen-Urteile und Vorwürfe ab.
+_LERNKURVE_GESPRAECHE = 4
+_LERNKURVE_REST_MIN = 2          # so viele Sätze müssen bleiben, wenn Vorwurfs-Sätze gestrichen werden
+_LK_WA, _LK_WE = r"(?<![\wäöüß])", r"(?![\wäöüß])"
+_LERNKURVE_VORWURF_RE = re.compile(
+    _LK_WA + r"(?:"
+    r"d(?:ü|ue)nn\w*|mager\w*|d(?:ü|ue)rftig\w*|sp(?:ä|ae)rlich\w*|"
+    r"(?<!ein )(?:zu|so|recht|ziemlich|arg|sehr)\s+wenig\w*|wenig\s+los|nicht\s+(?:gerade\s+)?viel|"
+    r"kaum\s+(?:et)?was|nur\s+(?:eine?[nrms]?|zwei)\s+(?:einzige[nrms]?\s+)?[\wäöüß-]*(?:aufgabe|sache|task)\w*|"
+    r"da\s+geht\s+(?:noch\s+)?mehr|mehr\s+draus\s+machen|"
+    r"bewertest\s+(?:du\s+)?(?:nichts|nie|nicht|kaum)|du\s+bewertest\s+(?:nichts|nie|nicht|kaum)|"
+    r"keine\s+(?:einzige\s+)?bewertung\w*|ohne\s+bewertung\w*|durchgewunken|"
+    r"thin|meagre|meager|too\s+little|not\s+much|only\s+one\s+task|you\s+(?:don't|never)\s+rate"
+    r")" + _LK_WE, re.I)
+_LK_SATZ_RE = re.compile(r"(?<=[.!?…])\s+")
+
+
+def _lernkurve_vorwuerfe(text: str) -> list[str]:
+    """Sätze, die über die Menge urteilen oder ihr etwas vorhalten."""
+    return [x.strip() for x in _LK_SATZ_RE.split((text or "").strip())
+            if x.strip() and _LERNKURVE_VORWURF_RE.search(x)]
+
+
+def _lernkurve_ohne_vorwurf(text: str) -> str:
+    """Letzter Halt: streicht die Vorwurfs-Sätze, wenn genug übrig bleibt."""
+    treffer = set(_lernkurve_vorwuerfe(text))
+    if not treffer:
+        return text
+    absaetze = []
+    for absatz in (text or "").split("\n\n"):
+        rest = [x for x in _LK_SATZ_RE.split(absatz.strip()) if x.strip() and x.strip() not in treffer]
+        if rest:
+            absaetze.append(" ".join(rest))
+    uebrig = sum(len(_LK_SATZ_RE.split(a)) for a in absaetze)
+    return "\n\n".join(absaetze) if uebrig >= _LERNKURVE_REST_MIN else text
+
+
+async def _lernkurve_gespraeche() -> str:
+    """Die jüngsten Gespräche der letzten zwei Wochen als Kontext – was sie dem
+    Coach selbst erzählt hat. Leer, wenn es keine gab oder sie nicht ladbar sind."""
+    from bot.prompts import domina_coach
+    jetzt = datetime.now(timezone.utc)
+    try:
+        eintraege = await qdrant.get_conversations_in_range(
+            "domina", (jetzt - timedelta(days=14)).isoformat(), jetzt.isoformat(), limit=_LERNKURVE_GESPRAECHE)
+    except Exception as e:
+        logger.warning("Lernkurve: Gespräche nicht ladbar (ohne Gesprächs-Kontext): %s", e)
+        return ""
+    return domina_coach.format_context(eintraege)
+
+
+def _lernkurve_auftrag(level: int, daten: dict, versaeumt_str: str, gespraeche: str = "") -> tuple[str, str]:
+    kategorien_str = ", ".join(f"{k} {n}×" for k, n in (daten.get("kategorien") or {}).items()) or "keine"
+    # Ohne Bewertungen fehlt die Zeile ganz: „0★" ließ das Modell einen Durchschnitt
+    # kommentieren, den es nicht gibt (Review D11), „noch keine abgegeben" ließ es
+    # ihr das Bewerten vorhalten.
+    bewertung_zeile = (f"Durchschnittliche Bewertung: {daten['avg_bewertung']}★\n"
+                       if daten.get("avg_bewertung") else "")
+    system = f"""Du schaust mit der Domina auf die letzten 2 Wochen – wie eine vertraute Freundin.
+
+{coach_persona.fuer_coach_prompt()}
+
+WAS DU SIEHST – UND WAS NICHT: Die Zahlen unten zeigen nur die Aufgaben, die über dich gelaufen sind. Was die beiden ohne dich miteinander machen, siehst du nicht – und das ist der größere Teil. Zieh deshalb aus den Zahlen KEIN Urteil über die Menge und mach ihr keinen Vorwurf: nicht dafür, wie viel über dich lief, nicht dafür, was sie bewertet oder dir erzählt hat. Was sie dir selbst erzählt hat, steht unten und zählt genauso wie die Aufgaben.
+
+Inhaltlich: was an dem, was du mitbekommen hast, gut lief, wo etwas gehakt hat (nur falls wirklich etwas gehakt hat), und EIN Einfall, was als Nächstes reizvoll wäre – als Idee, nicht als Auftrag an sie. NICHT als nummerierte Liste mit "1. Was gut lief: …". Lass es fließen wie ein Gespräch. 4-6 Sätze insgesamt. Konkret, nicht hohl. Kein [AUFGABE: ...] Tag."""
+    prompt = f"""{coach_persona.level_zeile(level)}
+Über dich gelaufene Aufgaben in den zwei Wochen: erledigt {daten['erledigt']}, nicht erledigt (lag am Sklaven) {daten['nicht_erledigt']}
+An der Domina selbst hängen geblieben (keine Zeit – zählt nicht gegen den Sklaven):
+{versaeumt_str or 'nichts'}
+Kategorien: {kategorien_str}
+{bewertung_zeile}Beispiel-Tasks: {', '.join(daten['task_details'])}"""
+    if gespraeche:
+        prompt += ("\n\nWas sie dir in diesen zwei Wochen selbst erzählt hat (eure jüngsten Gespräche – Zeitwörter "
+                   "darin meinen den Tag des jeweiligen Eintrags):\n" + gespraeche)
+    return system, prompt
+
+
+async def _lernkurve_text(level: int, daten: dict, versaeumt_str: str, gespraeche: str = "") -> str:
+    """Erzeugt die Lernkurve; urteilt der Entwurf über die Menge oder hält er ihr
+    etwas vor, gibt es einen Neu-Entwurf – bleibt es dabei, fallen die Sätze weg."""
+    system, prompt = _lernkurve_auftrag(level, daten, versaeumt_str, gespraeche)
+    analyse = await grok.simple(prompt, system=system, reasoning=True)
+    funde = _lernkurve_vorwuerfe(analyse)
+    if funde:
+        logger.info("Lernkurve urteilt über Menge/Bewertungen (%d Satz/Sätze) – generiere einmal neu.", len(funde))
+        nachbessern = ("\n\nDein erster Entwurf hat über die Menge geurteilt oder ihr etwas vorgehalten: "
+                       + " | ".join(f"„{x[:90]}“" for x in funde) + " – das fällt weg. Schreib neu: nur über das, "
+                       "was da war und was sie erzählt hat, ohne Urteil über wie viel.")
+        try:
+            neu = await grok.simple(prompt + nachbessern, system=system, reasoning=True)
+        except Exception as e:
+            logger.warning("Lernkurve: Neu-Entwurf fehlgeschlagen – der erste Entwurf gilt: %s", e)
+            neu = ""
+        if neu and len(_lernkurve_vorwuerfe(neu)) < len(funde):
+            analyse = neu
+        sauber = _lernkurve_ohne_vorwurf(analyse)
+        if sauber != analyse:
+            logger.info("Lernkurve: Vorwurfs-Satz/Sätze deterministisch entfernt.")
+            analyse = sauber
+    return analyse
 
 
 @basis._job_guard

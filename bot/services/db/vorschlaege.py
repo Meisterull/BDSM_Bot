@@ -64,6 +64,25 @@ async def get_recent_stimmung_fragen(limit: int = 5) -> list[str]:
     return [p.get("zusammenfassung", "") for p in await get_recent_stimmung_eintraege(limit)]
 
 
+async def get_recent_stimmung_reaktionen(limit: int = 4, user_id: str = "sklave") -> list[dict]:
+    """Die letzten Reaktionen auf Stimmungs-Antworten, jüngste zuerst – je
+    {"reaktion": Wortlaut, "form": Bauform}. Die Reaktion liegt am
+    Stimmungs-Eintrag selbst (Felder `reaktion`/`reaktion_form`); Einträge
+    ohne sie (Altbestand, Textkonserve nach Modell-Ausfall) zählen nicht."""
+    results, _ = await kern._aio(kern.client.scroll,
+        collection_name="training",
+        scroll_filter=qm.Filter(must=[
+            qm.FieldCondition(key="user_id", match=qm.MatchValue(value=kern.mandanten_key(user_id))),
+            qm.FieldCondition(key="typ", match=qm.MatchValue(value="stimmung")),
+        ]),
+        limit=max(limit * 3, 10), order_by=qm.OrderBy(key="datum", direction="desc"),
+        with_payload=True, with_vectors=False,
+    )
+    aus = [{"reaktion": p["reaktion"], "form": p.get("reaktion_form") or ""}
+           for p in (r.payload or {} for r in results) if p.get("reaktion")]
+    return aus[:limit]
+
+
 def _vorschlag_label(p: dict) -> str:
     """Kurzlabel eines gespeicherten Vorschlags für die "NICHT wiederholen"-Listen
     der Generator-Prompts – Volltexte dort ankern das Modell auf die eigene

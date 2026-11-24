@@ -84,6 +84,7 @@ _MODUL_VON = {
     "get_recent_rejected_tiny_tasks": "vorschlaege",
     "get_recent_stimmung_eintraege": "vorschlaege",
     "get_recent_stimmung_fragen": "vorschlaege",
+    "get_recent_stimmung_reaktionen": "vorschlaege",
     "get_recent_task_kategorien": "auswertung",
     "get_recent_tiny_tasks": "vorschlaege",
     "get_skill": "skills",
