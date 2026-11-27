@@ -158,7 +158,8 @@ async def voice_an(bot: Bot, chat_id, text: str, empfaenger_rolle: str | None = 
     from bot.services import paare, tts  # lazy: kein Import-Gewicht wenn TTS aus
     stimme = tts.ROLLE_COACH if empfaenger_rolle == paare.ROLLE_DOM else tts.ROLLE_HERRIN
     try:
-        ogg = await tts.synthesize(text, rolle=stimme)
+        from bot.services import sprachpflege
+        ogg = await tts.synthesize(sprachpflege.korrigieren(text), rolle=stimme)
         if not ogg:
             return False
         await bot.send_voice(chat_id=chat_id, voice=ogg)

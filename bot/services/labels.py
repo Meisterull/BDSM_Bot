@@ -57,12 +57,23 @@ async def kurzlabel(text: str) -> str:
                 "Extrahiere aus dem Aufgaben-Vorschlag NUR die Kern-Handlung als knappes "
                 "Stichwort-Label, maximal 10 Wörter. Ohne Anrede, ohne Begründung, ohne "
                 "Abschlussfrage, ohne Anführungszeichen, kein vollständiger Satz. "
+                # Log 25.11.2026: aus „A an Stelle X, klar weg von B“ wurde
+                # „A auf B“ – das Label landet in der
+                # NICHT-wiederholen-Liste und sperrte so etwas, das es nie gab.
+                "Gib die tragenden Elemente so wieder, wie der Text sie verbindet: Verknüpfe "
+                "nichts, was er trennt, und erfinde keine Körperstelle oder Position dazu. Die "
+                "Haupthandlung (was mit wem passiert) kommt zuerst; Aufbau und Vorbereitung nur, "
+                "wenn noch Platz ist. "
                 "Beispiel: Eiswürfel-Spiel an den Brustwarzen beim Duschen"
                 + persona_config.sprache_anweisung()
             ),
             temperature=0,
         ))
-        antwort = " ".join((antwort or "").split())
+        # Nur die erste Zeile: das Modell hängt gelegentlich einen zweiten Block an
+        # („**Kern-Handlung …:** …“), der das Label über das Gate hob → Heuristik
+        # mit dem bloßen ersten Satz (Echt-Test 26.11.2026: 3 von 8).
+        zeilen = [z for z in (antwort or "").splitlines() if z.strip()]
+        antwort = " ".join(re.sub(r"[*_`]+", "", zeilen[0]).split()) if zeilen else ""
         # Plausibilitäts-Gate: leere/ausufernde Antworten (Refusal, Erklärtext) verwerfen
         if 3 <= len(antwort) <= 120:
             return antwort[:MAX_LEN]

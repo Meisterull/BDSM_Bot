@@ -73,6 +73,7 @@ def _aufgaben_kontext(
     inventar_impuls: str = None,
     domina_grenzen: list = None,
     stimmung_nicht_nennen: bool = False,
+    rueckblick_nicht_nennen: bool = False,
 ) -> str:
     """Gemeinsamer Kontext-Block für tiny_task_vorschlag und
     ausfuehrlicher_task_vorschlag – Profil-Daten + alle Hinweis-Bausteine.
@@ -277,13 +278,17 @@ def _aufgaben_kontext(
             f"über das Datum in der Klammer um, bevor du dich darauf beziehst – was dort für "
             f"„heute“ geplant war, ist bei einem Eintrag von gestern schon vorbei.\n"
         )
+        # Log 26./27.11.2026: zwei Vorschläge hintereinander begründeten mit
+        # demselben Gespräch. Der Aufrufer setzt den Rückblick dann einmal aus.
+        if rueckblick_nicht_nennen:
+            kontext_str += ("→ Auf diese Gespräche haben sich schon die letzten Vorschläge gestützt: Heute höchstens "
+                            "als Hintergrund – erwähne sie nicht und erinnere nicht daran, was dort war.\n")
     stimmung_str = ""
     if stimmung:
         # Stimmung ist 1:1 gespeicherter Sklaven-Freitext → mit Delimiter einbetten
         stimmung_str = (
             f"\n{bausteine.nutzer_text('Aktuelle Stimmung ' + s['label_gen'], stimmung)}\n"
-            f"→ Bei schlechter Stimmung eher sanftere, aufbauende Aufgaben vorschlagen. "
-            f"Bei guter Stimmung darf es anspruchsvoller sein.\n"
+            f"{bausteine.STIMMUNG_INTENSITAET}\n"
         )
         # Live-Befund 24.11.2026: Die Stimmung stand in fast jedem Vorschlag als
         # Schluss-Begründung, und dabei wurde sie umgedeutet. Der Aufrufer setzt sie
@@ -493,7 +498,9 @@ def machbarkeits_pruefung(vorschlag: str, inventar: list = None, art: str = "auf
         "Prüfpunkte:\n"
         "1. Belegung: Jede Körperstelle und jeder Gegenstand ist zur selben Zeit nur für EINE Sache "
         "belegt (ein Knebel im Mund heißt: kein Lecken, kein Sprechen; ein Gegenstand ist nie an zwei "
-        "Stellen zugleich).\n"
+        "Stellen zugleich). Gefesselte Glieder sind belegt: Hände auf dem Rücken heißt kein Abstützen "
+        "(also kein Vierfüßlerstand), kein Greifen, kein Festhalten. Eine Fessel nimmt nur, was sie "
+        "wirklich festlegt – ein kurzes Seil zwischen den Knöcheln lässt kleine Schritte zu.\n"
         "2. Haltung: Position und Lage passen zu dem, was gleichzeitig passieren soll – und zur "
         "Benutzungsangabe im Inventar (steht dort, wer wo liegt oder sitzt, gilt genau das).\n"
         "3. Reihenfolge: Kein Schritt hebt den vorherigen auf oder setzt etwas voraus, das noch nicht "
@@ -518,11 +525,21 @@ def machbarkeits_pruefung(vorschlag: str, inventar: list = None, art: str = "auf
 def _begruendungs_quellen(s: dict, kwargs: dict) -> str:
     """Woraus die Begründung „warum jetzt" kommen darf. Stand die Stimmung zuletzt
     schon als Begründung da (Aufrufer: scheduler/tiny_task), fällt sie heute raus –
-    und die Begründung soll nicht wieder der letzte Satz sein."""
-    if kwargs.get("stimmung_nicht_nennen"):
-        return (f"wie {s['nom']} zuletzt reagiert hat, was ansteht, was ihr länger nicht hattet – heute NICHT "
-                f"{s['poss']}e Stimmung; und stell die Begründung nicht wieder als letzten Satz hin")
-    return f"wie {s['nom']} zuletzt reagiert hat, Stimmung, was ansteht"
+    und die Begründung soll nicht wieder der letzte Satz sein. Gleiches gilt für
+    einen Rückblick auf ein früheres Gespräch (rueckblick_nicht_nennen)."""
+    stimmung_aus = kwargs.get("stimmung_nicht_nennen")
+    rueckblick_aus = kwargs.get("rueckblick_nicht_nennen")
+    if not (stimmung_aus or rueckblick_aus):
+        return f"wie {s['nom']} zuletzt reagiert hat, Stimmung, was ansteht"
+    quellen = ([] if rueckblick_aus else [f"wie {s['nom']} zuletzt reagiert hat"]) + \
+        ["was ansteht", "was ihr länger nicht hattet"] + ([] if stimmung_aus else ["Stimmung"])
+    nicht = ([f"{s['poss']}e Stimmung"] if stimmung_aus else []) + (
+        ["ein früheres Gespräch oder Erlebnis (kein „vor X Tagen …“, kein „neulich hast du …“ – "
+         "darauf stützten sich schon die letzten Vorschläge)"] if rueckblick_aus else [])
+    text = ", ".join(quellen) + " – heute NICHT " + " und nicht ".join(nicht)
+    if stimmung_aus:
+        text += "; und stell die Begründung nicht wieder als letzten Satz hin"
+    return text
 
 
 def tiny_task_vorschlag(**kwargs) -> tuple[str, str]:

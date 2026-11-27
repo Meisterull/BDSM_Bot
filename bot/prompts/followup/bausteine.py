@@ -41,6 +41,15 @@ STIMMUNG_BEIM_GESAGTEN = (
     "und unterstelle kein Gefühl, das nicht genannt wurde. Behaupte auch nichts darüber, wie die Person "
     "sonst ist oder was bei ihr meistens hilft – das weißt du nicht."
 )
+# Live-Befund 26.11.2026: Ein Wunsch nach Ruhe galt nicht als schlechte Stimmung –
+# der Tagesvorschlag kurz danach war hart. Ein Ruhe-Wunsch zählt jetzt wie eine
+# schlechte Stimmung: heute sanft.
+STIMMUNG_INTENSITAET = (
+    "→ Die Stimmung bestimmt die Intensität. Ist sie schlecht, oder steht darin ein Wunsch nach Ruhe, "
+    "Erholung oder Sanftem (auch Müdigkeit, Erschöpfung, keine Lust auf viel), dann heute ruhig und sanft: "
+    "Nähe, Langsames, Genuss, kleiner Dienst – keine Schläge, keine Strafe, keine strenge Fesselung, "
+    "nichts Forderndes. Bei guter oder unternehmungslustiger Stimmung darf es anspruchsvoller sein."
+)
 # Der Coach-Stil lädt im Chat zum Weiterreden ein; eine Mitteilung soll ohne
 # Antwort auskommen. Netz unter beiden Regeln: scheduler/schablonen.mitteilung_bereinigen.
 MITTEILUNG_OHNE_RUECKFRAGE = (

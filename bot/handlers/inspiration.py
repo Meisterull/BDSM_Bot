@@ -176,10 +176,10 @@ def _baue_vorschlags_prompt(
 
     stimmung_str = ""
     if stimmung:
+        from bot.prompts import followup as fp
         stimmung_str = (
             f"\nAktuelle Stimmung des Sklaven: {stimmung}\n"
-            f"→ Bei schlechter Stimmung eher sanftere, aufbauende Aufgaben vorschlagen. "
-            f"Bei guter Stimmung darf es anspruchsvoller sein.\n"
+            f"{fp.STIMMUNG_INTENSITAET}\n"
         )
 
     bewertung_str = f"\n{bewertungs_kontext}" if bewertungs_kontext else ""

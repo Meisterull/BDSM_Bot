@@ -698,6 +698,51 @@ def _hinweis_bereinigt(hinweis: str) -> str:
     return sauber
 
 
+def _spricht_ueber_dom(text: str) -> bool:
+    """Hinweis an die Dom-Seite, der von ihr in der dritten Person redet (Log
+    26.11.2026, Muster „… lässt sie ihn …, während sie …“ –
+    die Du-Regel im Prompt allein hält das Modell nicht immer ein). Das Pronomen
+    prüfen wir nur, wenn es sich von dem der devoten Seite unterscheidet."""
+    from bot.prompts import rollen
+    d = rollen.dom()
+    t = text or ""
+    namen = "|".join(re.escape(n) for n in {d["label"], d["real"]})
+    if re.search(rf"\b(die|der|deine?|seine[mnrs]?|ihre[mnrs]?)\s+({namen})\b", t):
+        return True
+    if rollen.dom_geschlecht() == rollen.sub_geschlecht():
+        return False
+    # „sie lässt/liest/sitzt …“ (Verb in der 3. Person) und „ihre/ihren …“ –
+    # das bloße „ihr“ bleibt frei, es ist hier meist die Anrede an beide.
+    nom = d["nom"]
+    if re.search(rf"\b{nom}\s+\w+t\b", t, re.IGNORECASE):
+        return True
+    # umgestellt: „vielleicht lässt sie ihn …“, „dann kann sie sich …“
+    if re.search(rf"\b\w+t\s+{nom}\s+(ihn|ihm|sich)\b", t, re.IGNORECASE):
+        return True
+    # Modalverb in der 3. Person: „das kann sie heute nutzen“ („du kannst“ endet anders)
+    if re.search(rf"\b(kann|könnte|will|soll|sollte|darf|muss|mag|möchte)\s+{nom}\b", t, re.IGNORECASE):
+        return True
+    stamm = d["poss"].removesuffix("e")          # „ihre“ → „ihr“ + Endung
+    return bool(re.search(rf"\b{stamm}(e|en|em|er|es)\b", t, re.IGNORECASE))
+
+
+async def _hinweis_an_dom(daten, system: str) -> str:
+    """Hinweis-Gedanke für die Dom-Seite; spricht der Entwurf von ihr in der
+    dritten Person, gibt es einen zweiten Versuch mit genau diesem Mangel."""
+    hinweis = _hinweis_bereinigt(await grok.simple(daten, system=system))
+    if not _spricht_ueber_dom(hinweis):
+        return hinweis
+    logger.info("Stimmungs-Hinweis spricht von ihr in der dritten Person – noch einmal.")
+    nachtrag = ("\n\nDein letzter Entwurf sprach von ihr in der dritten Person (\"sie …\", \"ihre …\"). "
+                "Die Nachricht geht an SIE selbst: sprich sie durchgehend mit du/dir/dich/dein an.")
+    try:
+        zweiter = _hinweis_bereinigt(await grok.simple(daten, system=system + nachtrag))
+    except Exception:
+        logger.warning("Stimmungs-Hinweis: zweiter Versuch fehlgeschlagen – der erste gilt.", exc_info=True)
+        return hinweis
+    return zweiter if zweiter and not _spricht_ueber_dom(zweiter) else (zweiter or hinweis)
+
+
 def _hinweis_text(schluessel: str, hinweis: str, antwort: str, frage: str = "", klartext: str = "",
                   **platzhalter) -> str:
     """Nachricht an die andere Seite: Kopf plus Gedanke dazu. Gab es eine Frage,
@@ -980,10 +1025,10 @@ async def _antwort_verarbeiten(bot, chat_id: str, antwort: str, antworten, *,
         f"{fp.STIMMUNG_BEIM_GESAGTEN}\n{fp.MITTEILUNG_OHNE_RUECKFRAGE}"
     )
     try:
-        hinweis = _hinweis_bereinigt(await grok.simple(
+        hinweis = await _hinweis_an_dom(
             fp.stimmungs_daten("Seine Stimmungs-Nachricht", antwort, frage, klartext,
                                frage_label="Die Frage an ihn"),
-            system=system))
+            system)
         await telegram_helper.send_domina(
             bot, _hinweis_text("STIMMUNG_HINWEIS_AN_DOMINA", hinweis, antwort, frage, klartext),
             parse_mode="Markdown",

@@ -456,6 +456,13 @@ def test_pruefung_liest_anlass_nicht_als_verbot():
         assert "Holzlöffel (Kochen)" in user and "Holzlöffel" not in system
     # der alte Prüfpunkt zur Haltung bleibt – wer wo liegt oder sitzt, gilt weiter
     assert "wer wo liegt oder sitzt, gilt genau das" in fp.machbarkeits_pruefung("x", inventar)[0]
+    # Log 26.11.2026: eine Fessel-gegen-Haltung-Kollision ging durch (Varianz). Gefesselte
+    # Glieder zählen zur Belegung – aber nur, was die Fessel wirklich festlegt (Gegenprobe:
+    # kurzes Seil zwischen den Knöcheln wurde sonst als „kein Gehen“ abgelehnt).
+    system = fp.machbarkeits_pruefung("x", inventar)[0]
+    assert "Gefesselte Glieder sind belegt" in system and "kein Vierfüßlerstand" in system
+    assert "nimmt nur, was sie wirklich festlegt" in system
+    assert system.index("1. Belegung") < system.index("Gefesselte Glieder") < system.index("2. Haltung")
 
 
 def main():

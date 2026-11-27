@@ -95,6 +95,33 @@ def _stimmungs_satz_entfernen(text: str) -> str:
     return (kopf + trenner + neu).rstrip() if neu else kopf.rstrip()
 
 
+# Log 26./27.11.2026: Zwei Tagesvorschläge hintereinander stützten sich auf
+# dasselbe Gespräch (Muster „vor N Tagen hat er dich …“, am Folgetag N+1) – es
+# war der einzige Eintrag unter den jüngsten Gesprächen. Gleiche Mechanik wie bei
+# der Stimmung: Stand ein Rückblick in einem der letzten beiden Vorschläge, setzt
+# er heute aus (Auftrag + Kandidaten-Wahl + ein Retry in scheduler/tiny_task).
+_RUECKBLICK_RE = re.compile(
+    r"(?<![\wäöüß])(?:"
+    r"vor\s+(?:zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|ein\s+paar|einigen|\d+)\s+tagen"
+    r"|neulich|letztens|vorgestern|letzte\s+woche|am\s+wochenende\s+hast"
+    r"|(?:hast|hattest)\s+du\s+(?:[\wäöüß]+\s+){0,3}(?:gesagt|erzählt|geschrieben|gemeint|erwähnt)"
+    r"|(?:hat|hatte)\s+(?:er|dich)\s+(?:[\wäöüß]+\s+){0,4}(?:gesagt|erzählt|geschrieben|gereizt|angestachelt|herausgefordert|provoziert)"
+    r"|(?:\d+|two|three|four|five|a\s+few)\s+days\s+ago|the\s+other\s+day|last\s+week"
+    r")(?![\wäöüß])",
+    re.IGNORECASE)
+
+
+def hat_rueckblick(text: str) -> bool:
+    """Stützt sich der Vorschlag auf ein früheres Gespräch / Ereignis?"""
+    return bool(_RUECKBLICK_RE.search(text or ""))
+
+
+def rueckblick_setzt_aus(letzte_volltexte: list) -> bool:
+    """Stand ein Rückblick in einem der letzten beiden Vorschläge? Dann ist heute
+    keiner dran (jüngster Vorschlag zuerst)."""
+    return any(hat_rueckblick(v) for v in (letzte_volltexte or [])[:2])
+
+
 # Deterministischer Schablonen-Detektor (D9/DIV1/3/5): die Prompt-Verbote in
 # _formel_verbot verlieren gegen die Modell-Präferenz (Diversitäts-Messung
 # 15.08.: „Das passt …, weil" trotz Verbot in ~60 % der Outputs, „Wie wär's"

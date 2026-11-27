@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, Application
 from bot import commands_katalog as ck
 from bot import config, state
-from bot.services import paare, qdrant, telegram_helper, modi
+from bot.services import paare, qdrant, telegram_helper, modi, sprachpflege
 from bot.handlers import (
     safeword,
     domina,
@@ -383,13 +383,19 @@ def _merke_fuer_coach(chat_id, text) -> None:
 
 
 def _wrap_outgoing_logging(application: Application) -> None:
-    """Wrappt bot.send_message + copy_message, um JEDE ausgehende Nachricht zu loggen."""
+    """Wrappt bot.send_message + copy_message, um JEDE ausgehende Nachricht zu loggen
+    (und Texte vorher durch sprachpflege.korrigieren zu schicken)."""
     bot = application.bot
     _orig_send = bot.send_message
     _orig_copy = bot.copy_message
 
     async def _logged_send(*args, **kwargs):
         cid = kwargs.get("chat_id", args[0] if args else None)
+        # Feste Korrekturen wiederkehrender Modell-Fehler (services/sprachpflege).
+        if "text" in kwargs:
+            kwargs["text"] = sprachpflege.korrigieren(kwargs["text"])
+        elif len(args) > 1:
+            args = (args[0], sprachpflege.korrigieren(args[1]), *args[2:])
         txt = kwargs.get("text", args[1] if len(args) > 1 else "")
         # Inhalt nur auf DEBUG (Logdatei/Logserver), nicht in die Docker-json-Logs.
         logger.info("GESENDET → %s | (%d Zeichen)", gates._rolle(cid), len(str(txt)))

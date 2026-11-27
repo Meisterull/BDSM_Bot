@@ -282,6 +282,8 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
     # Stand die Stimmung in einem der letzten beiden Vorschläge als Schluss-
     # Begründung, setzt sie heute als Begründung aus (höchstens jeder dritte).
     stimmung_nicht_nennen = schablonen.stimmung_setzt_aus(letzte_tiny_volltexte)
+    # Gleiches für einen Rückblick auf ein früheres Gespräch („vor drei Tagen …“).
+    rueckblick_nicht_nennen = schablonen.rueckblick_setzt_aus(letzte_tiny_volltexte)
 
     # Letzte Inspirationen für Cross-Kontext laden
     letzte_inspirationen = await qdrant.get_recent_inspirationen(limit=5)
@@ -410,6 +412,7 @@ async def _vorschlag_kontext(domina_profile: dict, sklave_profile: dict, wunsch_
         # Persönliche Grenzen der Domina fürs LLM sichtbar (nicht nur im Wort-Check).
         domina_grenzen=domina_profile.get("grenzen", []) or [],
         stimmung_nicht_nennen=stimmung_nicht_nennen,
+        rueckblick_nicht_nennen=rueckblick_nicht_nennen,
     )
 
 
@@ -606,7 +609,14 @@ async def _tiny_task_vorschlag_senden(bot: Bot) -> None:
             kandidaten = [k for k in (k1, k2) if k]
             if kandidaten:
                 _, _, referenz_texte = await qdrant.get_recent_tiny_tasks(limit=5)
-                vorschlag = await schablonen._diversester_kandidat(kandidaten, referenz_texte)
+                # Setzt der Rückblick heute aus, zählen zuerst die Kandidaten ohne.
+                if kwargs.get("rueckblick_nicht_nennen"):
+                    ohne = [k for k in kandidaten if not schablonen.hat_rueckblick(k)]
+                    if ohne and len(ohne) < len(kandidaten):
+                        logger.info("Kandidat mit Rückblick aussortiert (stand zuletzt schon als Begründung da).")
+                        kandidaten = ohne
+                vorschlag = (kandidaten[0] if len(kandidaten) == 1
+                             else await schablonen._diversester_kandidat(kandidaten, referenz_texte))
             else:
                 vorschlag = None
         else:
@@ -614,6 +624,23 @@ async def _tiny_task_vorschlag_senden(bot: Bot) -> None:
         if vorschlag is None:
             logger.error("Tiny-Task auch nach Re-Generierung Grenzen-verletzend – verworfen.")
             return
+
+        # Rückblick-Netz + genau EIN Retry: stand ein Rückblick („vor drei Tagen …“)
+        # zuletzt schon da, soll heute keiner kommen. Streichen ginge nicht – der
+        # Rückblick steht oft im selben Satz wie die Handlung (Log 12.–14.10.2026).
+        if kwargs.get("rueckblick_nicht_nennen") and schablonen.hat_rueckblick(vorschlag):
+            logger.info("Vorschlag stützt sich wieder auf ein früheres Gespräch – generiere einmal neu.")
+            neu = await limits_check.generate_mit_limit_retry(
+                prompt + "\n\nACHTUNG: Dein letzter Entwurf hat sich wieder auf ein früheres Gespräch oder "
+                "Erlebnis gestützt („vor X Tagen …“, „neulich …“) – genau darauf stützten sich schon die letzten "
+                "Vorschläge. Schreib den Vorschlag ohne jeden Rückblick: Begründung aus dem, was ansteht oder "
+                "was ihr länger nicht hattet.",
+                sk_hl, do_gr, system=system, reasoning=True, lokal=True,
+            )
+            if neu and not schablonen.hat_rueckblick(neu):
+                vorschlag = neu
+            else:
+                logger.info("Retry %s – Original bleibt.", "leer" if not neu else "hat auch einen Rückblick")
 
         # Dislike-Detektor + genau EIN Retry (Live-Befund 12.11.2026: Vorschlag
         # baute auf einer gelernten Abneigung auf). Die Prompt-Regel allein
